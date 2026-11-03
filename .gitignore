@@ -41,10 +41,10 @@ desktop.ini
 .DS_Store
 
 # ---- 仓库只保留启动器代码 ----
-# 文档、脚本、CI、截图、参考代码与 AI 记忆都留在本地，不进版本库。
+# 文档、脚本、CI、参考代码与 AI 记忆都留在本地，不进版本库。
 /docs/
 /scripts/
-/.github/
+/.github/workflows/
 /.screenshots/
 /.workbuddy/
 /PCL参考代码/
