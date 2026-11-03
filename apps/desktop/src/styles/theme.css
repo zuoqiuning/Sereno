@@ -1,0 +1,114 @@
+/*
+ * 主题切换的运行时辅助。
+ *
+ * 令牌本身定义在 main.css 的 @theme 里；本文件只负责
+ * 「把 data-theme 写到 <html> 上」以及少量跨主题的布局微调。
+ */
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+/*
+ * 深色主题：在 [data-theme="dark"] 里覆盖同名 --color-* 变量即可，
+ * 组件代码零改动。间距 / 圆角 / 阴影三套变量是跨主题共用的，不在此覆盖。
+ */
+[data-theme="dark"] {
+  --color-canvas: #10151d;
+  --color-surface: #171e28;
+  --color-surface-muted: #1f2833;
+  --color-glass: #1b2330;
+
+  --color-ink: #e8edf5;
+  --color-ink-soft: #b4bfce;
+  --color-ink-muted: #7f8b9c;
+
+  --color-line: #2a3441;
+  --color-line-soft: #222b36;
+
+  --color-accent: #4a9be0;
+  --color-accent-soft: #16283a;
+  --color-success: #4ec08a;
+  --color-success-soft: #14291f;
+  --color-warning: #e0a63c;
+  --color-warning-soft: #2c2313;
+  --color-danger: #e8696e;
+  --color-danger-soft: #2e1618;
+  --color-info: #63a6e0;
+  --color-info-soft: #152534;
+
+  --color-brand-500: #4a9be0;
+  --color-brand-600: #6fb2ea;
+}
+
+/*
+ * 无边框窗口里，页面根容器必须撑满，且不允许出现横向滚动。
+ * min-w-0 不能省，否则长文件名或宽表格会把 flex 子项撑破。
+ */
+.sereno-scroll {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* 始终预留滚动条槽位：页面切换/内容变高时不会突然挤出/收起滚动条 */
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 拖动窗口时不要选中文字 */
+.sereno-drag {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 动画节奏：统一用同一条缓动，避免各组件各写一套 */
+.sereno-ease {
+  transition-timing-function: var(--ease-out-soft);
+}
+
+/*
+ * 模态框进出场。
+ *
+ * 遮罩淡入淡出，面板同时轻微上浮 + 缩放，形成「从下方浮起」的层次感；
+ * 时长控制在 180ms 左右——再长就会让人觉得界面卡住。
+ */
+.sereno-modal-enter-active,
+.sereno-modal-leave-active {
+  transition:
+    opacity 180ms var(--ease-out-soft),
+    transform 180ms var(--ease-out-soft);
+}
+
+/* 面板自己的位移与缩放也要有过渡，否则会「瞬移」而不是浮起。 */
+.sereno-modal-enter-active > .sereno-modal-panel,
+.sereno-modal-leave-active > .sereno-modal-panel {
+  transition: transform 180ms var(--ease-out-soft);
+}
+
+.sereno-modal-enter-from,
+.sereno-modal-leave-to {
+  opacity: 0;
+}
+
+.sereno-modal-enter-from > .sereno-modal-panel {
+  transform: translateY(10px) scale(0.985);
+}
+
+.sereno-modal-leave-to > .sereno-modal-panel {
+  transform: translateY(6px) scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

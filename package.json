@@ -1,0 +1,28 @@
+{
+  "name": "sereno",
+  "private": true,
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:raw": "pnpm --filter @sereno/desktop tauri dev",
+    "build": "pnpm --filter @sereno/desktop tauri build",
+    "build:web": "pnpm --filter @sereno/desktop build:web",
+    "typecheck": "pnpm --filter @sereno/desktop typecheck",
+    "lint": "pnpm --filter @sereno/desktop lint",
+    "format": "pnpm --filter @sereno/desktop format",
+    "test": "pnpm --filter @sereno/desktop test",
+    "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "check:rust:fast": "cargo check --workspace",
+    "test:rust": "cargo test --workspace",
+    "version:check": "node scripts/version.mjs --check",
+    "version:set": "node scripts/version.mjs"
+  },
+  "devDependencies": {
+    "consola": "3.4.2"
+  },
+  "version": "0.1.0"
+}

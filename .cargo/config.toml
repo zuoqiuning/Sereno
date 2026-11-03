@@ -1,0 +1,24 @@
+# 仓库级 cargo 配置。
+#
+# 只放**与机器无关**的设置。机器相关的东西（链接器绝对路径等）
+# 放在用户级 `~/.cargo/config.toml`，否则仓库换台机器就编不过。
+
+[http]
+# 下载超时（秒）。默认值 30 实际上没有超时效果，crates.io 抽风时会一直挂着。
+timeout = 30
+# 低于这个速度（字节/秒）就判定为停滞并中断，避免「既不报错也不动」。
+low-speed-limit = 1
+# 多路复用：单条 TCP 连接上跑多个请求，国内网络下能显著减少连接建立开销。
+multiplexing = true
+
+[net]
+# 失败重试次数（注意：retry 属于 net，不属于 http）。
+retry = 3
+
+[build]
+# 增量编译：这是 Tauri 项目最值钱的一个开关。
+incremental = true
+
+[term]
+# 始终输出颜色，CI 与终端表现一致。
+color = "auto"

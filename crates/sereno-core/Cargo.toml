@@ -1,0 +1,86 @@
+[package]
+name = "sereno-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Sereno 领域层：版本解析、下载调度、实例生命周期、启动参数构建"
+authors = ["丘屿知宁"]
+publish = false
+
+[lib]
+name = "sereno_core"
+path = "src/lib.rs"
+
+[build-dependencies]
+# build.rs 读取仓库根的 version.json 并注入 SERENO_APP_VERSION
+serde_json = "1"
+
+[dependencies]
+# ---- 序列化：DTO / 设置 / 实例元数据 ----
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+# ---- 类型导出：纯类型层，与运行时无关，因此不引入 tauri / tauri-specta ----
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+
+# ---- 异步运行时 ----
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures-util = "0.3.34"
+urlencoding = "2.1.3"
+bytes = "1.12.1"
+
+# ---- 网络 ----
+# rustls 而非 native-tls：避免引入 OpenSSL 的 C 依赖与额外安装步骤
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls",
+  "json",
+  "gzip",
+  "stream",
+] }
+
+# ---- 校验 ----
+sha1 = "0.10.7"
+sha2 = "0.10.9"
+md-5 = "0.10.6"
+
+# ---- 正则 ----
+# 版本 JSON 的 rules[].os.version 是正则表达式（Mojang 用 "^10\\." 这类写法）
+regex = "1.13.1"
+
+# ---- 系统探测（仅 Windows）----
+# RtlGetVersion 取真实系统版本。GetVersionExW 对未声明兼容清单的应用会谎报 6.2，
+# 所以必须用 ntdll 的 RtlGetVersion。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_System_SystemInformation",
+  "Win32_UI_WindowsAndMessaging",
+  "Wdk_System_SystemServices",
+  "Win32_Storage_FileSystem",
+] }
+
+# ---- 压缩 / 归档 ----
+zip = { version = "2.6.1", default-features = false, features = ["deflate"] }
+
+# ---- 系统 ----
+dirs = "7.0.0"
+opener = "0.7.2"
+trash = "5.2.9"
+
+# ---- 凭据存储 ----
+# 微软账号的 Refresh Token 只进系统密钥库（Windows Credential Manager），
+# 绝不写进 settings.json 或日志。
+keyring = { version = "3.6", default-features = false, features = ["windows-native"] }
+
+# ---- 日志门面 ----
+tracing = { workspace = true }
+
+# ---- 环境变量 ----
+dotenvy = "0.15.7"
+
+[dev-dependencies]
+tempfile = "3"
+insta = "1"

@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = ["apps/desktop/src-tauri", "crates/sereno-core"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+version = "0.1.0"
+# 许可状态：尚未选定开源许可证，见仓库根的 LICENSE。
+# UNLICENSED 表示「保留全部权利」，正式发布前需替换为实际许可证。
+license = "UNLICENSED"
+
+[workspace.dependencies]
+# 所有成员共用的版本在这里声明一次，成员用 { workspace = true } 引用
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+  "fs",
+  "io-util",
+  "process",
+] }
+tokio-util = { version = "0.7", features = ["rt"] }
+thiserror = "2"
+tracing = "0.1"
+
+# ---------- 编译速度优化 ----------
+# dev profile 的三个杠杆：
+#   1. debug = 1            只保留行号表，去掉完整 DWARF，链接时间显著下降
+#   2. split-debuginfo      PDB 与二进制分离，链接器不需要重写调试段
+#   3. 依赖 debug = false   400+ 个依赖 crate 完全不生成调试信息
+# 三者叠加后，首次全量编译与增量链接的耗时下降明显，且不牺牲自身代码的断点。
+[profile.dev]
+opt-level = 0
+debug = 1
+split-debuginfo = "unpacked"
+incremental = true
+codegen-units = 256
+panic = "unwind"
+
+# 依赖 crate 不生成调试信息：这是首次编译耗时下降最明显的一项
+[profile.dev.package."*"]
+opt-level = 0
+debug = false
+strip = "debuginfo"
+
+# ---------- 发布产物 ----------
+# 体积、速度与可诊断性的取舍，详见 docs/构建打包与发布.md 第 7 节
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true
+# 保留 unwind：panic hook 需要 catch_unwind 兜底，abort 会直接终止进程
+panic = "unwind"

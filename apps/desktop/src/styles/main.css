@@ -1,0 +1,289 @@
+/*
+ * Sereno 全局设计令牌。
+ *
+ * 颜色、字体、间距、圆角、阴影、缓动**只定义在这里**。
+ * 组件里不写死色值，也不直接用 Tailwind 内置调色板（slate-*、sky-*、amber-*）。
+ * 换主题时只改这一个文件。
+ *
+ * 规范来源：
+ *   - 《Tauri + Vue 桌面端 UI 设计规范（间距与圆角篇）》
+ *   - 《Tauri + Vue 3 集成 @fontsource 字体完整指南（pnpm 版）》
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* =========================================================
+     1. 背景 —— 流光白 #FFFBEA 固定纯色，不叠任何渐变
+     ========================================================= */
+  --color-canvas: #fffbea; /* 窗口底：流光白（固定纯色） */
+  --color-surface: #ffffff; /* 卡片 / 面板：纯白，压在流光白底上更干净 */
+  --color-surface-muted: #faf8ef; /* 次级块 */
+  --color-glass: #ffffff; /* 半透明玻璃层 */
+
+  /* =========================================================
+     2. 文字
+     ========================================================= */
+  --color-ink: #1f2329; /* 主文本，不用纯黑 */
+  --color-ink-soft: #4c5259; /* 次要文本 */
+  --color-ink-muted: #8b9098; /* 弱化信息 / 禁用 */
+
+  /* =========================================================
+     3. 描边 —— 中性偏暖，不再带黄
+     ========================================================= */
+  --color-line: #e5e2d6;
+  --color-line-soft: #f0eee3;
+
+  /* =========================================================
+     4. 状态色 —— 主色为鸢尾蓝 #0F64B5
+     ========================================================= */
+  --color-accent: #0f64b5; /* 鸢尾蓝：按钮等主色 */
+  --color-accent-soft: #e3edf8;
+  --color-success: #1f8a52;
+  --color-success-soft: #e6f4ec;
+  --color-warning: #a8720a;
+  --color-warning-soft: #fbf0da;
+  --color-danger: #c0392f;
+  --color-danger-soft: #fbe9e7;
+  --color-info: #2c6fb5;
+  --color-info-soft: #e7eff8;
+
+  /* 品牌色与应用图标同色：鸢尾蓝 #0F64B5 */
+  --color-brand-500: #0f64b5;
+  --color-brand-600: #0a4e8f;
+
+  /* =========================================================
+     5. 间距系统 —— 4px 基准网格（4-Point Grid）
+     Tailwind 的 --spacing 基准锁定为 4px，于是
+     p-1=4  p-2=8  p-3=12  p-4=16  p-6=24  p-8=32  p-12=48
+     与下方语义变量一一对应。
+     ========================================================= */
+  --spacing: 4px;
+
+  /* =========================================================
+     6. 圆角系统 —— 微圆角到中圆角，拒绝 0px 直角与夸张胶囊
+     内圆角 = 外圆角 - 内边距（嵌套圆角公式）
+     ========================================================= */
+  --radius-xs: 4px; /* 复选框 / 徽标 / 提示气泡 */
+  --radius-sm: 6px; /* 输入框 / 下拉项 / 小按钮 */
+  --radius-md: 8px; /* 常规按钮 / 导航选中态 */
+  --radius-lg: 12px; /* 模态框 / 面板 / 卡片 */
+  --radius-xl: 16px; /* 外层大容器 */
+  --radius-round: 999px; /* 仅圆形头像、胶囊形标签 */
+
+  /* =========================================================
+     7. 阴影系统 —— 柔和阴影比黑乎乎的阴影更适合桌面端
+     ========================================================= */
+  --shadow-sm: 0 1px 2px rgb(31 35 41 / 0.05);
+  --shadow-md: 0 4px 12px rgb(31 35 41 / 0.08);
+  --shadow-lg: 0 8px 24px rgb(31 35 41 / 0.12);
+
+  /* =========================================================
+     8. 字体 —— 昭源环方（可变字重 200–900）
+     ========================================================= */
+  --font-sans:
+    "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
+    sans-serif;
+  --font-display:
+    "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
+    sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "JetBrains Mono", ui-monospace, monospace;
+
+  /* =========================================================
+     9. 缓动
+     ========================================================= */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * 间距语义变量。
+ * Tailwind v4 没有 --space-* 命名空间，但 @theme 里的变量会落到 :root，
+ * 这里再显式声明一份，方便在自定义 CSS / 内联样式里按语义引用。
+ */
+:root {
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+
+  /* 应用级字体变量：等宽永远是 Cascadia Mono → Consolas */
+  --font-app:
+    "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
+    sans-serif;
+}
+
+/* ---------------- 基础 ---------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-app);
+  /* 昭源环方在 400 下偏细，桌面端正文用 500（Medium）更实。 */
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* 滚动条：与整体视觉一致，不用系统默认的粗边框 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-ink-muted) 32%, transparent);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-ink-muted) 52%, transparent);
+  background-clip: content-box;
+}
+
+/*
+ * 窗口级背景：固定纯色（流光白 / 深色主题为深灰蓝）。
+ *
+ * 之前这里叠了四层渐变与噪点，结果是「发黄的暖调」盖住了流光白本身，
+ * 大面积渐变在 8bit 色深下还会出色带。现在背景就是一块纯色（根节点的
+ * `bg-canvas`），层次交给卡片（纯白）+ 描边 + 阴影去表达，干净且稳定。
+ */
+
+/* =========================================================
+   10. 启动入场动画
+   窗口在启动画面关闭前保持不可见；`html.app-visible` 由 main.ts
+   在主窗口显示后加在根节点，整体淡入并轻微上浮，避免生硬地“啪”一下出现。
+   ========================================================= */
+
+.sereno-window {
+  opacity: 0;
+  transform: translateY(10px) scale(0.992);
+  will-change: opacity, transform;
+}
+
+html.app-visible .sereno-window {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 320ms var(--ease-out-soft),
+    transform 420ms var(--ease-out-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sereno-window,
+  html.app-visible .sereno-window {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* =========================================================
+   10.1 路由切换
+   out-in：旧页面先淡出，新页面再淡入。
+   只做透明度，不做位移——位移会让页面内容暂时超出滚动容器，
+   切换瞬间挤出一条滚动条，这正是“页面顿一下”的来源。
+   ========================================================= */
+
+.page-enter-active {
+  transition: opacity 180ms var(--ease-out-soft);
+}
+
+.page-leave-active {
+  transition: opacity 90ms ease-out;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+
+/* =========================================================
+   11. 复用工具类 —— 玻璃卡片 / 柔光 / 骨架条 / 徽标
+   这些在 PagePlaceholder 与 HomeView 里都要用，
+   抽成类而不是每个组件各写一遍内联样式。
+   ========================================================= */
+
+/* 玻璃卡片：半透明底 + 背景模糊 + 细边 + 柔和阴影 */
+.sereno-glass {
+  background: color-mix(in srgb, var(--color-glass) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-line) 62%, transparent);
+  backdrop-filter: blur(14px) saturate(1.06);
+  -webkit-backdrop-filter: blur(14px) saturate(1.06);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 强玻璃：弹窗 / 浮层专用。底更实、模糊更深，保证文字对比度，
+   同时保留背后的环境色，形成“悬浮在柔和光里”的层次。 */
+.sereno-glass-strong {
+  background: color-mix(in srgb, var(--color-glass) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent);
+  backdrop-filter: blur(28px) saturate(1.08);
+  -webkit-backdrop-filter: blur(28px) saturate(1.08);
+  box-shadow: 0 18px 48px rgb(31 35 41 / 0.18);
+}
+
+/* 玻璃卡片的悬停反馈：提亮 + 边框加深 + 阴影抬升 */
+.sereno-glass-hover {
+  transition:
+    background-color 200ms var(--ease-out-soft),
+    border-color 200ms var(--ease-out-soft),
+    box-shadow 200ms var(--ease-out-soft),
+    transform 200ms var(--ease-out-soft);
+}
+
+.sereno-glass-hover:hover {
+  background: color-mix(in srgb, var(--color-glass) 80%, transparent);
+  border-color: color-mix(in srgb, var(--color-line) 92%, transparent);
+  box-shadow: var(--shadow-md);
+}
+
+/* 柔光扩散：图标背后的品牌色光晕（自带外扩，容器无需额外留白） */
+.sereno-glow {
+  position: absolute;
+  inset: -24px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-brand-500) 26%, transparent) 0%,
+    transparent 68%
+  );
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+/* 骨架条：表示「这里将来会有内容」。
+   只设背景色——圆角交给 AppSkeleton 的 `rounded` 属性，
+   否则本类里的 border-radius 会盖掉工具类（无层样式优先级更高）。 */
+.sereno-skeleton {
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+/* 胶囊徽标：已由 `components/common/AppBadge.vue` 承担，此处不再重复定义。 */

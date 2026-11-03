@@ -1,0 +1,55 @@
+# ---- Rust / Cargo ----
+/target/
+**/target/
+
+# ---- Node ----
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# ---- 前端产物 ----
+apps/desktop/dist/
+apps/desktop/src-tauri/gen/
+
+# ---- 环境与密钥 ----
+.env
+.env.local
+*.key
+*.pem
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+logs/
+
+# 代码导出文档：由 scripts/export-code.mjs 生成，每次运行覆盖。
+# 它是整个代码库的副本，不该进版本库（否则历史里会多一份全量代码）。
+/Sereno项目代码导出.md
+
+# ---- IDE ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# ---- 系统 ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 仓库只保留启动器代码 ----
+# 文档、脚本、CI、截图、参考代码与 AI 记忆都留在本地，不进版本库。
+/docs/
+/scripts/
+/.github/
+/.screenshots/
+/.workbuddy/
+/PCL参考代码/
+/README.md
+/CHANGELOG.md
+
+# 空的 workspace 占位目录
+/packages/

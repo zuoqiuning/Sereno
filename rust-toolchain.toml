@@ -1,0 +1,16 @@
+# 固定工具链版本。
+#
+# `Cargo.toml` 里的 `rust-version = "1.99"` 是**最低要求**（MSRV），
+# 本文件固定的是**实际使用的工具链**——新克隆仓库的人不需要自己猜该装哪个版本。
+#
+# `edition = "2024"` + `resolver = "3"` 对工具链有硬要求，版本漂移会直接编译失败。
+#
+# `components` 不能省：少了 `rustfmt` / `clippy`，CI 上
+# `cargo fmt --check` 与 `cargo clippy` 会直接找不到命令。
+#
+# 升级步骤：改这里的 channel → `rustup update` → 同步改 `Cargo.toml` 的
+# `rust-version`（如果 MSRV 也要跟着提）→ 跑一遍全量校验。
+
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]

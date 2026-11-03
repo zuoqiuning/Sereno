@@ -1,0 +1,33 @@
+{
+  "id": "1.21.1-loader",
+  "type": "release",
+  "inheritsFrom": "1.21.1",
+  "releaseTime": "2024-08-09T09:00:00+00:00",
+  "time": "2024-08-09T09:00:00+00:00",
+  "libraries": [
+    {
+      "name": "org.spongepowered:forge:1.21.1-52.0.16",
+      "downloads": {
+        "artifact": {
+          "sha1": "ababababababababababababababababababababab",
+          "size": 1234567,
+          "url": "https://maven.minecraftforge.net/net/minecraftforge/forge/1.21.1-52.0.16/forge-1.21.1-52.0.16-universal.jar"
+        }
+      }
+    },
+    {
+      "name": "org.lwjgl:lwjgl:3.3.3",
+      "downloads": {
+        "artifact": {
+          "sha1": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "size": 9500000,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3-patched.jar"
+        }
+      }
+    }
+  ],
+  "javaVersion": {
+    "component": "java-runtime-gamma",
+    "majorVersion": 21
+  }
+}
