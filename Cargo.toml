@@ -6,9 +6,8 @@ members = ["apps/desktop/src-tauri", "crates/sereno-core"]
 edition = "2024"
 rust-version = "1.99"
 version = "0.1.0"
-# 许可状态：尚未选定开源许可证，见仓库根的 LICENSE。
-# UNLICENSED 表示「保留全部权利」，正式发布前需替换为实际许可证。
-license = "UNLICENSED"
+# 开源许可证：MIT，全文见仓库根的 LICENSE。
+license = "MIT"
 
 [workspace.dependencies]
 # 所有成员共用的版本在这里声明一次，成员用 { workspace = true } 引用

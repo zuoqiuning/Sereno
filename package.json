@@ -1,7 +1,7 @@
 {
   "name": "sereno",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": ">=24"
