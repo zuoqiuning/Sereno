@@ -1,16 +1,30 @@
-Sereno（屿宁 YNML）
-====================
+MIT License
 
-**许可状态：尚未选定（UNLICENSED / All Rights Reserved）。**
+Copyright (c) 2026 丘屿知宁 (zuoqiuning)
 
-本项目目前处于开发阶段，正式发布前需要确定开源许可证
-（MIT / Apache-2.0 / GPL-3.0 等），届时本文件会被替换为对应的许可证全文。
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-在那之前：
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-- 代码**保留全部权利**，未经作者书面许可不得复制、修改、分发或用于商业用途；
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+
+附注：第三方资源许可
 - 字体资源（昭源环方 Chiron GoRound TC）单独适用 SIL Open Font License 1.1，
   允许免费商用与内嵌，与本文件的代码许可相互独立。
 
 作者：丘屿知宁
-项目主页：<https://github.com/sereno>
+项目主页：<https://github.com/zuoqiuning/Sereno>
