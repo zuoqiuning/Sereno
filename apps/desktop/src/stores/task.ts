@@ -27,6 +27,9 @@ export const useTaskStore = defineStore("task", {
     hasTasks(state): boolean {
       return Object.keys(state.tasks).length > 0;
     },
+    runningCount(state): number {
+      return Object.values(state.tasks).filter((task) => task.status === "running").length;
+    },
   },
 
   actions: {

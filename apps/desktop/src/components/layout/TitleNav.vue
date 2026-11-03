@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { RouterLink, useRoute } from "vue-router";
+import { computed } from "vue";
 
 import type { NavItem } from "@/components/layout/nav";
+import { useTaskStore } from "@/stores/task";
 
 /**
  * 标题栏内的横向导航。
@@ -41,6 +43,10 @@ import type { NavItem } from "@/components/layout/nav";
 defineProps<{ items: NavItem[] }>();
 
 const route = useRoute();
+const taskStore = useTaskStore();
+
+/** 有任务正在运行时，导航里的「任务」带一个脉动计数。 */
+const runningCount = computed(() => taskStore.runningCount);
 
 /** 该导航项在当前路由下是否处于激活态。 */
 function isActive(to: string): boolean {
@@ -65,13 +71,21 @@ function isActive(to: string): boolean {
       class="sereno-ease group relative flex h-full items-center gap-1.5 px-3.5 transition-colors duration-200 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/35"
       :class="isActive(item.to) ? 'bg-brand-500/[0.055]' : 'hover:bg-ink/[0.02]'"
     >
-      <component
-        :is="item.icon"
-        :size="15"
-        :stroke-width="2.1"
-        class="transition-colors duration-200"
-        :class="isActive(item.to) ? 'text-brand-500' : 'text-ink-muted group-hover:text-brand-500'"
-      />
+      <span class="relative flex items-center">
+        <component
+          :is="item.icon"
+          :size="15"
+          :stroke-width="2.1"
+          class="transition-colors duration-200"
+          :class="isActive(item.to) ? 'text-brand-500' : 'text-ink-muted group-hover:text-brand-500'"
+        />
+        <span
+          v-if="item.to === '/tasks' && runningCount > 0"
+          class="absolute -right-2 -top-2 flex h-3.5 min-w-3.5 animate-pulse items-center justify-center rounded-full bg-brand-500 px-1 text-[9px] font-semibold text-white shadow-sm"
+        >
+          {{ runningCount }}
+        </span>
+      </span>
       <span
         class="text-[12.5px] leading-none transition-colors duration-200"
         :class="

@@ -727,15 +727,62 @@ async function loadDependencies(group: VersionGroup): Promise<void> {
   }
 }
 
-/** 该分组涉及的前置项目（去重，按依赖声明顺序）。 */
-function groupDependencies(group: VersionGroup): ResourceDependencyInfo[] {
+/** 该分组涉及的前置项目；解析失败时也保留条目，用 mod id 兜底。 */
+function groupDependencies(group: VersionGroup): DependencyView[] {
   const ids = [
     ...new Set(group.versions.flatMap((version) => version.dependencies.map((dep) => dep.id))),
   ].filter((id) => id !== props.item.id);
 
-  return ids
-    .map((id) => dependencyInfos.value[id])
-    .filter((info): info is ResourceDependencyInfo => Boolean(info));
+  const refs = group.versions.flatMap((version) => version.dependencies);
+
+  return ids.map((id) => {
+    const info = dependencyInfos.value[id];
+    const ref = refs.find((entry) => entry.id === id);
+    return {
+      id,
+      name: info?.name ?? id,
+      iconUrl: info?.iconUrl ?? null,
+      description: info?.description ?? null,
+      downloads: info?.downloads ?? 0,
+      updatedAt: info?.updatedAt ?? null,
+      source: info?.source ?? (props.item.source === "curseforge" ? "curseforge" : "modrinth"),
+      versionId: ref?.versionId ?? null,
+    };
+  });
+}
+
+/** 前置条目：项目信息可能没解析出来，但下载入口始终保留。 */
+interface DependencyView {
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  description: string | null;
+  downloads: number;
+  updatedAt: string | null;
+  source: "modrinth" | "curseforge" | "aggregate";
+  versionId: string | null;
+}
+
+const downloadingDep = ref<string | null>(null);
+
+/** 单独安装一个前置；后端会按实例的游戏版本与加载器挑文件。 */
+async function downloadDependency(dep: DependencyView): Promise<void> {
+  const instance = props.instance;
+  if (!instance || downloadingDep.value) return;
+
+  downloadingDep.value = dep.id;
+  notice.value = "";
+  try {
+    const source = dep.source === "curseforge" ? "curseforge" : "modrinth";
+    const name = await installResourceDependency(instance.id, source, dep.id, dep.versionId);
+    noticeTone.value = "success";
+    notice.value = `已安装前置「${name || dep.name}」`;
+  } catch (err) {
+    noticeTone.value = "error";
+    notice.value = `前置「${dep.name}」安装失败：${toErrorMessage(err)}`;
+  } finally {
+    downloadingDep.value = null;
+  }
 }
 
 /** 未解析出名称时退化为数量，避免出现空白。 */
@@ -791,10 +838,12 @@ function downloadBlockReason(version: DetailVersion): string | null {
 }
 
 async function handleDownload(version: DetailVersion): Promise<void> {
-  const reason = downloadBlockReason(version);
-  if (reason || !version.fileUrl) return;
+  if (!version.fileUrl) return;
 
-  const instance = props.instance;
+  const reason = downloadBlockReason(version);
+  // 版本 / 加载器不匹配时不往实例里塞错文件，但允许下载到下载目录，
+  // 由用户自己决定什么时候装。
+  const instance = reason ? null : props.instance;
   downloadingKey.value = version.key;
   notice.value = "";
   const deps = version.dependencies.filter((dep) => dep.id !== props.item.id);
@@ -803,7 +852,6 @@ async function handleDownload(version: DetailVersion): Promise<void> {
 
   try {
     // 先装必需前置，再装本体；前置失败不阻断本体，但会在提示里列出。
-    // 没有目标实例时无法安装前置，只下载本体。
     if (instance) {
       for (const dep of deps) {
         try {
@@ -825,7 +873,10 @@ async function handleDownload(version: DetailVersion): Promise<void> {
 
     const target = instance ? `实例 ${instance.displayName}` : "启动器下载目录";
     const base = `已下载「${version.title}」到${target}`;
-    if (failed.length > 0) {
+    if (!instance && reason) {
+      noticeTone.value = "success";
+      notice.value = `${base}（${reason}）`;
+    } else if (failed.length > 0) {
       noticeTone.value = "error";
       notice.value = `${base}，但前置 ${failed.join("、")} 安装失败`;
     } else {
@@ -1081,11 +1132,22 @@ watch(activePrefix, (prefix) => {
                       {{ dep.description }}
                     </div>
                   </div>
-                  <div class="shrink-0 text-[11px] text-ink-muted">
+                  <div class="shrink-0 text-right text-[11px] text-ink-muted">
                     <span v-if="dep.downloads">{{ formatDownloads(dep.downloads) }} 次下载 · </span>
                     <span v-if="dep.updatedAt">{{ formatRelative(dep.updatedAt) }} · </span>
                     {{ dep.source === "modrinth" ? "Modrinth" : "CurseForge" }}
                   </div>
+                  <AppButton
+                    v-if="instance"
+                    variant="secondary"
+                    size="sm"
+                    :loading="downloadingDep === dep.id"
+                    :disabled="downloadingDep !== null && downloadingDep !== dep.id"
+                    @click="downloadDependency(dep)"
+                  >
+                    安装
+                  </AppButton>
+                  <span v-else class="shrink-0 text-[11px] text-ink-muted">选实例后安装</span>
                 </div>
               </div>
             </div>
@@ -1151,11 +1213,19 @@ watch(activePrefix, (prefix) => {
                   安装
                 </AppButton>
                 <AppButton
+                  v-else-if="!version.fileUrl"
+                  variant="secondary"
+                  size="sm"
+                  title="作者禁止第三方下载，打开项目页手动下载"
+                  @click="handleOpenPage"
+                >
+                  打开页面
+                </AppButton>
+                <AppButton
                   v-else
                   variant="secondary"
                   size="sm"
                   :loading="downloadingKey === version.key"
-                  :disabled="!!downloadBlockReason(version)"
                   :title="downloadBlockReason(version) ?? downloadTarget"
                   @click="handleDownload(version)"
                 >
