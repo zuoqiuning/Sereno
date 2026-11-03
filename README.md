@@ -40,6 +40,13 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 
 遇到问题或有功能建议，欢迎在 [Issues](https://github.com/zuoqiuning/Sereno/issues) 里提出。
 
+## 支持作者
+
+如果 Sereno 帮你省下了一点折腾的时间，欢迎请我喝杯奶茶。  
+赞助不会解锁任何额外功能，只是让我更有底气把它一直维护下去。
+
+爱发电主页：https://ifdian.net/a/Sereno
+
 ## 许可
 
 本项目保留所有权利，详见 [LICENSE](LICENSE)。
