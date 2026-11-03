@@ -6,7 +6,7 @@
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
-use crate::models::resource::{ResourceDependencyInfo, ResourceSource};
+use crate::models::resource::{CfLogo, ResourceDependencyInfo, ResourceSource};
 use crate::utils::http::{MAX_METADATA_BYTES, read_json_limited};
 use crate::{LauncherError, Result};
 
@@ -29,11 +29,7 @@ struct MrProject {
 }
 
 #[derive(Deserialize)]
-struct CfLogo {
-    thumbnail_url: String,
-}
-
-#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CfProject {
     id: u32,
     name: String,
@@ -144,4 +140,39 @@ async fn resolve_curseforge(
             source: ResourceSource::Curseforge,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CurseForge 返回 camelCase 字段；漏掉 rename 会让整批解析失败，
+    /// 前端就只剩数字 ID 可显示。
+    #[test]
+    fn parses_curseforge_projects_in_camel_case() {
+        let json = r#"{"data":[{
+            "id": 1700987,
+            "name": "MezzConfigGUI",
+            "summary": "配置界面库",
+            "downloadCount": 1234,
+            "dateModified": "2025-06-01T00:00:00Z",
+            "logo": { "thumbnailUrl": "https://media.forgecdn.net/icon.png" }
+        }]}"#;
+
+        let list: CfProjectList = serde_json::from_str(json).expect("camelCase 字段应能解析");
+        let project = &list.data[0];
+        assert_eq!(project.name, "MezzConfigGUI");
+        assert_eq!(project.download_count, 1234);
+        assert_eq!(
+            project.date_modified.as_deref(),
+            Some("2025-06-01T00:00:00Z")
+        );
+        assert_eq!(
+            project
+                .logo
+                .as_ref()
+                .map(|logo| logo.thumbnail_url.as_str()),
+            Some("https://media.forgecdn.net/icon.png")
+        );
+    }
 }

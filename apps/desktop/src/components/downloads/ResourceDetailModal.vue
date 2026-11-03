@@ -735,8 +735,12 @@ async function loadDependencies(group: VersionGroup): Promise<void> {
       next[info.id] = info;
     }
     dependencyInfos.value = next;
-  } catch {
-    // 解析失败时保留占位，不阻断版本列表与下载。
+  } catch (error) {
+    // 解析失败时保留占位，不阻断版本列表与下载，但要把原因记下来。
+    void log.error(`解析前置信息失败: ${toErrorMessage(error)}`, {
+      component: "ResourceDetailModal",
+      action: "loadDependencies",
+    });
   }
 }
 

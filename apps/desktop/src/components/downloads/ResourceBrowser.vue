@@ -194,7 +194,12 @@ async function reload(targetPage = 1): Promise<void> {
 
 const toast = useToastStore();
 const taskStore = useTaskStore();
-const quickDownloadId = ref<string | null>(null);
+/** 正在一键下载的资源键（`来源-id`），允许列表里同时下多个。 */
+const quickDownloadIds = ref<Set<string>>(new Set());
+
+function quickKey(item: ModProject): string {
+  return `${item.source}-${item.id}`;
+}
 
 /**
  * 列表里的一键下载：自动挑当前实例可用的最新文件，并自动装必需前置。
@@ -202,10 +207,11 @@ const quickDownloadId = ref<string | null>(null);
  */
 async function quickDownload(item: ModProject): Promise<void> {
   const instance = targetInstance.value;
-  if (!instance || quickDownloadId.value || props.kind !== "mod") return;
+  const key = quickKey(item);
+  if (!instance || props.kind !== "mod" || quickDownloadIds.value.has(key)) return;
 
-  quickDownloadId.value = item.id;
-  const taskId = `quick-${item.source}-${item.id}`;
+  quickDownloadIds.value.add(key);
+  const taskId = `quick-${key}`;
   taskStore.start(taskId, `下载 ${item.title}`);
 
   try {
@@ -265,7 +271,7 @@ async function quickDownload(item: ModProject): Promise<void> {
     taskStore.setError(taskId, message);
     toast.error("下载失败", message);
   } finally {
-    quickDownloadId.value = null;
+    quickDownloadIds.value.delete(key);
   }
 }
 
@@ -454,11 +460,11 @@ onMounted(() => {
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-brand-500/10 hover:text-brand-500"
                 :title="`一键下载到「${targetInstance.displayName}」，自动安装必需前置`"
-                :disabled="quickDownloadId === item.id"
+                :disabled="quickDownloadIds.has(quickKey(item))"
                 @click="quickDownload(item)"
               >
                 <Loader2
-                  v-if="quickDownloadId === item.id"
+                  v-if="quickDownloadIds.has(quickKey(item))"
                   :size="14"
                   class="animate-spin text-brand-500"
                 />
