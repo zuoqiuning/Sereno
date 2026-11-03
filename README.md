@@ -1,10 +1,27 @@
 # Sereno
 
-一个安静、克制的 Minecraft 启动器。
-
 ![version](https://img.shields.io/badge/version-0.1.0-0F64B5?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-4C6EF5?style=flat-square)
 ![license](https://img.shields.io/badge/license-Proprietary-6B7280?style=flat-square)
+
+A quiet, minimalist Minecraft launcher.
+
+**What it does**
+
+- Install and launch Vanilla, Fabric, Quilt, Forge, and NeoForge.
+- Microsoft OAuth 2.0 login (Device Code Flow) and offline accounts; tokens are stored in the system keychain.
+- Search and download mods, modpacks, resource packs, and shaders from Modrinth and CurseForge.
+- Instance health checks: Java, memory, disk space, file integrity, mod dependencies, and recent crash diagnostics.
+- World backups, log viewer, crash diagnostics, and diagnostic package export.
+- Download speed limiting, mirror preference, resumable downloads, and incremental verification.
+
+**Status:** `0.1.0`, still under active development. No installer released yet.
+
+**License:** All rights reserved. See [LICENSE](LICENSE).
+
+---
+
+一个安静、克制的 Minecraft 启动器。
 
 Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问题时告诉你哪里坏了。界面尽量少放东西，能用一步完成的就不放两步。
 
