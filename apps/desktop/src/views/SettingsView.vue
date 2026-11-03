@@ -26,7 +26,7 @@ import { installJavaRuntime } from "@/api/java";
 import { clearStorageCache, getStorageUsage } from "@/api/storage";
 import { formatBytes } from "@/utils/format";
 import { log } from "@/api/settings";
-import { openSupporterPage, type SupporterTarget } from "@/api/supporters";
+import { openProjectRepo, openSupporterPage, type SupporterTarget } from "@/api/supporters";
 import { applyTheme } from "@/utils/theme";
 import type { AppSettings_Serialize, JavaCandidate, StorageUsage } from "@/types";
 
@@ -102,6 +102,13 @@ function sponsorFor(target: SupporterTarget | null): void {
   if (!target) return;
   void openSupporterPage(target).catch((error) => {
     void log.error(`打开赞助页失败: ${String(error)}`, { component: "SettingsView" });
+  });
+}
+
+/** 关于页：直达项目仓库。 */
+function openRepo(): void {
+  void openProjectRepo().catch((error) => {
+    void log.error(`打开仓库失败: ${String(error)}`, { component: "SettingsView" });
   });
 }
 
@@ -595,7 +602,26 @@ onMounted(() => {
           <span>{{ APP_AUTHOR }}</span>
         </div>
 
-        <div class="mt-10 h-px w-full max-w-sm bg-line/50" />
+        <div class="mt-7 flex items-center gap-2.5">
+          <AppButton variant="secondary" size="sm" @click="openRepo">
+            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+              />
+            </svg>
+            GitHub 仓库
+          </AppButton>
+          <AppButton variant="primary" size="sm" @click="sponsorFor('sereno')">
+            <Heart :size="14" />
+            赞助
+          </AppButton>
+        </div>
+
+        <p class="mt-4 max-w-sm text-[11.5px] leading-6 text-ink-muted">
+          如果 Sereno 帮你省下了一点折腾的时间，可以考虑请我喝杯奶茶。赞助不会带来任何额外功能，只是让我更有底气长期维护它。
+        </p>
+
+        <div class="mt-9 h-px w-full max-w-sm bg-line/50" />
         <p class="mt-6 text-[11px] text-ink-muted">© 2026 {{ APP_AUTHOR }}</p>
       </div>
 

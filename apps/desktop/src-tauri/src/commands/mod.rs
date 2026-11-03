@@ -36,6 +36,7 @@ macro_rules! all_commands {
             crate::commands::settings::select_directory,
             crate::commands::settings::finish_startup,
             crate::commands::links::open_supporter_page,
+            crate::commands::links::open_project_repo,
             crate::commands::install::install_game,
             crate::commands::install::repair_instance,
             crate::commands::loader::install_loader,

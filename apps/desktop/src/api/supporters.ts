@@ -2,9 +2,14 @@ import { commands } from "@/bindings";
 
 import { callCommand } from "./invoke";
 
-export type SupporterTarget = "pcl" | "bmclapi";
+export type SupporterTarget = "pcl" | "bmclapi" | "sereno";
 
-/** 打开鸣谢页白名单内的赞助链接。 */
+/** 打开鸣谢页/关于页白名单内的赞助链接。 */
 export async function openSupporterPage(target: SupporterTarget): Promise<void> {
   await callCommand(() => commands.openSupporterPage(target));
+}
+
+/** 关于页：直达 GitHub 仓库。 */
+export async function openProjectRepo(): Promise<void> {
+  await callCommand(() => commands.openProjectRepo());
 }

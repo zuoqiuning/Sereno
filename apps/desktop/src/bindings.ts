@@ -49,8 +49,10 @@ export const commands = {
 	selectDirectory: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_directory")),
 	/**  前端预加载结束后调用：显示主窗口并关闭启动画面。 */
 	finishStartup: () => typedError<null, LauncherError>(__TAURI_INVOKE("finish_startup")),
-	/**  鸣谢页的赞助入口。 */
+	/**  鸣谢页与关于页的赞助入口。 */
 	openSupporterPage: (target: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_supporter_page", { target })),
+	/**  关于页：直达项目仓库。 */
+	openProjectRepo: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_repo")),
 	/**
 	 *  安装原版游戏，全程推送同一条整体进度。
 	 * 

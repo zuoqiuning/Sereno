@@ -2,13 +2,22 @@
 
 use sereno_core::{LauncherError, Result};
 
-/// 鸣谢页的赞助入口。
+const REPO: &str = "https://github.com/zuoqiuning/Sereno";
+
+fn open_external(url: &str) -> Result<()> {
+    opener::open(url).map_err(|e| LauncherError::Io {
+        message: format!("打开链接失败: {e}"),
+    })
+}
+
+/// 鸣谢页与关于页的赞助入口。
 #[tauri::command]
 #[specta::specta]
 pub fn open_supporter_page(target: String) -> Result<()> {
     let url = match target.as_str() {
         "pcl" => "https://afdian.com/a/LTCat",
         "bmclapi" => "https://afdian.com/a/bangbang93",
+        "sereno" => "https://ifdian.net/a/Sereno",
         _ => {
             return Err(LauncherError::InvalidConfig {
                 key: "target".into(),
@@ -17,7 +26,12 @@ pub fn open_supporter_page(target: String) -> Result<()> {
         }
     };
 
-    opener::open(url).map_err(|e| LauncherError::Io {
-        message: format!("打开赞助页失败: {e}"),
-    })
+    open_external(url)
+}
+
+/// 关于页：直达项目仓库。
+#[tauri::command]
+#[specta::specta]
+pub fn open_project_repo() -> Result<()> {
+    open_external(REPO)
 }
