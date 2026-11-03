@@ -48,6 +48,8 @@ const isMicrosoft = computed(() => state.value?.kind === "microsoft");
 const canLogin = computed(() => Boolean(config.value?.configured));
 /** 系统凭据管理器不可用时，令牌只能留在内存里。 */
 const ephemeral = computed(() => state.value?.credentialStoreEphemeral ?? false);
+/** Mojang 审核期间 API 会拒绝正版令牌，提示改用离线模式。 */
+const apiPending = computed(() => error.value.includes("审批中"));
 
 function toMessage(value: unknown): string {
   if (isApiError(value)) return value.message;
@@ -320,7 +322,17 @@ async function useOffline(): Promise<void> {
         </p>
       </div>
 
-      <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
+      <p
+        v-if="error"
+        class="text-[12px]"
+        :class="
+          apiPending
+            ? 'rounded-md bg-warning-soft px-3 py-2 text-warning'
+            : 'text-danger'
+        "
+      >
+        {{ error }}
+      </p>
     </div>
   </AppModal>
 </template>

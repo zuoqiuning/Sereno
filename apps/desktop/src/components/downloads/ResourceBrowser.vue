@@ -220,6 +220,12 @@ onBeforeUnmount(() => {
 });
 
 onMounted(() => {
+  // 从实例健康检查跳转过来时带上了缺失前置的 mod id，直接填进搜索框
+  const requestedQuery = route.query.q;
+  if (typeof requestedQuery === "string" && requestedQuery.trim()) {
+    keyword.value = requestedQuery.trim();
+  }
+
   void versionStore.ensureLoaded().catch(() => undefined);
   void (async () => {
     await loadInstances();

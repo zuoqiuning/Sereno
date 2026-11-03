@@ -206,6 +206,15 @@ function handleHealthAction(kind: string): void {
   if (!inst) return;
   healthModal.close();
 
+  // 缺失前置：直接带着 mod id 跳到资源搜索，省掉用户手动输入
+  if (kind.startsWith("download:")) {
+    void router.push({
+      path: "/downloads",
+      query: { category: "mod", instance: inst.id, q: kind.slice("download:".length) },
+    });
+    return;
+  }
+
   switch (kind) {
     case "repair":
       void handleRepair(inst);

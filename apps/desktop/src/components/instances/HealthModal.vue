@@ -178,13 +178,22 @@ function runAction(kind: string): void {
           <div
             v-for="issue in modIssues.missing"
             :key="`missing-${issue.modId}`"
-            class="text-[11px] leading-4 text-ink-soft"
+            class="flex items-start justify-between gap-2 text-[11px] leading-4 text-ink-soft"
           >
-            <span class="font-medium text-ink">{{ issue.modId }}</span>
-            <span class="text-ink-muted"> ← {{ issue.requiredBy.join("、") }}</span>
-            <span v-if="issue.requirement" class="text-ink-muted">
-              （要求 {{ issue.requirement }}）
+            <span class="min-w-0">
+              <span class="font-medium text-ink">{{ issue.modId }}</span>
+              <span class="text-ink-muted"> ← {{ issue.requiredBy.join("、") }}</span>
+              <span v-if="issue.requirement" class="text-ink-muted">
+                （要求 {{ issue.requirement }}）
+              </span>
             </span>
+            <button
+              type="button"
+              class="shrink-0 text-[11px] text-brand-600 hover:underline"
+              @click="runAction(`download:${issue.modId}`)"
+            >
+              去下载
+            </button>
           </div>
         </div>
 

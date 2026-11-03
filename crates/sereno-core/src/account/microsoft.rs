@@ -44,6 +44,17 @@ const XBOX_XSTS: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
 const MC_PROFILE: &str = "https://api.minecraftservices.com/minecraft/profile";
 
+/// 应用还没通过 Mojang 审核时，Minecraft API 会拒绝签发游戏令牌。
+const MC_API_PENDING: &str = "Minecraft API 权限正在审批中，请耐心等待，或暂时使用离线模式。";
+
+/// 微软返回的「应用未注册 / 未批准」错误；不同端点文案略有差异。
+fn is_pending_registration(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("invalid app registration")
+        || lower.contains("application is not approved")
+        || lower.contains("app registration is not approved")
+}
+
 /// **预留的客户端 ID**。
 ///
 /// 发布前替换成在 Azure 门户注册的「移动和桌面应用程序」客户端 ID，
@@ -454,14 +465,26 @@ async fn minecraft_session(
             message: format!("获取 Minecraft 资料失败: {e}"),
         })?;
 
-    if resp.status().as_u16() == 404 {
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+
+        if status == reqwest::StatusCode::FORBIDDEN || is_pending_registration(&text) {
+            return Err(LauncherError::Internal {
+                message: format!("{MC_API_PENDING}（HTTP {status}）"),
+            });
+        }
+        if status.as_u16() == 404 {
+            return Err(LauncherError::Internal {
+                message: "该微软账号未拥有 Minecraft Java 版，请先在官网购买或确认使用的账号"
+                    .into(),
+            });
+        }
         return Err(LauncherError::Internal {
-            message: "该微软账号未拥有 Minecraft Java 版，请先在官网购买或确认使用的账号".into(),
-        });
-    }
-    if !resp.status().is_success() {
-        return Err(LauncherError::Internal {
-            message: format!("获取 Minecraft 资料失败（HTTP {}）", resp.status()),
+            message: format!(
+                "获取 Minecraft 资料失败（HTTP {status}）：{}",
+                body_tail(&text)
+            ),
         });
     }
 
@@ -704,10 +727,10 @@ async fn post_json<T: for<'de> Deserialize<'de>>(
             "该账号是未成年人账号，需要家长在 Xbox 家庭中同意"
         } else if text.contains("2148916227") {
             "该账号已被 Xbox Live 封禁"
-        } else if status == reqwest::StatusCode::FORBIDDEN
+        } else if (status == reqwest::StatusCode::FORBIDDEN || is_pending_registration(&text))
             && url.contains("api.minecraftservices.com")
         {
-            "该启动器应用尚未获得 Minecraft API 访问权限，请通过 https://aka.ms/mce-reviewappid 提交申请"
+            MC_API_PENDING
         } else if status == reqwest::StatusCode::BAD_REQUEST && text.trim().is_empty() {
             "Xbox 返回了空响应体的 400。通常是访问令牌未包含 XboxLive.signin 权限或已失效：\
              请重新登录；若反复出现，请检查 Azure 应用的 API 权限里是否有 XboxLive.signin，\
@@ -777,6 +800,15 @@ mod tests {
         assert_eq!(body["Properties"]["UserTokens"][0], "xbl-token");
         assert_eq!(body["RelyingParty"], "rp://api.minecraftservices.com/");
         assert_eq!(body["TokenType"], "JWT");
+    }
+
+    #[test]
+    fn recognizes_pending_app_registration() {
+        assert!(is_pending_registration("Invalid app registration"));
+        assert!(is_pending_registration(
+            r#"{"errorMessage":"Application is not approved"}"#
+        ));
+        assert!(!is_pending_registration("Forbidden"));
     }
 
     #[test]
