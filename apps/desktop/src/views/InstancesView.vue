@@ -298,15 +298,22 @@ async function confirmLoaderInstall(): Promise<void> {
   const dialog = loaderDialog.value;
   if (!dialog || !dialog.version || dialog.installing) return;
 
+  const loaderName =
+    loaderChoices.find((choice) => choice.id === dialog.type)?.name ?? dialog.type;
+  const taskId = `loader-${dialog.instance.id}`;
   dialog.installing = true;
+  taskStore.start(taskId, `安装 ${loaderName}`);
+
   try {
     await installLoader(dialog.instance.id, dialog.type as LoaderType, dialog.version);
-    const name = loaderChoices.find((choice) => choice.id === dialog.type)?.name ?? dialog.type;
+    taskStore.finish(taskId);
     closeLoaderDialog();
     await loadInstances();
-    alert(`${name} 安装完成，可以启动游戏或安装 Mod 了。`);
+    alert(`${loaderName} 安装完成，可以启动游戏或安装 Mod 了。`);
   } catch (error) {
-    alert(isApiError(error) ? error.message : "加载器安装失败，请查看日志。");
+    const message = isApiError(error) ? error.message : "加载器安装失败，请查看日志。";
+    taskStore.setError(taskId, message);
+    alert(message);
   } finally {
     if (loaderDialog.value) {
       loaderDialog.value.installing = false;
