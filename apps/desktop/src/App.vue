@@ -4,6 +4,7 @@ import { RouterView } from "vue-router";
 
 import ResizeHandles from "@/components/layout/ResizeHandles.vue";
 import TitleBar from "@/components/layout/TitleBar.vue";
+import ToastStack from "@/components/common/ToastStack.vue";
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -40,5 +41,8 @@ function resetScroll(): void {
     </main>
 
     <ResizeHandles />
+
+    <!-- 全局通知：顶部居中，按队列进出，退场时其余卡片平滑补位 -->
+    <ToastStack />
   </div>
 </template>

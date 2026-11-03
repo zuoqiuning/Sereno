@@ -1,9 +1,14 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use tauri::ipc::Channel;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::ipc::progress::ChannelSink;
 use crate::state::AppState;
 use sereno_core::Result;
+use sereno_core::download::sink::ProgressSink;
+use sereno_core::models::download::DownloadProgress;
 use sereno_core::models::resource::{
     LocalResource, LocalResourceKind, LocalResourceScan, ModVersion, ResourceDependencyInfo,
     ResourceKind, ResourceSearchPage, ResourceSearchQuery, ResourceSource,
@@ -85,6 +90,7 @@ async fn download_to(
     file_url: &str,
     filename: &str,
     sha1: Option<String>,
+    sink: Option<Arc<dyn ProgressSink>>,
 ) -> Result<()> {
     let client = sereno_core::utils::http::build_client(settings)?;
 
@@ -123,6 +129,16 @@ async fn download_to(
         client,
         settings.download.max_concurrent as usize,
     ));
+
+    // 有进度通道时走完整会话：前端任务页能拿到文件级进度与总字节数。
+    if let Some(sink) = sink {
+        let session = sereno_core::download::session::DownloadSession::new(
+            "resource-download".to_string(),
+            queue,
+        );
+        return session.run(vec![task], sink).await;
+    }
+
     let counter = std::sync::Arc::new(sereno_core::download::counter::SessionCounter::new(
         "resource-download",
         folder,
@@ -153,6 +169,7 @@ pub async fn download_resource(
     file_url: String,
     filename: String,
     sha1: Option<String>,
+    channel: Channel<DownloadProgress>,
     state: tauri::State<'_, AppState>,
 ) -> Result<()> {
     let folder = folder_for(kind)?;
@@ -163,6 +180,7 @@ pub async fn download_resource(
         return Err(sereno_core::LauncherError::InstanceBusy { id: id.clone() });
     }
 
+    let sink: Arc<dyn ProgressSink> = Arc::new(ChannelSink(channel));
     download_to(
         &settings,
         instance_id.as_deref(),
@@ -170,6 +188,7 @@ pub async fn download_resource(
         &file_url,
         &filename,
         sha1,
+        Some(sink),
     )
     .await
 }
@@ -263,7 +282,16 @@ pub async fn install_resource_dependency(
         }
     };
 
-    download_to(&settings, Some(&instance_id), "mods", &url, &filename, sha1).await?;
+    download_to(
+        &settings,
+        Some(&instance_id),
+        "mods",
+        &url,
+        &filename,
+        sha1,
+        None,
+    )
+    .await?;
     Ok(filename)
 }
 
@@ -339,6 +367,7 @@ pub async fn update_local_resource(
         &file_url,
         &target_name,
         sha1,
+        None,
     )
     .await;
 

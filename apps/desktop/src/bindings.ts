@@ -81,7 +81,7 @@ export const commands = {
 	 *  `instance_id` 为空时下载到启动器的下载目录（`%APPDATA%\Sereno\downloads\<kind>`），
 	 *  用户可以先下载、再决定放进哪个实例。
 	 */
-	downloadResource: (instanceId: string | null, kind: ResourceKind, fileUrl: string, filename: string, sha1: string | null) => typedError<null, LauncherError>(__TAURI_INVOKE("download_resource", { instanceId, kind, fileUrl, filename, sha1 })),
+	downloadResource: (instanceId: string | null, kind: ResourceKind, fileUrl: string, filename: string, sha1: string | null, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("download_resource", { instanceId, kind, fileUrl, filename, sha1, channel })),
 	/**  安装单个必需前置：按目标实例的游戏版本 / 加载器挑选文件后下载到 `mods`。 */
 	installResourceDependency: (instanceId: string, source: string, projectId: string, versionId: string | null) => typedError<string, LauncherError>(__TAURI_INVOKE("install_resource_dependency", { instanceId, source, projectId, versionId })),
 	getCfModVersions: (modId: string, mcVersion: string, loader: string) => typedError<CfFile_Serialize[], LauncherError>(__TAURI_INVOKE("get_cf_mod_versions", { modId, mcVersion, loader })),

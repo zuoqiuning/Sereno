@@ -1,6 +1,8 @@
+import { Channel } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
 import type {
   CfFile,
+  DownloadProgress,
   ModVersion,
   ResourceDependencyInfo,
   ResourceKind,
@@ -42,8 +44,14 @@ export async function downloadResource(
   fileUrl: string,
   filename: string,
   sha1: string | null,
+  onProgress?: (progress: DownloadProgress) => void,
 ): Promise<void> {
-  await callCommand(() => commands.downloadResource(instanceId, kind, fileUrl, filename, sha1));
+  const channel = new Channel<DownloadProgress>();
+  if (onProgress) channel.onmessage = onProgress;
+
+  await callCommand(() =>
+    commands.downloadResource(instanceId, kind, fileUrl, filename, sha1, channel),
+  );
 }
 
 /**

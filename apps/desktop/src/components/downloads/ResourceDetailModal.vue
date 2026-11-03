@@ -17,6 +17,8 @@ import {
   openResourcePage,
 } from "@/api/resource";
 import { useVersionStore } from "@/stores/version";
+import { useTaskStore } from "@/stores/task";
+import { useToastStore } from "@/stores/toast";
 import { log } from "@/api/settings";
 import { useModalState } from "@/composables/useModalState";
 import { gameVersionGroup } from "@/utils/gameVersion";
@@ -51,6 +53,8 @@ const emit = defineEmits<{
 interface DependencyRef {
   id: string;
   versionId: string | null;
+  /** 可选前置：不装也能启动，但作者推荐安装。 */
+  optional: boolean;
 }
 
 interface DetailVersion {
@@ -408,16 +412,21 @@ function rawFromModrinth(version: ModVersion): RawVersion {
     gameVersions: version.gameVersions ?? [],
     sourceVersionId: version.id,
     dependencies: (version.dependencies ?? [])
-      .filter((dependency) => dependency.dependencyType === "required")
+      .filter(
+        (dependency) =>
+          dependency.dependencyType === "required" || dependency.dependencyType === "optional",
+      )
       .map((dependency) => ({
         id: dependency.projectId,
         versionId: dependency.versionId ?? null,
+        optional: dependency.dependencyType === "optional",
       })),
     conflicts: (version.dependencies ?? [])
       .filter((dependency) => dependency.dependencyType === "incompatible")
       .map((dependency) => ({
         id: dependency.projectId,
         versionId: dependency.versionId ?? null,
+        optional: false,
       })),
   };
 }
@@ -444,11 +453,15 @@ function rawFromCf(file: CfFile): RawVersion {
     gameVersions,
     sourceVersionId: null,
     dependencies: (file.dependencies ?? [])
-      .filter((dependency) => (dependency.relationType ?? 0) === 3)
-      .map((dependency) => ({ id: String(dependency.modId), versionId: null })),
+      .filter((dependency) => (dependency.relationType ?? 0) === 3 || (dependency.relationType ?? 0) === 2)
+      .map((dependency) => ({
+        id: String(dependency.modId),
+        versionId: null,
+        optional: (dependency.relationType ?? 0) === 2,
+      })),
     conflicts: (file.dependencies ?? [])
       .filter((dependency) => (dependency.relationType ?? 0) === 5)
-      .map((dependency) => ({ id: String(dependency.modId), versionId: null })),
+      .map((dependency) => ({ id: String(dependency.modId), versionId: null, optional: false })),
   };
 }
 
@@ -727,17 +740,14 @@ async function loadDependencies(group: VersionGroup): Promise<void> {
   }
 }
 
-/** 该分组涉及的前置项目；解析失败时也保留条目，用 mod id 兜底。 */
-function groupDependencies(group: VersionGroup): DependencyView[] {
-  const ids = [
-    ...new Set(group.versions.flatMap((version) => version.dependencies.map((dep) => dep.id))),
-  ].filter((id) => id !== props.item.id);
-
-  const refs = group.versions.flatMap((version) => version.dependencies);
+/** 把一组依赖引用转成可展示、可下载的条目；解析失败时用 mod id 兜底。 */
+function dependencyViews(refs: DependencyRef[]): DependencyView[] {
+  const ids = [...new Set(refs.map((dep) => dep.id))].filter((id) => id !== props.item.id);
 
   return ids.map((id) => {
     const info = dependencyInfos.value[id];
-    const ref = refs.find((entry) => entry.id === id);
+    const own = refs.filter((entry) => entry.id === id);
+    const ref = own.find((entry) => !entry.optional) ?? own[0];
     return {
       id,
       name: info?.name ?? id,
@@ -747,8 +757,14 @@ function groupDependencies(group: VersionGroup): DependencyView[] {
       updatedAt: info?.updatedAt ?? null,
       source: info?.source ?? (props.item.source === "curseforge" ? "curseforge" : "modrinth"),
       versionId: ref?.versionId ?? null,
+      optional: own.every((entry) => entry.optional),
     };
   });
+}
+
+/** 该分组涉及的前置项目；解析失败时也保留条目，用 mod id 兜底。 */
+function groupDependencies(group: VersionGroup): DependencyView[] {
+  return dependencyViews(group.versions.flatMap((version) => version.dependencies));
 }
 
 /** 前置条目：项目信息可能没解析出来，但下载入口始终保留。 */
@@ -761,6 +777,7 @@ interface DependencyView {
   updatedAt: string | null;
   source: "modrinth" | "curseforge" | "aggregate";
   versionId: string | null;
+  optional: boolean;
 }
 
 const downloadingDep = ref<string | null>(null);
@@ -837,8 +854,78 @@ function downloadBlockReason(version: DetailVersion): string | null {
   return null;
 }
 
-async function handleDownload(version: DetailVersion): Promise<void> {
+/** 前置选择弹窗：一键包含前置，或手动勾选。 */
+interface DependencyDialogState {
+  version: DetailVersion;
+  deps: DependencyView[];
+  manual: boolean;
+  selected: string[];
+}
+
+const dependencyDialog = ref<DependencyDialogState | null>(null);
+const dependencyDialogOpen = ref(false);
+const taskStore = useTaskStore();
+const toast = useToastStore();
+
+/** 点「下载」：没有前置/没有实例时直接下；有前置时先让用户选择。 */
+function requestDownload(version: DetailVersion): void {
   if (!version.fileUrl) return;
+
+  const deps = dependencyViews(version.dependencies);
+  if (!props.instance || deps.length === 0 || props.kind !== "mod") {
+    void startDownload(version, []);
+    return;
+  }
+
+  dependencyDialog.value = {
+    version,
+    deps,
+    manual: false,
+    selected: deps.filter((dep) => !dep.optional).map((dep) => dep.id),
+  };
+  dependencyDialogOpen.value = true;
+}
+
+function closeDependencyDialog(): void {
+  dependencyDialogOpen.value = false;
+}
+
+/** 一键下载：所有前置（含可选）都装上。 */
+function downloadWithAllDependencies(): void {
+  const dialog = dependencyDialog.value;
+  if (!dialog) return;
+  closeDependencyDialog();
+  void startDownload(
+    dialog.version,
+    dialog.deps.map((dep) => dep.id),
+  );
+}
+
+/** 手动选择：只装勾选的前置。 */
+function downloadWithSelectedDependencies(): void {
+  const dialog = dependencyDialog.value;
+  if (!dialog) return;
+  closeDependencyDialog();
+  void startDownload(dialog.version, dialog.selected);
+}
+
+function downloadWithoutDependencies(): void {
+  const dialog = dependencyDialog.value;
+  if (!dialog) return;
+  closeDependencyDialog();
+  void startDownload(dialog.version, []);
+}
+
+function toggleDependency(id: string): void {
+  const dialog = dependencyDialog.value;
+  if (!dialog) return;
+  dialog.selected = dialog.selected.includes(id)
+    ? dialog.selected.filter((entry) => entry !== id)
+    : [...dialog.selected, id];
+}
+
+async function startDownload(version: DetailVersion, dependencyIds: string[]): Promise<void> {
+  if (!version.fileUrl || downloadingKey.value) return;
 
   const reason = downloadBlockReason(version);
   // 版本 / 加载器不匹配时不往实例里塞错文件，但允许下载到下载目录，
@@ -846,20 +933,26 @@ async function handleDownload(version: DetailVersion): Promise<void> {
   const instance = reason ? null : props.instance;
   downloadingKey.value = version.key;
   notice.value = "";
-  const deps = version.dependencies.filter((dep) => dep.id !== props.item.id);
+
+  const taskId = `resource-${props.item.source}-${props.item.id}-${version.key}`;
+  taskStore.start(taskId, `下载 ${version.title}`);
+
+  const deps = instance
+    ? dependencyIds
+        .map((id) => dependencyViews(version.dependencies).find((dep) => dep.id === id))
+        .filter((dep): dep is DependencyView => Boolean(dep))
+    : [];
   const installed: string[] = [];
   const failed: string[] = [];
 
   try {
-    // 先装必需前置，再装本体；前置失败不阻断本体，但会在提示里列出。
-    if (instance) {
-      for (const dep of deps) {
-        try {
-          await installResourceDependency(instance.id, props.item.source, dep.id, dep.versionId);
-          installed.push(dependencyInfos.value[dep.id]?.name ?? dep.id);
-        } catch {
-          failed.push(dependencyInfos.value[dep.id]?.name ?? dep.id);
-        }
+    // 先装选中的前置，再装本体；前置失败不阻断本体。
+    for (const dep of deps) {
+      try {
+        await installResourceDependency(instance!.id, props.item.source, dep.id, dep.versionId);
+        installed.push(dep.name);
+      } catch {
+        failed.push(dep.name);
       }
     }
 
@@ -869,23 +962,38 @@ async function handleDownload(version: DetailVersion): Promise<void> {
       version.fileUrl,
       version.fileName,
       version.sha1,
+      (progress) => {
+        if (progress.kind === "session") {
+          taskStore.updateProgress(taskId, progress.summary, null);
+        } else {
+          taskStore.updateProgress(taskId, null, progress.snapshot);
+        }
+      },
     );
 
+    taskStore.finish(taskId);
     const target = instance ? `实例 ${instance.displayName}` : "启动器下载目录";
     const base = `已下载「${version.title}」到${target}`;
+
     if (!instance && reason) {
       noticeTone.value = "success";
       notice.value = `${base}（${reason}）`;
+      toast.success("下载完成", `${version.title} 已保存到下载目录`);
     } else if (failed.length > 0) {
       noticeTone.value = "error";
       notice.value = `${base}，但前置 ${failed.join("、")} 安装失败`;
+      toast.warning("前置未全部安装", failed.join("、"));
     } else {
       noticeTone.value = "success";
       notice.value = installed.length ? `${base}，并安装前置 ${installed.join("、")}` : base;
+      toast.success("下载完成", installed.length ? `已安装前置：${installed.join("、")}` : version.title);
     }
   } catch (err) {
+    const message = toErrorMessage(err);
+    taskStore.setError(taskId, message);
     noticeTone.value = "error";
-    notice.value = `下载失败：${toErrorMessage(err)}`;
+    notice.value = `下载失败：${message}`;
+    toast.error("下载失败", message);
   } finally {
     downloadingKey.value = null;
   }
@@ -1127,7 +1235,15 @@ watch(activePrefix, (prefix) => {
                     <Package :size="14" class="text-ink-muted" />
                   </div>
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-[12px] font-medium text-ink">{{ dep.name }}</div>
+                    <div class="truncate text-[12px] font-medium text-ink">
+                      {{ dep.name }}
+                      <span
+                        v-if="dep.optional"
+                        class="ml-1 rounded bg-ink/5 px-1 py-0.5 text-[10px] font-normal text-ink-muted"
+                      >
+                        可选
+                      </span>
+                    </div>
                     <div v-if="dep.description" class="truncate text-[11px] text-ink-muted">
                       {{ dep.description }}
                     </div>
@@ -1138,7 +1254,7 @@ watch(activePrefix, (prefix) => {
                     {{ dep.source === "modrinth" ? "Modrinth" : "CurseForge" }}
                   </div>
                   <AppButton
-                    v-if="instance"
+                    v-if="instance && kind === 'mod'"
                     variant="secondary"
                     size="sm"
                     :loading="downloadingDep === dep.id"
@@ -1147,7 +1263,9 @@ watch(activePrefix, (prefix) => {
                   >
                     安装
                   </AppButton>
-                  <span v-else class="shrink-0 text-[11px] text-ink-muted">选实例后安装</span>
+                  <span v-else-if="kind === 'mod'" class="shrink-0 text-[11px] text-ink-muted">
+                    选实例后安装
+                  </span>
                 </div>
               </div>
             </div>
@@ -1227,7 +1345,7 @@ watch(activePrefix, (prefix) => {
                   size="sm"
                   :loading="downloadingKey === version.key"
                   :title="downloadBlockReason(version) ?? downloadTarget"
-                  @click="handleDownload(version)"
+                  @click="requestDownload(version)"
                 >
                   下载
                 </AppButton>
@@ -1236,6 +1354,69 @@ watch(activePrefix, (prefix) => {
           </div>
         </section>
       </div>
+    </div>
+  </AppModal>
+
+  <!-- 前置选择：一键包含前置，或手动勾选 -->
+  <AppModal :open="dependencyDialogOpen" width="sm" @close="closeDependencyDialog">
+    <template #header>
+      <div class="min-w-0 flex-1">
+        <h3 class="text-[15px] font-semibold text-ink">前置资源</h3>
+        <p class="truncate text-[11px] text-ink-muted">
+          {{ dependencyDialog?.version.title }}
+        </p>
+      </div>
+    </template>
+
+    <div v-if="dependencyDialog" class="flex flex-col gap-4">
+      <template v-if="!dependencyDialog.manual">
+        <p class="text-[12px] leading-5 text-ink-muted">
+          检测到 {{ dependencyDialog.deps.length }} 个前置，其中
+          {{ dependencyDialog.deps.filter((dep) => dep.optional).length }} 个为可选。
+        </p>
+        <div class="flex flex-col gap-2">
+          <AppButton variant="primary" @click="downloadWithAllDependencies">
+            一键下载（含前置）
+          </AppButton>
+          <AppButton variant="secondary" @click="dependencyDialog.manual = true">
+            手动选择前置
+          </AppButton>
+          <AppButton variant="ghost" @click="downloadWithoutDependencies">
+            仅下载本体
+          </AppButton>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="flex max-h-64 flex-col gap-1 overflow-y-auto pr-1">
+          <label
+            v-for="dep in dependencyDialog.deps"
+            :key="dep.id"
+            class="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-ink/[0.04]"
+          >
+            <input
+              type="checkbox"
+              class="accent-brand-500"
+              :checked="dependencyDialog.selected.includes(dep.id)"
+              @change="toggleDependency(dep.id)"
+            />
+            <span class="min-w-0 flex-1 truncate text-[12px] text-ink">{{ dep.name }}</span>
+            <span
+              v-if="dep.optional"
+              class="shrink-0 rounded bg-ink/5 px-1 py-0.5 text-[10px] text-ink-muted"
+            >
+              可选
+            </span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <AppButton variant="secondary" @click="dependencyDialog.manual = false">返回</AppButton>
+          <AppButton variant="primary" @click="downloadWithSelectedDependencies">
+            下载选中（{{ dependencyDialog.selected.length }}）
+          </AppButton>
+        </div>
+      </template>
     </div>
   </AppModal>
 

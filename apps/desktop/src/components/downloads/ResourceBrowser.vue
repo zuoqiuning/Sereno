@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { AlertTriangle, ChevronRight, Package, Search, SlidersHorizontal } from "@lucide/vue";
+import { AlertTriangle, ChevronRight, Download, Loader2, Package, Search, SlidersHorizontal } from "@lucide/vue";
 import { useRoute } from "vue-router";
 
 import AppButton from "@/components/common/AppButton.vue";
@@ -11,7 +11,9 @@ import AppPagination from "@/components/common/AppPagination.vue";
 import ResourceDetailModal from "@/components/downloads/ResourceDetailModal.vue";
 import { listInstances } from "@/api/instance";
 import { isApiError } from "@/api/invoke";
-import { searchResources } from "@/api/resource";
+import { searchResources, downloadResource, getCfModVersions, getModVersions, installResourceDependency } from "@/api/resource";
+import { useToastStore } from "@/stores/toast";
+import { useTaskStore } from "@/stores/task";
 import { useModalState } from "@/composables/useModalState";
 import { useVersionStore } from "@/stores/version";
 import type {
@@ -190,6 +192,83 @@ async function reload(targetPage = 1): Promise<void> {
   }
 }
 
+const toast = useToastStore();
+const taskStore = useTaskStore();
+const quickDownloadId = ref<string | null>(null);
+
+/**
+ * 列表里的一键下载：自动挑当前实例可用的最新文件，并自动装必需前置。
+ * 适合已经知道自己要什么的用户，不必点进详情页。
+ */
+async function quickDownload(item: ModProject): Promise<void> {
+  const instance = targetInstance.value;
+  if (!instance || quickDownloadId.value || props.kind !== "mod") return;
+
+  quickDownloadId.value = item.id;
+  const taskId = `quick-${item.source}-${item.id}`;
+  taskStore.start(taskId, `下载 ${item.title}`);
+
+  try {
+    const loader = instance.loader.type === "vanilla" ? "" : instance.loader.type;
+    let fileUrl = "";
+    let filename = "";
+    let sha1: string | null = null;
+    const requiredDeps: { id: string; versionId: string | null }[] = [];
+
+    if (item.source === "curseforge") {
+      const files = await getCfModVersions(item.id, instance.gameVersion, loader);
+      const file = files.find((entry) => entry.downloadUrl);
+      if (!file?.downloadUrl) throw new Error("该 Mod 没有适配当前实例的文件");
+      fileUrl = file.downloadUrl;
+      filename = file.fileName;
+      for (const dep of file.dependencies ?? []) {
+        if ((dep.relationType ?? 0) === 3) {
+          requiredDeps.push({ id: String(dep.modId), versionId: null });
+        }
+      }
+    } else {
+      const versions = await getModVersions(item.id, [instance.gameVersion], loader);
+      const version = versions.find((entry) => entry.files.length > 0);
+      const file =
+        version?.files.find((entry) => entry.primary) ?? version?.files[0];
+      if (!version || !file) throw new Error("该 Mod 没有适配当前实例的文件");
+      fileUrl = file.url;
+      filename = file.filename;
+      sha1 = file.hashes.sha1 ?? null;
+      for (const dep of version.dependencies ?? []) {
+        if (dep.dependencyType === "required") {
+          requiredDeps.push({ id: dep.projectId, versionId: dep.versionId ?? null });
+        }
+      }
+    }
+
+    for (const dep of requiredDeps) {
+      try {
+        await installResourceDependency(instance.id, item.source, dep.id, dep.versionId);
+      } catch {
+        // 前置失败不阻断本体，详情页里仍可单独安装
+      }
+    }
+
+    await downloadResource(instance.id, props.kind, fileUrl, filename, sha1, (progress) => {
+      if (progress.kind === "session") {
+        taskStore.updateProgress(taskId, progress.summary, null);
+      } else {
+        taskStore.updateProgress(taskId, null, progress.snapshot);
+      }
+    });
+
+    taskStore.finish(taskId);
+    toast.success("下载完成", `${item.title} 已安装到 ${instance.displayName}`);
+  } catch (err) {
+    const message = toErrorMessage(err);
+    taskStore.setError(taskId, message);
+    toast.error("下载失败", message);
+  } finally {
+    quickDownloadId.value = null;
+  }
+}
+
 function onInstanceChange(): void {
   const instance = targetInstance.value;
   if (instance) {
@@ -332,27 +411,30 @@ onMounted(() => {
       </div>
       <div v-else class="flex flex-col gap-1.5 pb-2">
         <AppCard v-for="item in items" :key="`${item.source}-${item.id}`" padding="none" hoverable>
-          <button
-            type="button"
-            class="flex w-full items-center gap-3 px-3 py-2 text-left"
-            @click="detail.open(item)"
-          >
-            <img
-              v-if="item.iconUrl"
-              :src="item.iconUrl"
-              class="h-10 w-10 shrink-0 rounded-lg bg-ink/5 object-cover"
-              loading="lazy"
-            />
-            <div
-              v-else
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink/5"
+          <div class="flex items-center gap-2 px-3 py-2">
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-3 text-left"
+              @click="detail.open(item)"
             >
-              <Package :size="18" class="text-ink-muted" />
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col">
-              <span class="truncate text-[14px] font-semibold text-ink">{{ item.title }}</span>
-              <span class="truncate text-[11px] text-ink-muted">{{ item.description }}</span>
-            </div>
+              <img
+                v-if="item.iconUrl"
+                :src="item.iconUrl"
+                class="h-10 w-10 shrink-0 rounded-lg bg-ink/5 object-cover"
+                loading="lazy"
+              />
+              <div
+                v-else
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink/5"
+              >
+                <Package :size="18" class="text-ink-muted" />
+              </div>
+              <div class="flex min-w-0 flex-1 flex-col">
+                <span class="truncate text-[14px] font-semibold text-ink">{{ item.title }}</span>
+                <span class="truncate text-[11px] text-ink-muted">{{ item.description }}</span>
+              </div>
+            </button>
+
             <div class="flex shrink-0 items-center gap-2 text-[10px]">
               <span class="hidden text-ink-muted sm:block">
                 {{ formatDownloads(item.downloads) }} 次下载
@@ -367,9 +449,24 @@ onMounted(() => {
               >
                 {{ sourceLabel(item.source) }}
               </span>
+              <button
+                v-if="kind === 'mod' && targetInstance"
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-brand-500/10 hover:text-brand-500"
+                :title="`一键下载到「${targetInstance.displayName}」，自动安装必需前置`"
+                :disabled="quickDownloadId === item.id"
+                @click="quickDownload(item)"
+              >
+                <Loader2
+                  v-if="quickDownloadId === item.id"
+                  :size="14"
+                  class="animate-spin text-brand-500"
+                />
+                <Download v-else :size="14" />
+              </button>
               <ChevronRight :size="16" class="text-ink-muted" />
             </div>
-          </button>
+          </div>
         </AppCard>
       </div>
     </div>
