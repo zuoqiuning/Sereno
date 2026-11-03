@@ -140,6 +140,23 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /* 桌面端不做网页式拖选；输入框、日志等显式标记的区域仍可选中复制。 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"],
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 图片不跟着鼠标拖出「幽灵图」 */
+img {
+  -webkit-user-drag: none;
 }
 
 button {

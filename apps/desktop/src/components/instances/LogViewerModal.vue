@@ -109,7 +109,7 @@ onMounted(() => {
         <!-- 自动诊断：把堆栈翻译成「哪里坏了 + 下一步」 -->
         <div
           v-if="findings.length || excerpt.length"
-          class="max-h-44 shrink-0 overflow-y-auto rounded-lg border border-line/50 bg-surface-muted/35 px-3 py-2.5"
+          class="selectable max-h-44 shrink-0 overflow-y-auto rounded-lg border border-line/50 bg-surface-muted/35 px-3 py-2.5"
         >
           <div class="mb-1.5 text-[11px] font-medium text-ink-muted">自动诊断</div>
           <div class="flex flex-col gap-2">
@@ -147,7 +147,7 @@ onMounted(() => {
         </div>
 
         <pre
-          class="min-h-0 flex-1 overflow-auto rounded-lg border border-line/50 bg-surface-muted/40 p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-ink-soft"
+          class="selectable min-h-0 flex-1 overflow-auto rounded-lg border border-line/50 bg-surface-muted/40 p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-ink-soft"
         >{{ content }}</pre>
       </template>
     </div>
