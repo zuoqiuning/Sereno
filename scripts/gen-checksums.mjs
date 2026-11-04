@@ -15,7 +15,7 @@
  * - `node scripts/gen-checksums.mjs --verify` —— 校验清单里的每个文件，
  *   任何一个对不上就以非零退出码失败。
  *
- * 配合 Authenticode 代码签名（见 docs/发布与防投毒.md），
+ * 配合 Authenticode 代码签名（流程见仓库根目录的 SECURITY.md），
  * 就能覆盖「用户被塞了广告版」这个最常见的场景：
  * 签名会因二进制被改而失效，校验和会与清单不符——两个信号指向同一个结论。
  */
