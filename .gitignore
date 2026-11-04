@@ -41,10 +41,13 @@ desktop.ini
 .DS_Store
 
 # ---- 仓库只保留启动器代码 ----
-# 文档、脚本、CI、参考代码与 AI 记忆都留在本地，不进版本库。
+# 文档、参考代码与 AI 记忆留在本地，不进版本库。
+#
+# 注意：scripts/ 与 .github/workflows/ **必须**进仓库。
+#   - CI 是开源项目可信度的基础：没有门禁，贡献者无法验证自己没破坏东西；
+#   - scripts/security-check.mjs 与 scripts/gen-checksums.mjs 是防投毒链路的一环，
+#     用户要能自己拿到校验工具，「防倒卖」才不是一句空话。
 /docs/
-/scripts/
-/.github/workflows/
 /.screenshots/
 /.workbuddy/
 /PCL参考代码/

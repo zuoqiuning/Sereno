@@ -1,7 +1,7 @@
 {
   "name": "sereno",
   "private": true,
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": ">=24"
@@ -17,6 +17,7 @@
     "test": "pnpm --filter @sereno/desktop test",
     "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
     "check:rust:fast": "cargo check --workspace",
+    "check:security": "node scripts/security-check.mjs",
     "test:rust": "cargo test --workspace",
     "version:check": "node scripts/version.mjs --check",
     "version:set": "node scripts/version.mjs"

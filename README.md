@@ -1,8 +1,13 @@
 # Sereno
 
+> [!WARNING]
+> **本项目仅供个人学习、研究与非商业交流使用，严禁任何形式的商业售卖、套壳私服盈利、植入广告或捆绑商业插件。**
+> Sereno 是一款完全免费、无广告、无遥测、不联机验证的单机启动器。
+> 欢迎随意参考与借鉴本项目的代码与架构设计；若能注明「参考自 Sereno」，不胜感激。
+
 ![version](https://img.shields.io/badge/version-0.1.0-0F64B5?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-4C6EF5?style=flat-square)
-![license](https://img.shields.io/badge/license-MIT-0F64B5?style=flat-square)
+![license](https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-0F64B5?style=flat-square)
 ![rust](https://img.shields.io/badge/rust-1.99-orange?style=flat-square)
 ![tauri](https://img.shields.io/badge/tauri-2.12-24C8D8?style=flat-square)
 ![vue](https://img.shields.io/badge/vue-3.5-4FC08D?style=flat-square)
@@ -22,9 +27,10 @@ A quiet, minimalist Minecraft launcher.
 
 ## Screenshots
 
-![Sereno mod details](assets/screenshots/mod-detail.png)
+![Sereno 启动界面 / Home screen](assets/screenshots/home.png)
 
-Version groups, filters and one-click download in a single panel.
+The last-played instance takes the stage — one click to launch.  
+最近游玩的实例会被放到舞台中央，点一下就能进入游戏。
 
 ## Status
 
@@ -32,7 +38,16 @@ Version groups, filters and one-click download in a single panel.
 
 ## License
 
-MIT — free to use and modify. See [LICENSE](LICENSE).
+**PolyForm Noncommercial License 1.0.0** — free to study, modify and use for any non-commercial
+purpose; **commercial use of any kind is not permitted**. See [LICENSE](LICENSE).
+
+> If you redistribute any part of this project, you must keep the license text (or its URL)
+> included, and you may not sell, bundle or monetize it in any way.
+> A copy published from an unofficial channel with ads or paid features attached is a violation
+> of these terms, not a "fork".
+
+Sereno is free, ad-free, telemetry-free and never phones home. It is not affiliated with
+Mojang Studios, Microsoft or NetEase.
 
 ---
 
@@ -66,9 +81,23 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 
 ## 开源协议与致谢 / License & Acknowledgements
 
-本项目基于 [MIT 协议](LICENSE) 开源，你可以自由使用和修改。如果你借鉴了这里的代码或机制，希望能在你的项目中注明「某某功能参考自 `https://github.com/zuoqiuning/Sereno`」。这不是硬性规定，但对我来说会是很大的鼓励和认可！
+本项目基于 **[PolyForm Noncommercial License 1.0.0](LICENSE)** 开源：你可以自由地学习、修改，
+并在**任何非商业目的**下使用与分发；但**严禁任何形式的商业使用**——包括但不限于套壳售卖、
+绑定私服充值、投放商业广告、捆绑付费插件。
 
-This project is open-source under the [MIT License](LICENSE). You are free to use and modify the code. If you find Sereno's code or mechanisms helpful and use them in your project, we would really appreciate it if you could mention "Feature X inspired by `https://github.com/zuoqiuning/Sereno`" in your documentation. This is completely optional and not a legal requirement, but it means a lot to us. Thanks!
+如果你借鉴了这里的代码或机制，希望能在你的项目中注明「某某功能参考自 `https://github.com/zuoqiuning/Sereno`」。
+这不是硬性规定，但对我来说会是很大的鼓励和认可！
+
+Sereno 本身完全免费、无广告、无遥测、不联机验证，也不会因为你没登录任何账号而影响使用。
+本软件与 Mojang Studios、Microsoft、网易公司无关。
+
+This project is open-source under the [PolyForm Noncommercial License 1.0.0](LICENSE): study it, modify it,
+and use it for any non-commercial purpose — but **commercial use of any kind is not permitted**
+(including selling a repackaged build, monetized private servers, ads, or bundled paid plugins).
+
+If you find Sereno's code or mechanisms helpful and use them in your project, we would really appreciate it
+if you could mention "Feature X inspired by `https://github.com/zuoqiuning/Sereno`" in your documentation.
+This is completely optional and not a legal requirement, but it means a lot to us. Thanks!
 
 ---
 

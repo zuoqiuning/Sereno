@@ -1,0 +1,74 @@
+name: CI
+
+# 提交前必须跑通的四条命令（见《测试策略与回归清单》）：
+#   cargo fmt --check / cargo clippy -D warnings / cargo test / pnpm typecheck + lint
+#
+# 单人项目靠自觉一定会漏，尤其是 `clippy -D warnings` 与 `pnpm typecheck`
+# —— 这两条不跑，`bindings.ts` 与调用点漂移时构建依然会成功。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # cargo 挂在 registry 下载上会既不报错也不动，这里设超时兜底
+  CARGO_HTTP_TIMEOUT: "30"
+  CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+  CARGO_NET_RETRY: "3"
+
+jobs:
+  check:
+    # Tauri 是 Windows 优先的项目，MSVC 工具链与 WebView2 在 Windows runner 上最省事
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml 里已固定版本与组件，rustup 会自动安装
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      # ---------------- Rust ----------------
+      - name: Rust 格式检查
+        run: cargo fmt --all -- --check
+
+      - name: Rust 静态检查
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rust 单元测试
+        run: cargo test --workspace
+
+      # ---------------- 安全自检 ----------------
+      # 授权声明、注入面、Tauri 权限、CSP、构建加固、产物洁净度
+      - name: 发布前安全自检
+        run: pnpm check:security
+
+      # ---------------- 前端 ----------------
+      - name: 前端类型检查
+        run: pnpm typecheck
+
+      - name: 前端静态检查
+        run: pnpm lint
+
+      - name: 前端单元测试
+        run: pnpm test
+
+      - name: 前端构建
+        run: pnpm build:web

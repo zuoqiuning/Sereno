@@ -30,7 +30,7 @@
         "fullscreen": false,
         "theme": "Light",
         "visible": false,
-        "backgroundColor": "#FFFBEA"
+        "backgroundColor": "#F3F6FA"
       },
       {
         "label": "splash",
@@ -54,7 +54,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https:; font-src 'self' data:"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
     }
   },
   "bundle": {
@@ -62,6 +62,7 @@
     "targets": [
       "nsis"
     ],
+    "licenseFile": "../../../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -50,8 +50,19 @@ strip = "debuginfo"
 # 体积、速度与可诊断性的取舍，详见 docs/构建打包与发布.md 第 7 节
 [profile.release]
 codegen-units = 1
+# 链接时优化：跨 crate 内联，让产物更小、调用关系更难还原。
+# 选 "thin" 而不是 "fat"：fat 会让 release 构建慢到十几分钟，
+# 而防逆向的主力是下面的 strip，不是 LTO。真正需要最强优化时，
+# 临时把这里改成 "fat" 跑一次正式出包即可。
 lto = "thin"
+# 体积优先：启动器的瓶颈在网络与磁盘 IO，不在 CPU 计算，
+# "s" 比 "3" 更小、编译也更快。
 opt-level = "s"
-strip = true
+# 去掉符号表与调试信息：这是 Rust 侧最有效的「混淆」。
+# Rust 没有成熟的生产级混淆工具链，社区方案普遍脆弱；
+# 真正起作用的就是 strip + LTO + 不发布调试符号这一套。
+strip = "symbols"
 # 保留 unwind：panic hook 需要 catch_unwind 兜底，abort 会直接终止进程
 panic = "unwind"
+# 发布构建不做增量编译
+incremental = false
