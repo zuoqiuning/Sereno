@@ -252,7 +252,7 @@ async function installJava(major: number): Promise<void> {
     await scanJava();
     void log.info(`已安装 Java ${major}`, { component: "SettingsView" });
   } catch (e) {
-    javaError.value = `下载 Java ${major} 失败：${String(e)}`;
+    javaError.value = `下载 Java ${major} 失败：${toMessage(e)}`;
     void log.error(javaError.value, { component: "SettingsView" });
   } finally {
     downloadingJava.value = null;

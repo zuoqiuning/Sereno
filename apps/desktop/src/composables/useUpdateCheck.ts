@@ -1,6 +1,7 @@
 import { onMounted, ref } from "vue";
 
 import { checkAppUpdate, getUpdateStatus } from "@/api/update";
+import { isApiError } from "@/api/invoke";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
 import type { AppUpdateInfo } from "@/types";
@@ -22,6 +23,13 @@ import type { AppUpdateInfo } from "@/types";
  * 用户在更新页关掉「启动时自动检查」后，这里就**完全不发请求**——
  * 不是「检查了但静默」，而是一次网络请求都不发。
  */
+/** 把任意抛出物转成可读文案。 */
+function toMessage(value: unknown): string {
+  if (isApiError(value)) return value.message;
+  if (value instanceof Error) return value.message;
+  return String(value);
+}
+
 export function useUpdateCheck() {
   const toast = useToastStore();
 
@@ -53,10 +61,13 @@ export function useUpdateCheck() {
       }
     } catch (err) {
       // 只记日志，不提示用户——启动路径上的失败不该变成打扰。
+      //
+      // `String(err)` 对 API 错误对象会得到 "[object Object]"，
+      // 排查时什么信息都没有——用 `isApiError` 取真正的消息。
       void log.warn("静默检查更新失败", {
         component: "useUpdateCheck",
         action: "checkSilently",
-        error: String(err),
+        error: toMessage(err),
       });
     } finally {
       checking.value = false;
@@ -73,7 +84,7 @@ export function useUpdateCheck() {
       void log.warn("读取更新设置失败，仍将检查更新", {
         component: "useUpdateCheck",
         action: "readStatus",
-        error: String(err),
+        error: toMessage(err),
       });
     }
 
