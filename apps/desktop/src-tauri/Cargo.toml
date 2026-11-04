@@ -18,6 +18,24 @@ tauri-build = { version = "2.7.4", features = [] }
 serde_json = "1"
 
 [dependencies]
+
+# 增量更新引擎（qbsdiff 补丁 + 替换脚本 + 安全模式），作者自己的仓库。
+# 若 GitHub 网络不可达导致 cargo 拉取失败，可临时切换为 vendored 路径依赖。
+tauri-delta-updater = { git = "https://github.com/zuoqiuning/tauri-delta-updater" }
+# 增量引擎的下载器基于 reqwest 0.11（其自身依赖），用别名共存避免升级冲突
+reqwest-delta = { package = "reqwest", version = "0.11", default-features = false, features = [
+  "rustls-tls",
+  "stream",
+] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls",
+  "json",
+  "gzip",
+  "stream",
+  # SOCKS5 代理默认是关闭的：不开这个 feature 时传 socks5:// 会直接报错，
+  # 而不是静默回退。设置里既然提供了代理输入框，就必须真的支持它。
+  "socks",
+] }
 # ---- Tauri 壳 ----
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-dialog = "2.8.3"
@@ -64,3 +82,4 @@ custom-protocol = ["tauri/custom-protocol"]
 # 测试里要自己装，否则 `log` 的事件会被静默丢弃。
 log = "0.4"
 tracing-log = "0.2"
+tempfile = "3.8"

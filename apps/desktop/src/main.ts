@@ -14,6 +14,7 @@ import { applyTheme } from "./utils/theme";
  * 昭源环方（Chiron GoRound TC，可变字重 200–900）。
  * Fontsource 已做好子集化与切片，浏览器只会加载页面实际用到的字符切片。
  */
+import { confirmUpdateSuccess } from "@/api/update";
 import "@fontsource-variable/chiron-goround-tc";
 
 import "./styles/main.css";
@@ -231,6 +232,13 @@ async function bootstrap(): Promise<void> {
   installErrorHandlers(app);
 
   app.mount("#app");
+
+  // 增量更新：启动成功确认（极其重要）。
+  // 告诉替换脚本「新版界面已渲染成功」，它才会删除备份文件、
+  // 解除安全模式——没有这一步，替换脚本会在 30 秒后自动回滚。
+  confirmUpdateSuccess().catch((error) => {
+    console.error("[delta-updater] 启动确认失败", error);
+  });
 
   // 主题与窗口尺寸在首屏挂载后立刻应用；读取失败就保持默认值。
   void getSettings()

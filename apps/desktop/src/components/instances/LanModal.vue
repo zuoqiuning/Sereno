@@ -220,7 +220,9 @@ onBeforeUnmount(stopPolling);
           {{ instance.displayName }} · Minecraft {{ instance.gameVersion }}
         </p>
       </div>
-      <span :class="phaseBadge.class" class="rounded-xs px-1.5 py-0.5 text-micro font-medium">{{ phaseBadge.text }}</span>
+      <span :class="phaseBadge.class" class="rounded-xs px-1.5 py-0.5 text-micro font-medium">{{
+        phaseBadge.text
+      }}</span>
       <span
         v-if="linkBadge"
         :class="linkBadge.class"

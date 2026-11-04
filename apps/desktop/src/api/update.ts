@@ -1,5 +1,5 @@
 import { commands, events } from "@/bindings";
-import type { AppUpdateInfo, UpdateProgress, UpdateStatus } from "@/types";
+import type { AppUpdateInfo, DeltaOutcome, UpdateProgress, UpdateStatus } from "@/types";
 
 import { callCommand } from "./invoke";
 
@@ -16,6 +16,22 @@ import { callCommand } from "./invoke";
 /** 检查是否有新版本。 */
 export function checkAppUpdate(): Promise<AppUpdateInfo> {
   return callCommand(() => commands.checkAppUpdate());
+}
+
+/**
+ * 尝试增量更新（检查并应用）。
+ *
+ * - `applied = true`：增量已合并，应用即将退出重启（后端已拉起替换脚本）；
+ * - `hasUpdate = true`：没有可用增量（含安全模式与失败回退），走全量更新；
+ * - 两者皆 false：已是最新版本。
+ */
+export function checkAndApplyDelta(): Promise<DeltaOutcome> {
+  return callCommand(() => commands.checkAndApplyDelta(null));
+}
+
+/** 启动成功确认：解除增量更新的安全模式并清理备份（main.ts 挂载后调用）。 */
+export function confirmUpdateSuccess(): Promise<null> {
+  return callCommand(() => commands.confirmUpdateSuccess());
 }
 
 /**

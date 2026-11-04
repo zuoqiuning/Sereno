@@ -17,6 +17,7 @@ import {
   type SupporterTarget,
 } from "@/api/supporters";
 import { checkAppUpdate } from "@/api/update";
+import { checkAndApplyDelta } from "@/api/update";
 import { toMessage } from "@/utils/error";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
@@ -49,6 +50,15 @@ async function checkUpdate(): Promise<void> {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
+    // 增量优先：有补丁就合并并自动重启（带宽省 50–95%）；
+    // 没有补丁 / 安全模式 / 失败回退 → 无缝走原有全量更新
+    const delta = await checkAndApplyDelta();
+    if (delta.applied) {
+      toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
+      checkingUpdate.value = false;
+      return;
+    }
+
     const result = await checkAppUpdate();
     if (result.available) {
       updateStore.show({
