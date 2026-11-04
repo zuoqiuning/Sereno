@@ -297,6 +297,106 @@ check("权限", "Rust 侧不拼接 shell 命令", () => {
   return hits.length === 0 ? true : { ok: false, detail: hits.join(", ") };
 });
 
+check("权限", "更新通道只信任官方仓库", () => {
+  const update = readText("crates/sereno-core/src/version/update.rs");
+  // 只允许 github.com 的官方仓库；出现别的域名说明可能被劫持
+  const domains = [...update.matchAll(/https:\/\/([a-z0-9.-]+)/g)].map((m) => m[1]);
+  const bad = domains.filter(
+    (d) => d !== "api.github.com" && d !== "github.com",
+  );
+  return bad.length === 0
+    ? true
+    : { ok: false, detail: `更新通道出现了非官方域名: ${bad.join(", ")}` };
+});
+
+check("权限", "更新安装包必须校验 SHA-256", () => {
+  const update = readText("crates/sereno-core/src/version/update.rs");
+  const hasChecksum = update.includes("ChecksumMismatch") && update.includes("sha256_bytes");
+  const checksBeforeWrite =
+    update.indexOf("sha256_bytes(&bytes)") < update.indexOf("atomic_write(&path, &bytes)");
+  if (!hasChecksum) {
+    return { ok: false, detail: "update.rs 里没有看到 SHA-256 校验" };
+  }
+  if (!checksBeforeWrite) {
+    return { ok: false, detail: "安装包在校验之前就落盘了" };
+  }
+  return true;
+});
+
+check("权限", "更新下载地址不由前端传入", () => {
+  const update = readText("crates/sereno-core/src/version/update.rs");
+  const cmd = readText("apps/desktop/src-tauri/src/commands/update.rs");
+  // 命令层不能接收 url 参数
+  if (/url\s*:\s*String/.test(cmd)) {
+    return { ok: false, detail: "命令层出现了 url 参数——前端可以构造任意下载地址" };
+  }
+  // 下载地址必须来自 Release 的资产列表
+  if (!update.includes("browser_download_url")) {
+    return { ok: false, detail: "下载地址没有取自 Release 的资产列表" };
+  }
+  return true;
+});
+
+check("权限", "第三方登录令牌只进系统密钥库", () => {
+  const authlib = readText("crates/sereno-core/src/account/authlib.rs");
+  // 令牌不得写进 settings.json
+  if (/settings\.account\.[a-z_]*token/.test(authlib)) {
+    return { ok: false, detail: "令牌被写进了设置文件" };
+  }
+  if (!authlib.includes("secure_store") && !authlib.includes("SecureStore")) {
+    return { ok: false, detail: "authlib.rs 里没有用到系统密钥库" };
+  }
+  return true;
+});
+
+check("权限", "第三方登录的密码不落盘", () => {
+  const authlib = readText("crates/sereno-core/src/account/authlib.rs");
+  const cmd = readText("apps/desktop/src-tauri/src/commands/account.rs");
+  // 命令层不能把密码存进设置
+  if (/next\.[a-z_.]*password\s*=/.test(cmd) && !/password:\s*String/.test(cmd)) {
+    return { ok: false, detail: "命令层疑似把密码写进了设置" };
+  }
+  // 认证函数里密码只作为参数出现，不参与持久化
+  const persistCount = (authlib.match(/store\.set\(/g) || []).length;
+  const storeCalls = [...authlib.matchAll(/store\.set\(([^)]*)\)/g)].map((m) => m[1]);
+  const storesPassword = storeCalls.some((call) => call.includes("password"));
+  if (storesPassword) {
+    return { ok: false, detail: "密码被写进了凭据存储" };
+  }
+  if (persistCount === 0) {
+    return { ok: false, detail: "authlib.rs 里没有找到凭据存储调用" };
+  }
+  return true;
+});
+
+check("权限", "第三方登录的 API Root 有格式校验", () => {
+  const authlib = readText("crates/sereno-core/src/account/authlib.rs");
+  if (!authlib.includes("validate_api_root")) {
+    return { ok: false, detail: "authlib.rs 里没有 API Root 校验" };
+  }
+  // 校验函数必须拒绝非 http(s) 协议
+  const fn = authlib.slice(
+    authlib.indexOf("pub fn validate_api_root"),
+    authlib.indexOf("pub fn validate_api_root") + 900,
+  );
+  if (!fn.includes("https://") || !fn.includes("http://")) {
+    return { ok: false, detail: "API Root 校验没有限定协议" };
+  }
+  return true;
+});
+
+check("注入面", "注入器下载后必须校验哈希", () => {
+  const authlib = readText("crates/sereno-core/src/account/authlib.rs");
+  if (!authlib.includes("sha256")) {
+    return { ok: false, detail: "注入器下载没有校验 SHA-256" };
+  }
+  // 校验失败必须返回错误，不能继续
+  if (!authlib.includes("ChecksumMismatch")) {
+    return { ok: false, detail: "注入器校验失败时没有返回错误" };
+  }
+  return true;
+});
+
 // ---------------------------------------------------------------- 4. 构建面
 const cargoToml = readText("Cargo.toml");
 

@@ -267,6 +267,22 @@ export const commands = {
 	getStorageUsage: () => typedError<StorageUsage, LauncherError>(__TAURI_INVOKE("get_storage_usage")),
 	/**  清空元数据缓存；实例、存档与日志不受影响。 */
 	clearStorageCache: () => typedError<null, LauncherError>(__TAURI_INVOKE("clear_storage_cache")),
+	/**  检查是否有新版本。 */
+	checkAppUpdate: () => typedError<UpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
+	/**
+	 *  下载更新并校验 SHA-256。
+	 * 
+	 *  校验不通过时**不会**返回可执行的路径——下载的文件会被留在磁盘上供排查，
+	 *  但前端拿到的 `path` 只在校验通过时才存在。
+	 */
+	downloadAppUpdate: (info: UpdateInfo_Deserialize) => typedError<UpdateDownload, LauncherError>(__TAURI_INVOKE("download_app_update", { info })),
+	/**
+	 *  启动安装程序。
+	 * 
+	 *  只接受**已经校验过**的安装包路径——路径来自 `download_app_update` 的返回，
+	 *  前端无法凭空构造一个通过校验的路径。
+	 */
+	launchAppUpdater: (path: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_app_updater", { path })),
 };
 
 /** Events */
@@ -1689,6 +1705,55 @@ export type StorageUsage = {
 	cacheBytes: number,
 	/**  启动器日志。 */
 	logBytes: number,
+};
+
+/**  下载更新的结果。 */
+export type UpdateDownload = {
+	/**  安装包的本地路径。 */
+	path: string,
+	/**  文件大小（字节）。 */
+	size: number,
+	/**  校验用的 SHA-256。 */
+	sha256: string,
+};
+
+/**  更新检查的结果。 */
+export type UpdateInfo = UpdateInfo_Serialize | UpdateInfo_Deserialize;
+
+/**  更新检查的结果。 */
+export type UpdateInfo_Deserialize = {
+	/**  是否有可用更新。 */
+	available: boolean,
+	/**  最新版本号（不带 `v` 前缀）。 */
+	latestVersion: string,
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  更新说明（Markdown 原文）。 */
+	notes: string,
+	/**  安装包文件名。 */
+	assetName?: string | null,
+	/**  安装包大小（字节）。 */
+	assetSize: number,
+	/**  是否是预发布版本。 */
+	prerelease: boolean,
+};
+
+/**  更新检查的结果。 */
+export type UpdateInfo_Serialize = {
+	/**  是否有可用更新。 */
+	available: boolean,
+	/**  最新版本号（不带 `v` 前缀）。 */
+	latestVersion: string,
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  更新说明（Markdown 原文）。 */
+	notes: string,
+	/**  安装包文件名。 */
+	assetName: string | null,
+	/**  安装包大小（字节）。 */
+	assetSize: number,
+	/**  是否是预发布版本。 */
+	prerelease: boolean,
 };
 
 export type VersionDetail = VersionDetail_Serialize | VersionDetail_Deserialize;

@@ -5,6 +5,7 @@ import { CircleHelp, Heart, Info, HeartHandshake, MessageSquare } from "@lucide/
 import AppButton from "@/components/common/AppButton.vue";
 import AppCard from "@/components/common/AppCard.vue";
 import AppEmptyState from "@/components/common/AppEmptyState.vue";
+import UpdateCard from "@/components/common/UpdateCard.vue";
 import PageShell from "@/components/layout/PageShell.vue";
 import SideNav from "@/components/layout/SideNav.vue";
 import type { SideNavItem } from "@/components/layout/SideNav.vue";
@@ -189,6 +190,11 @@ function openIssues(): void {
                 <p class="text-micro text-ink-muted">
                   © 2026 {{ APP_AUTHOR }} · 赞助不会解锁任何功能，只是让我更有底气继续维护
                 </p>
+              </div>
+
+              <!-- 更新入口：放在「关于」分区底部，与版本信息同处一屏 -->
+              <div class="mt-5 w-full max-w-xl">
+                <UpdateCard />
               </div>
             </div>
           </AppCard>

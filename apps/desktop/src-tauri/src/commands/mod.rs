@@ -95,6 +95,9 @@ macro_rules! all_commands {
             crate::commands::health::check_instance_health,
             crate::commands::storage::get_storage_usage,
             crate::commands::storage::clear_storage_cache,
+            crate::commands::update::check_app_update,
+            crate::commands::update::download_app_update,
+            crate::commands::update::launch_app_updater,
         ]
     };
 }
@@ -114,4 +117,5 @@ pub mod modpack;
 pub mod resource;
 pub mod settings;
 pub mod storage;
+pub mod update;
 pub mod version;
