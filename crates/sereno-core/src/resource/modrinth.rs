@@ -95,6 +95,38 @@ pub(crate) async fn get_with_retry(
     })
 }
 
+/// 请求一个 Modrinth API 地址：**镜像优先，官方兜底**。
+///
+/// 镜像（MCIM）在国内快得多，也不用管官方 API 的匿名配额；
+/// 但它有同步延迟，偶尔会缺刚发布的版本，甚至临时不可用。
+/// 因此镜像失败或返回 404 时自动切到官方地址。
+///
+/// 只有**镜像自己返回的 404** 才回退——网络错误会先重试，
+/// 因为镜像抽风时官方往往也不通，重试没有意义。
+pub(crate) async fn get_mirrored(client: &reqwest::Client, url: &str) -> Result<reqwest::Response> {
+    if !crate::resource::curseforge::mirror_enabled() {
+        return get_with_retry(client, url).await;
+    }
+
+    let Some(mirror_url) = crate::resource::mcim::modrinth_api_mirror(url) else {
+        return get_with_retry(client, url).await;
+    };
+
+    match get_with_retry(client, &mirror_url).await {
+        Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+            // 镜像还没同步到——用官方再试一次。
+            tracing::debug!("MCIM 镜像缺少该资源（404），回落到官方：{url}");
+            get_with_retry(client, url).await
+        }
+        Ok(resp) => Ok(resp),
+        Err(error) => {
+            // 镜像整个不可用（DNS/超时）时降级到官方。
+            tracing::warn!("MCIM 镜像不可用，回落到官方：{mirror_url}（{error}）");
+            get_with_retry(client, url).await
+        }
+    }
+}
+
 /// 搜索 Modrinth。`offset` 是绝对偏移（第 N 页 = (N-1) * page_size）。
 pub async fn search(
     client: &reqwest::Client,
@@ -141,7 +173,7 @@ pub async fn search(
         urlencoding::encode(&format!("[{}]", facets.join(",")))
     ));
 
-    let resp = get_with_retry(client, &url).await?;
+    let resp = get_mirrored(client, &url).await?;
 
     if !resp.status().is_success() {
         return Err(LauncherError::DownloadFailed {
@@ -269,7 +301,7 @@ pub async fn get_versions(
         return Ok(cached);
     }
 
-    let resp = get_with_retry(client, &url).await?;
+    let resp = get_mirrored(client, &url).await?;
 
     if !resp.status().is_success() {
         return Err(LauncherError::DownloadFailed {

@@ -266,6 +266,23 @@ check("权限", "鸣谢 / 仓库链接是硬编码字面量", () => {
     : { ok: false, detail: "links.rs 里没有找到硬编码 URL" };
 });
 
+check("权限", "赞助链接只指向白名单域名", () => {
+  const links = readText("apps/desktop/src-tauri/src/commands/links.rs");
+  // 用户点「赞助」会打开浏览器，因此链接的域名必须是固定的几个。
+  // 放宽这个白名单等于让任意站点出现在界面上。
+  const allowed = new Set([
+    "afdian.com",
+    "ifdian.net",
+    "github.com",
+    "www.mcimirror.top",
+  ]);
+  const urls = [...links.matchAll(/https?:\/\/([^/"'\s]+)/g)].map((m) => m[1]);
+  const bad = urls.filter((host) => !allowed.has(host));
+  return bad.length === 0
+    ? true
+    : { ok: false, detail: `赞助链接出现了非白名单域名: ${bad.join(", ")}` };
+});
+
 check("权限", "微软登录页有域名白名单校验", () => {
   const account = readText("apps/desktop/src-tauri/src/commands/account.rs");
   const guarded = account.includes("ALLOWED") && account.includes("starts_with");
@@ -450,6 +467,36 @@ check("权限", "第三方登录令牌只进系统密钥库", () => {
     return { ok: false, detail: "authlib.rs 里没有用到系统密钥库" };
   }
   return true;
+});
+
+check("凭据", "源码里没有 CurseForge API Key 机制", () => {
+  // CurseForge 一律走 MCIM 镜像（不需要 Key），官方接口因为强制要 Key
+  // 而在关掉镜像后不可用。因此仓库里**不允许**再出现读取 Key 的代码——
+  // 打进安装包的凭据等于公开凭据。
+  //
+  // 扫 Rust 源码与前端源码；`docs/` 不入库，不参与扫描。
+  const scanned = [...rustFiles, ...vueFiles, ...shellFiles];
+  const hits = grepFiles(scanned, /CURSEFORGE_API_KEY|x-api-key|\bapi_keys\b/);
+  return hits.length === 0
+    ? true
+    : { ok: false, detail: `仍存在 CF Key 机制: ${hits.join(", ")}` };
+});
+
+check("凭据", ".env.example 不含任何真实凭据", () => {
+  const envExample = readText(".env.example");
+  // 只允许出现「键名 = 占位符」这种形式，不能有真实值。
+  const suspicious = envExample
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .filter((line) => {
+      const value = line.slice(line.indexOf("=") + 1).trim();
+      // 占位符（全是 0 / 全是占位文字）不算可疑值
+      return value.length > 0 && !/^[0]+$/.test(value) && !/占位|placeholder/i.test(value);
+    });
+  return suspicious.length === 0
+    ? true
+    : { ok: false, detail: suspicious.join(" | ") };
 });
 
 check("权限", "第三方登录的密码不落盘", () => {

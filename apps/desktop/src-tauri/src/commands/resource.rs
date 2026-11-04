@@ -24,8 +24,7 @@ pub async fn search_resources(
 ) -> Result<ResourceSearchPage> {
     let settings = state.snapshot_settings()?;
     let client = sereno_core::utils::http::build_client(&settings)?;
-    let api_keys = sereno_core::resource::curseforge::api_keys();
-    sereno_core::resource::search::search(&client, &api_keys, &query).await
+    sereno_core::resource::search::search(&client, &query).await
 }
 
 /// Modrinth 获取版本列表。
@@ -56,7 +55,6 @@ pub async fn get_resource_dependencies(
 ) -> Result<Vec<ResourceDependencyInfo>> {
     let settings = state.snapshot_settings()?;
     let client = sereno_core::utils::http::build_client(&settings)?;
-    let api_keys = sereno_core::resource::curseforge::api_keys();
     let source = match source.as_str() {
         "modrinth" => ResourceSource::Modrinth,
         "curseforge" => ResourceSource::Curseforge,
@@ -67,7 +65,7 @@ pub async fn get_resource_dependencies(
             });
         }
     };
-    sereno_core::resource::dependency::resolve(&client, source, &api_keys, &ids).await
+    sereno_core::resource::dependency::resolve(&client, source, &ids).await
 }
 
 fn folder_for(kind: ResourceKind) -> Result<&'static str> {
@@ -169,7 +167,12 @@ async fn download_to(
     let task = sereno_core::download::task::DownloadTask {
         id: format!("{folder}-{filename}"),
         display_name: filename.clone(),
-        sources: sereno_core::download::mirror::build_sources(file_url),
+        // 镜像优先、官方兜底。Modrinth 与 CurseForge 的文件都由
+        // MCIM 国内镜像代理，直连官方在国内很慢。
+        sources: sereno_core::download::mirror::build_sources_with(
+            file_url,
+            settings.download.prefer_mirror,
+        ),
         destination: dest,
         checksum: match sha1 {
             Some(hash) => sereno_core::download::task::Checksum::Sha1(hash),
@@ -316,22 +319,11 @@ pub async fn install_resource_dependency(
                         key: "projectId".into(),
                         message: format!("无效的 CurseForge 项目 ID: {project_id}"),
                     })?;
-            let api_key = sereno_core::resource::curseforge::api_keys()
-                .into_iter()
-                .next()
-                .unwrap_or_default();
-            if api_key.is_empty() && !sereno_core::resource::curseforge::mirror_enabled() {
-                return Err(sereno_core::LauncherError::InvalidConfig {
-                    key: "CURSEFORGE_API_KEY".into(),
-                    message: "镜像已关闭，且未在环境变量中设置 CurseForge API Key".into(),
-                });
-            }
             let file = sereno_core::resource::curseforge::dependency_file(
                 &client,
                 mod_id,
                 &metadata.game_version,
                 &loader,
-                &api_key,
             )
             .await?
             .ok_or_else(|| sereno_core::LauncherError::DownloadFailed {
@@ -690,8 +682,7 @@ pub async fn check_local_resource_updates(
     let settings = state.snapshot_settings()?;
     let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
     let metadata = sereno_core::storage::instance::read_metadata(&inst_dir)?;
-    let api_keys = sereno_core::resource::curseforge::api_keys();
-    sereno_core::resource::local::check_updates(&settings, &api_keys, &metadata, kind).await
+    sereno_core::resource::local::check_updates(&settings, &metadata, kind).await
 }
 
 #[tauri::command]
@@ -704,13 +695,6 @@ pub async fn get_cf_mod_versions(
 ) -> Result<Vec<sereno_core::models::resource::CfFile>> {
     let settings = state.snapshot_settings()?;
     let client = sereno_core::utils::http::build_client(&settings)?;
-    let api_key = sereno_core::resource::curseforge::api_keys()
-        .into_iter()
-        .next()
-        .ok_or_else(|| sereno_core::LauncherError::InvalidConfig {
-            key: "CURSEFORGE_API_KEY".into(),
-            message: "未在环境变量中设置 CurseForge API Key".into(),
-        })?;
 
     let mod_id_num: u32 =
         mod_id
@@ -725,7 +709,6 @@ pub async fn get_cf_mod_versions(
         mod_id_num,
         &mc_version,
         &loader,
-        &api_key,
         sereno_core::resource::curseforge::VERSION_FIRST_PAGE_FILES,
     )
     .await
@@ -746,13 +729,6 @@ pub async fn get_cf_mod_versions_batch(
 ) -> Result<Vec<sereno_core::models::resource::CfFile>> {
     let settings = state.snapshot_settings()?;
     let client = sereno_core::utils::http::build_client(&settings)?;
-    let api_key = sereno_core::resource::curseforge::api_keys()
-        .into_iter()
-        .next()
-        .ok_or_else(|| sereno_core::LauncherError::InvalidConfig {
-            key: "CURSEFORGE_API_KEY".into(),
-            message: "未在环境变量中设置 CurseForge API Key".into(),
-        })?;
 
     let mod_id_num: u32 =
         mod_id
@@ -762,10 +738,8 @@ pub async fn get_cf_mod_versions_batch(
                 message: "无效的 CurseForge Mod ID".into(),
             })?;
 
-    sereno_core::resource::curseforge::get_versions_for(
-        &client, mod_id_num, &versions, &loader, &api_key,
-    )
-    .await
+    sereno_core::resource::curseforge::get_versions_for(&client, mod_id_num, &versions, &loader)
+        .await
 }
 
 /// 在系统浏览器打开资源项目页。slug 只允许字母数字与 `-_`，

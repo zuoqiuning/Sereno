@@ -47,6 +47,11 @@ const acknowledgements: Acknowledgement[] = [
     supporter: "bmclapi",
   },
   {
+    name: "MCIM（Minecraft Mod Info Mirror）",
+    desc: "面向国内用户的 Modrinth 与 CurseForge 元数据及文件镜像。正是它让 Sereno 能在不配置任何 API Key 的前提下访问 CurseForge。",
+    supporter: "mcim",
+  },
+  {
     name: "PCL2（龙腾猫跃）",
     desc: "加载器离线安装、镜像优先与实例资源管理的思路参考了其设计。",
     supporter: "pcl",

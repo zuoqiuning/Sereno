@@ -191,8 +191,7 @@ pub async fn ensure_cf_pack(
         return Ok(path);
     }
 
-    let keys = crate::resource::curseforge::api_keys();
-    let file = crate::resource::curseforge::get_file(client, project_id, file_id, &keys)
+    let file = crate::resource::curseforge::get_file(client, project_id, file_id)
         .await?
         .ok_or_else(|| LauncherError::ResourceNotFound {
             project_id: format!("{project_id}:{file_id}"),
@@ -258,10 +257,7 @@ pub async fn read_cf_manifest(
     project_id: u32,
     file_id: u32,
 ) -> Result<(modpack::curseforge::CfManifest, Option<PathBuf>)> {
-    let keys = crate::resource::curseforge::api_keys();
-
-    if let Some(file) =
-        crate::resource::curseforge::get_file(client, project_id, file_id, &keys).await?
+    if let Some(file) = crate::resource::curseforge::get_file(client, project_id, file_id).await?
         && let Some(url) = file.download_url.clone()
     {
         match crate::utils::remote_zip::read_entry(client, &url, "manifest.json").await {
@@ -319,15 +315,14 @@ pub async fn install_cf_pack(
     let file_ids = modpack::curseforge::file_ids(manifest);
     let project_ids = modpack::curseforge::project_ids(manifest);
 
-    let keys = crate::resource::curseforge::api_keys();
     let (files, projects) = if file_ids.is_empty() {
         (Vec::new(), Vec::new())
     } else {
-        let files = crate::resource::curseforge::get_files_by_ids(client, &file_ids, &keys).await?;
+        let files = crate::resource::curseforge::get_files_by_ids(client, &file_ids).await?;
         let projects = if project_ids.is_empty() {
             Vec::new()
         } else {
-            crate::resource::curseforge::get_mods_by_ids(client, &project_ids, &keys).await?
+            crate::resource::curseforge::get_mods_by_ids(client, &project_ids).await?
         };
         (files, projects)
     };

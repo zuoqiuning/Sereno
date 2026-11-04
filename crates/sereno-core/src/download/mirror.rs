@@ -107,6 +107,16 @@ fn rewrite_to_mirror(url: &str) -> Option<String> {
             &format!("{BMCLAPI_BASE}/assets"),
         ));
     }
+    // Modrinth 与 CurseForge 的文件 CDN → MCIM 国内镜像。
+    //
+    // 这两个源的元数据与文件都由 MCIM 代理，
+    // 走镜像比直连官方快一个数量级（见 `resource::mcim`）。
+    if let Some(mirror) = crate::resource::mcim::modrinth_cdn_mirror(url) {
+        return Some(mirror);
+    }
+    if let Some(mirror) = crate::resource::mcim::cf_cdn_mirror(url) {
+        return Some(mirror);
+    }
     // 其他 CDN 或第三方源暂不重写
     None
 }

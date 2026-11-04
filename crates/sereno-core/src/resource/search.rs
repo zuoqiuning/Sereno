@@ -91,7 +91,6 @@ fn translate_keyword(query: &str) -> String {
 
 pub async fn search(
     client: &reqwest::Client,
-    api_keys: &[String],
     query: &ResourceSearchQuery,
 ) -> Result<ResourceSearchPage> {
     let page = query.page.max(1);
@@ -130,12 +129,8 @@ pub async fn search(
 
     let result = match normalized.source {
         ResourceSource::Modrinth => search_modrinth(client, &normalized, page, page_size).await,
-        ResourceSource::Curseforge => {
-            search_curseforge(client, api_keys, &normalized, page, page_size).await
-        }
-        ResourceSource::Aggregate => {
-            search_aggregate(client, api_keys, &normalized, page, page_size).await
-        }
+        ResourceSource::Curseforge => search_curseforge(client, &normalized, page, page_size).await,
+        ResourceSource::Aggregate => search_aggregate(client, &normalized, page, page_size).await,
     };
 
     if let Ok(page_data) = &result {
@@ -169,13 +164,12 @@ async fn search_modrinth(
 
 async fn search_curseforge(
     client: &reqwest::Client,
-    api_keys: &[String],
     query: &ResourceSearchQuery,
     page: u32,
     page_size: u32,
 ) -> Result<ResourceSearchPage> {
     let offset = (page - 1) * page_size;
-    let result = curseforge::search(client, query, offset, page_size, api_keys).await?;
+    let result = curseforge::search(client, query, offset, page_size).await?;
     let page_count = result.total.div_ceil(page_size).max(1);
     Ok(ResourceSearchPage {
         items: result.items,
@@ -212,11 +206,7 @@ fn totals_key(query: &ResourceSearchQuery) -> String {
 
 /// 探测两个来源的总命中数。只取 1 条元数据，代价很小；
 /// 探测到之后同一组筛选条件的翻页都按比例分配窗口，不必再探测。
-async fn resolve_totals(
-    client: &reqwest::Client,
-    api_keys: &[String],
-    query: &ResourceSearchQuery,
-) -> TotalsResult {
+async fn resolve_totals(client: &reqwest::Client, query: &ResourceSearchQuery) -> TotalsResult {
     let key = totals_key(query);
     if let Some(totals) = TOTALS_CACHE.get(&key) {
         return TotalsResult {
@@ -253,12 +243,12 @@ async fn resolve_totals(
 
     let mr_future = modrinth::search(client, query, 0, 1);
     let cf_future = async {
-        if api_keys.is_empty() && !curseforge::mirror_enabled() {
+        // 官方接口需要 API Key，而本项目不再携带：官方模式下 CF 一律不可用，
+        // 不必发一次注定被拒的请求。具体提示由 `source_warnings` 统一给出。
+        if !curseforge::mirror_enabled() {
             return Ok(None);
         }
-        curseforge::search(client, query, 0, 1, api_keys)
-            .await
-            .map(Some)
+        curseforge::search(client, query, 0, 1).await.map(Some)
     };
     let (mr_result, cf_result) = tokio::join!(mr_future, cf_future);
 
@@ -289,9 +279,9 @@ async fn resolve_totals(
         Err(error) => result.cf_error = Some(error),
     }
 
-    // 两个来源都成功（或本来就没有 Key）时才缓存总数：
+    // 两个来源都成功（或官方模式本就不可用）时才缓存总数：
     // 否则一次网络抖动会让接下来 10 分钟的聚合结果永久缺一边。
-    if mr_ok && (cf_ok || (api_keys.is_empty() && !curseforge::mirror_enabled())) {
+    if mr_ok && (cf_ok || !curseforge::mirror_enabled()) {
         TOTALS_CACHE.insert(key.clone(), result.totals);
         if let Some(cache) = TOTALS_DISK.as_ref() {
             cache.insert(&key, &result.totals);
@@ -303,22 +293,14 @@ async fn resolve_totals(
 
 async fn search_aggregate(
     client: &reqwest::Client,
-    api_keys: &[String],
     query: &ResourceSearchQuery,
     page: u32,
     page_size: u32,
 ) -> Result<ResourceSearchPage> {
-    let mut totals_result = resolve_totals(client, api_keys, query).await;
+    let mut totals_result = resolve_totals(client, query).await;
 
-    // CF 冷却期间强制按 Modrinth-only 分页，避免继续按旧总数计算窗口后
-    // 每页都去请求 CF（只会立刻失败，还会让页码和结果错位）。
-    if !api_keys.is_empty() && !curseforge::mirror_enabled() && curseforge::in_cooldown() {
-        totals_result.totals.cf = 0;
-        totals_result.cf_error = Some(LauncherError::DownloadFailed {
-            message: "CurseForge 正在限流冷却，已仅显示 Modrinth 结果".into(),
-            url: "https://api.curseforge.com".into(),
-        });
-    }
+    // 官方模式（镜像已关闭）下 CF 完全没有 Key 可用，因此 `resolve_totals`
+    // 不会去查 CF，CF 一侧的总数恒为 0；真正的提示由 `source_warnings` 给出。
 
     if !totals_result.any_success {
         return Err(totals_result
@@ -340,7 +322,7 @@ async fn search_aggregate(
             page,
             page_size,
             has_more: false,
-            warnings: source_warnings(api_keys, &totals_result.mr_error, &totals_result.cf_error),
+            warnings: source_warnings(&totals_result.mr_error, &totals_result.cf_error),
         });
     }
 
@@ -363,7 +345,7 @@ async fn search_aggregate(
         if cf_limit == 0 {
             return Ok(None);
         }
-        curseforge::search(client, query, cf_offset, cf_limit, api_keys)
+        curseforge::search(client, query, cf_offset, cf_limit)
             .await
             .map(Some)
     };
@@ -400,7 +382,7 @@ async fn search_aggregate(
         page,
         page_size,
         has_more: page < page_count,
-        warnings: source_warnings(api_keys, &mr_error, &cf_error),
+        warnings: source_warnings(&mr_error, &cf_error),
     })
 }
 
@@ -421,7 +403,6 @@ fn source_window(total: u32, own: u32, start: u32, end: u32) -> (u32, u32) {
 }
 
 fn source_warnings(
-    api_keys: &[String],
     mr_error: &Option<LauncherError>,
     cf_error: &Option<LauncherError>,
 ) -> Vec<String> {
@@ -436,8 +417,8 @@ fn source_warnings(
             "CurseForge 暂时不可用（{error}），仅显示 Modrinth 结果"
         ));
     }
-    if api_keys.is_empty() && !curseforge::mirror_enabled() {
-        warnings.push("未配置 CurseForge API Key，仅显示 Modrinth 结果".into());
+    if !curseforge::mirror_enabled() {
+        warnings.push("CurseForge 官方接口需要 API Key，已仅显示 Modrinth 结果；请在设置中开启「优先使用国内镜像」".into());
     }
     warnings
 }
@@ -574,5 +555,38 @@ mod tests {
         sort_desc(&mut items, ResourceSort::Updated);
 
         assert_eq!(items[0].title, "B");
+    }
+
+    /// 官方模式（镜像关闭）下 CF 一律不可用，必须明确告诉用户
+    /// 「开回镜像」，而不是只显示 Modrinth 结果却不说原因。
+    #[test]
+    fn official_mode_warns_to_enable_mirror() {
+        curseforge::with_mirror_enabled(false, || {
+            let warnings = source_warnings(&None, &None);
+            assert!(
+                warnings.iter().any(|w| w.contains("优先使用国内镜像")),
+                "官方模式缺少开启镜像的提示: {warnings:?}"
+            );
+        });
+
+        curseforge::with_mirror_enabled(true, || {
+            assert!(source_warnings(&None, &None).is_empty());
+        });
+    }
+
+    /// 单个来源出错时，警告要说清是哪个来源挂了、还剩哪个来源可用。
+    #[test]
+    fn source_warnings_name_the_failing_source() {
+        let warnings = source_warnings(
+            &None,
+            &Some(LauncherError::DownloadFailed {
+                message: "挂了".into(),
+                url: "https://api.curseforge.com/v1".into(),
+            }),
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("CurseForge")),
+            "警告里应指出 CurseForge 不可用: {warnings:?}"
+        );
     }
 }

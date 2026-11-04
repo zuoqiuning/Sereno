@@ -11,7 +11,6 @@ use crate::utils::http::{MAX_METADATA_BYTES, read_json_limited};
 use crate::{LauncherError, Result};
 
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
-const CF_API: &str = "https://api.curseforge.com/v1";
 const MAX_DEPENDENCIES: usize = 100;
 
 #[derive(Deserialize)]
@@ -53,7 +52,6 @@ struct CfProjectList {
 pub async fn resolve(
     client: &reqwest::Client,
     source: ResourceSource,
-    api_keys: &[String],
     ids: &[String],
 ) -> Result<Vec<ResourceDependencyInfo>> {
     let ids: Vec<String> = ids
@@ -70,7 +68,7 @@ pub async fn resolve(
 
     match source {
         ResourceSource::Modrinth => resolve_modrinth(client, &ids).await,
-        ResourceSource::Curseforge => resolve_curseforge(client, api_keys, &ids).await,
+        ResourceSource::Curseforge => resolve_curseforge(client, &ids).await,
         ResourceSource::Aggregate => Err(LauncherError::InvalidConfig {
             key: "source".into(),
             message: "依赖解析需要指定具体来源".into(),
@@ -114,7 +112,6 @@ async fn resolve_modrinth(
 
 async fn resolve_curseforge(
     client: &reqwest::Client,
-    api_keys: &[String],
     ids: &[String],
 ) -> Result<Vec<ResourceDependencyInfo>> {
     let mod_ids: Vec<u32> = ids.iter().filter_map(|id| id.parse().ok()).collect();
@@ -123,9 +120,14 @@ async fn resolve_curseforge(
     }
 
     let body = serde_json::json!({ "modIds": mod_ids });
-    let data: CfProjectList =
-        crate::resource::local::cf_post_json(client, &format!("{CF_API}/mods"), &body, api_keys)
-            .await?;
+    // 走镜像感知的根地址：官方接口需要 API Key，而本项目不再携带 Key，
+    // 只有镜像这条路能在不带凭据的情况下正常返回。
+    let data: CfProjectList = crate::resource::local::cf_post_json(
+        client,
+        &format!("{}/mods", crate::resource::curseforge::api_base()),
+        &body,
+    )
+    .await?;
 
     Ok(data
         .data

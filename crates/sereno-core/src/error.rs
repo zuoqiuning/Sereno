@@ -99,8 +99,13 @@ pub enum LauncherError {
     TokenRefreshFailed { message: String },
 
     // ---------------- 资源平台 ----------------
-    #[error("CurseForge API Key 无效或未配置，请检查 .env 中的 CURSEFORGE_API_KEY")]
-    CurseForgeKeyMissing,
+    /// CurseForge 官方接口需要 API Key。
+    ///
+    /// 官方接口的每个端点都强制要求鉴权请求头，而镜像（MCIM）不需要。
+    /// 本项目**不再携带任何 Key**，因此关掉镜像后官方接口必然拒绝请求，
+    /// 这时要把「开回镜像」这个下一步说清楚，而不是丢一个裸的 HTTP 码。
+    #[error("CurseForge 官方接口需要 API Key，请在设置中开启「优先使用国内镜像」")]
+    CurseForgeOfficialKeyRequired,
 
     #[error("资源 {project_id} 未找到")]
     ResourceNotFound { project_id: String },
@@ -152,7 +157,7 @@ impl LauncherError {
             Self::AuthlibAuthFailed { .. } => "authlib_auth_failed",
             Self::CredentialStoreUnavailable { .. } => "credential_store_unavailable",
             Self::TokenRefreshFailed { .. } => "token_refresh_failed",
-            Self::CurseForgeKeyMissing => "curseforge_key_missing",
+            Self::CurseForgeOfficialKeyRequired => "curseforge_official_key_required",
             Self::ResourceNotFound { .. } => "resource_not_found",
             Self::UpdateFailed { .. } => "update_failed",
             Self::Io { .. } => "io",
@@ -185,6 +190,23 @@ mod tests {
             }
             .code(),
             "io"
+        );
+    }
+
+    /// 官方接口要 Key 的错误必须能被前端按类型识别，
+    /// 且文案里带上「开回镜像」这个可执行的下一步。
+    #[test]
+    fn official_key_required_is_actionable() {
+        let err = LauncherError::CurseForgeOfficialKeyRequired;
+        assert_eq!(err.code(), "curseforge_official_key_required");
+
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["type"], "curseForgeOfficialKeyRequired");
+
+        let text = err.to_string();
+        assert!(
+            text.contains("优先使用国内镜像"),
+            "错误文案要告诉用户怎么修: {text}"
         );
     }
 }

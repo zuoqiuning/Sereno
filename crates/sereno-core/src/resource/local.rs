@@ -349,17 +349,9 @@ pub(crate) async fn cf_post_json<T: serde::de::DeserializeOwned>(
     client: &reqwest::Client,
     url: &str,
     body: &serde_json::Value,
-    api_keys: &[String],
 ) -> Result<T> {
-    if !super::curseforge::mirror_enabled() && api_keys.is_empty() {
-        return Err(LauncherError::InvalidConfig {
-            key: "CURSEFORGE_API_KEY".into(),
-            message: "镜像已关闭，且未配置 CurseForge API Key".into(),
-        });
-    }
-
-    // 与搜索共用同一套节流 / 在途上限 / Key 轮换 / 429 冷却规则。
-    let resp = super::curseforge::request(client, url, api_keys, Some(body)).await?;
+    // 与搜索共用同一套节流 / 在途上限 / 429 冷却规则。
+    let resp = super::curseforge::request(client, url, Some(body)).await?;
     if !resp.status().is_success() {
         return Err(LauncherError::DownloadFailed {
             message: format!("CurseForge 接口返回 HTTP {}", resp.status()),
@@ -619,14 +611,13 @@ struct CfFileList {
 
 async fn curseforge_updates(
     client: &reqwest::Client,
-    api_keys: &[String],
     instance: &InstanceMetadata,
     kind: LocalResourceKind,
     files: &[HashedFile],
     metadata: &mut HashMap<String, LocalResourceMeta>,
     updates: &mut HashMap<String, LocalResourceUpdate>,
 ) -> Result<()> {
-    if files.is_empty() || api_keys.is_empty() {
+    if files.is_empty() {
         return Ok(());
     }
 
@@ -638,7 +629,6 @@ async fn curseforge_updates(
             client,
             &format!("{}/fingerprints/432", super::curseforge::api_base()),
             &body,
-            api_keys,
         )
         .await?;
 
@@ -670,7 +660,6 @@ async fn curseforge_updates(
             client,
             &format!("{}/mods", super::curseforge::api_base()),
             &body,
-            api_keys,
         )
         .await?;
         for project in data.data {
@@ -744,7 +733,6 @@ async fn curseforge_updates(
             client,
             &format!("{}/mods/files", super::curseforge::api_base()),
             &body,
-            api_keys,
         )
         .await?;
         for file in data.data {
@@ -809,7 +797,6 @@ fn cf_loader_type(loader: &str) -> Option<u32> {
 
 pub async fn check_updates(
     settings: &AppSettings,
-    api_keys: &[String],
     instance: &InstanceMetadata,
     kind: LocalResourceKind,
 ) -> Result<LocalResourceScan> {
@@ -836,16 +823,8 @@ pub async fn check_updates(
     {
         tracing::warn!(%error, "Modrinth 元数据匹配失败");
     }
-    if let Err(error) = curseforge_updates(
-        &client,
-        api_keys,
-        instance,
-        kind,
-        &files,
-        &mut metadata,
-        &mut updates,
-    )
-    .await
+    if let Err(error) =
+        curseforge_updates(&client, instance, kind, &files, &mut metadata, &mut updates).await
     {
         tracing::warn!(%error, "CurseForge 元数据匹配失败");
     }

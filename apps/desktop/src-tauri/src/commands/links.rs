@@ -18,6 +18,9 @@ pub fn open_supporter_page(target: String) -> Result<()> {
     let url = match target.as_str() {
         "pcl" => "https://afdian.com/a/LTCat",
         "bmclapi" => "https://afdian.com/a/bangbang93",
+        // MCIM 的赞助页：它提供 Modrinth / CurseForge 的国内镜像，
+        // 是本项目能免 API Key 访问 CurseForge 的前提。
+        "mcim" => sereno_core::resource::mcim::MCIM_SPONSOR_URL,
         "sereno" => "https://ifdian.net/a/Sereno",
         _ => {
             return Err(LauncherError::InvalidConfig {

@@ -18,8 +18,6 @@ const SENSITIVE_KEYS: &[&str] = &[
     "refreshtoken",
     "client_token",
     "clienttoken",
-    "x-api-key",
-    "xapikey",
     "api_key",
     "apikey",
     "authorization",
@@ -37,7 +35,6 @@ const SENSITIVE_KEYS: &[&str] = &[
     "userhash",
     "rpsticket",
     "identitytoken",
-    "curseforge_api_key",
 ];
 
 /// 脱敏后的占位串。
@@ -360,8 +357,10 @@ mod tests {
     }
 
     #[test]
-    fn masks_x_api_key() {
-        let out = redact_line("x-api-key: super-secret-value");
+    fn masks_api_key_fields() {
+        // 通用的 `api_key` 键名仍要脱敏：它是脱敏器的兜底规则，
+        // 不针对某个具体服务（第三方 API Key 也可能以这个名字出现）。
+        let out = redact_line("api_key: super-secret-value");
         assert!(!out.contains("super-secret-value"), "api key 未脱敏: {out}");
     }
 

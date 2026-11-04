@@ -236,7 +236,7 @@ Sereno 诊断包
 - system.txt：操作系统与 Java 概况
 
 不包含：
-- accessToken / refresh_token / CurseForge API Key
+- accessToken / refresh_token
 - Mod 的 jar 本体、assets、世界存档、整个 .minecraft 目录
 
 提交方式：

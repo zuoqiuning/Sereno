@@ -201,8 +201,6 @@ pub mod keys {
     pub const MICROSOFT_REFRESH_TOKEN: &str = "sereno.microsoft.refresh_token";
     /// 微软账号 Access Token。
     pub const MICROSOFT_ACCESS_TOKEN: &str = "sereno.microsoft.access_token";
-    /// CurseForge API Key（通常来自 `.env`，但用户也可在设置里覆盖）。
-    pub const CURSEFORGE_API_KEY: &str = "sereno.curseforge.api_key";
 }
 
 #[cfg(test)]

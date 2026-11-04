@@ -1173,7 +1173,15 @@ export type LatestVersions = {
  *  `rename_all` 作用于**变体名**，`rename_all_fields` 作用于**变体内的字段名**——
  *  两者都要有，前端才能拿到 `requiredMajor` 而不是 `required_major`。
  */
-export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | { type: "curseForgeKeyMissing" } | { type: "resourceNotFound"; projectId: string } | 
+export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | 
+/**
+ *  CurseForge 官方接口需要 API Key。
+ * 
+ *  官方接口的每个端点都强制要求鉴权请求头，而镜像（MCIM）不需要。
+ *  本项目**不再携带任何 Key**，因此关掉镜像后官方接口必然拒绝请求，
+ *  这时要把「开回镜像」这个下一步说清楚，而不是丢一个裸的 HTTP 码。
+ */
+{ type: "curseForgeOfficialKeyRequired" } | { type: "resourceNotFound"; projectId: string } | 
 /**
  *  更新通道出错（检查、下载、验签或安装失败）。
  * 
