@@ -13,6 +13,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-set-progress-bar",
     "core:window:allow-show",
     "dialog:allow-open",
     "dialog:allow-save",

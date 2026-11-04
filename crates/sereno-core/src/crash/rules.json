@@ -1,0 +1,338 @@
+[
+  {
+    "needle": "outofmemoryerror",
+    "title": "内存不足",
+    "detail": "游戏在分配内存时耗尽堆空间，通常是分配的 -Xmx 太小或同时开了太多程序。",
+    "suggestion": "在实例设置里把内存调大（整合包建议 4096 MB 以上），并关闭其它占内存的程序。",
+    "severity": "error"
+  },
+  {
+    "needle": "unsupportedclassversionerror",
+    "title": "Java 版本过低",
+    "detail": "当前 Java 的主版本低于游戏或模组编译时使用的版本。",
+    "suggestion": "在设置里换用更高版本的 Java（1.20.5+ 建议 Java 21）。",
+    "severity": "error"
+  },
+  {
+    "needle": "duplicatemodsfoundexception",
+    "title": "重复安装了同一个模组",
+    "detail": "mods 目录里存在两个文件提供同一个 mod id。",
+    "suggestion": "在实例的资源列表里删掉旧版本，只保留一个。",
+    "severity": "error"
+  },
+  {
+    "needle": "missing or unsupported mandatory dependencies",
+    "title": "缺少必需的前置模组",
+    "detail": "有模组声明了必需依赖，但依赖没有被安装或被装成了不兼容版本。",
+    "suggestion": "打开该模组的详情页，安装它列出的前置资源后重试。",
+    "severity": "error"
+  },
+  {
+    "needle": "incompatible mod set",
+    "title": "模组之间冲突",
+    "detail": "加载器检测到互相排斥的模组组合（常见于同时装了两个优化/渲染类模组）。",
+    "suggestion": "按崩溃报告里列出的冲突项，二选一保留。",
+    "severity": "error"
+  },
+  {
+    "needle": "mixintransformererror",
+    "title": "Mixin 注入失败",
+    "detail": "某个模组试图修改的代码与当前游戏/加载器版本不匹配。",
+    "suggestion": "检查报错里提到的模组是否支持当前 Minecraft 与加载器版本。",
+    "severity": "error"
+  },
+  {
+    "needle": "nosuchmethoderror",
+    "title": "模组与游戏版本不匹配",
+    "detail": "模组调用了当前版本里不存在的方法，通常是跨版本使用了模组。",
+    "suggestion": "换成与该游戏版本对应的模组文件。",
+    "severity": "error"
+  },
+  {
+    "needle": "nosuchfielderror",
+    "title": "模组与游戏版本不匹配",
+    "detail": "模组读取了当前版本里不存在的字段，通常是跨版本使用了模组。",
+    "suggestion": "换成与该游戏版本对应的模组文件。",
+    "severity": "error"
+  },
+  {
+    "needle": "classnotfoundexception",
+    "title": "类加载失败",
+    "detail": "缺少一个应该在游戏或模组里的类，可能文件损坏或依赖被拆掉。",
+    "suggestion": "先用「修复实例」重下一遍游戏文件；仍失败就检查报错里提到的模组。",
+    "severity": "error"
+  },
+  {
+    "needle": "exception_access_violation",
+    "title": "显卡驱动崩溃",
+    "detail": "JVM 在原生代码里崩溃，最常见的原因是显卡驱动不兼容或超频。",
+    "suggestion": "更新显卡驱动，关闭超频；笔记本用户尝试指定独显运行。",
+    "severity": "error"
+  },
+  {
+    "needle": "pixel format not accelerated",
+    "title": "OpenGL 不可用",
+    "detail": "当前显卡驱动不支持游戏需要的 OpenGL 版本。",
+    "suggestion": "安装官方显卡驱动（不要用系统自带的基础驱动），或降低游戏图形设置。",
+    "severity": "error"
+  },
+  {
+    "needle": "glfw error",
+    "title": "图形窗口初始化失败",
+    "detail": "创建 OpenGL 窗口时失败，常见于远程桌面或虚拟机环境。",
+    "suggestion": "在物理机本地运行，或为虚拟机启用 GPU 加速。",
+    "severity": "warning"
+  },
+  {
+    "needle": "sslhandshakeexception",
+    "title": "网络连接失败",
+    "detail": "启动或登录阶段 TLS 握手失败，可能是网络中断或代理配置不一致。",
+    "suggestion": "检查网络与系统代理设置后重试。",
+    "severity": "warning"
+  },
+  {
+    "needle": "connection refused",
+    "title": "网络连接被拒绝",
+    "detail": "目标服务器不可达，常见于镜像源临时故障。",
+    "suggestion": "切换镜像源后重试，或稍后再启动。",
+    "severity": "warning"
+  },
+  {
+    "needle": "java.lang.unsatisfiedlinkerror",
+    "title": "本地库加载失败",
+    "detail": "natives（.dll）没能加载，可能位数不匹配或被安全软件拦截。",
+    "suggestion": "确认使用 64 位 Java；把启动器与游戏目录加入杀毒软件白名单。",
+    "severity": "error"
+  },
+  {
+    "needle": "the game crashed whilst",
+    "title": "游戏崩溃",
+    "detail": "Minecraft 已经写出一份崩溃报告，具体原因见下方报错。",
+    "suggestion": "查看下方摘出的报错行，或把崩溃报告发给模组作者。",
+    "severity": "error"
+  },
+  {
+    "needle": "gc overhead limit exceeded",
+    "title": "内存不足（GC 超时）",
+    "detail": "JVM 花了 98% 的时间做垃圾回收却回收不出空间——内存分配严重不足或存在泄漏。",
+    "suggestion": "把实例内存调大到 6144 MB 以上；若整合包很大，考虑关闭其它程序。",
+    "severity": "error"
+  },
+  {
+    "needle": "net.minecraftforge.fml.loading.immediatedevexception",
+    "title": "Forge 开发版文件误入正式环境",
+    "detail": "mods 里混入了仅用于开发环境的文件，正式游戏无法加载。",
+    "suggestion": "删除 mods 目录里名字带 -dev 或 -sources 的 jar。",
+    "severity": "error"
+  },
+  {
+    "needle": "invalid mods.toml",
+    "title": "mods.toml 文件损坏",
+    "detail": "某个模组的 mods.toml 描述文件格式不合法（下载不完整或文件被改坏）。",
+    "suggestion": "重新下载报错的那个模组；无法定位时全部重装。",
+    "severity": "error"
+  },
+  {
+    "needle": "missing or invalid mandatory dependencies",
+    "title": "前置模组版本不匹配",
+    "detail": "有前置装了，但版本不满足要求（过低或过高）。",
+    "suggestion": "按崩溃报告列出的期望版本更新前置模组。",
+    "severity": "error"
+  },
+  {
+    "needle": "shaders mod detected",
+    "title": "光影与模组冲突",
+    "detail": "检测到光影加载器与其它渲染类模组（如 OptiFine / Iris 组合不当）冲突。",
+    "suggestion": "只保留一种渲染方案：要么 OptiFine + 光影，要么 Iris + 光影。",
+    "severity": "error"
+  },
+  {
+    "needle": "java.lang.module.resolutionexception",
+    "title": "模块系统冲突（JPMS）",
+    "detail": "两个模组声明了同一个 Java 模块名，通常是其中一个的旧版本没删干净。",
+    "suggestion": "检查崩溃报告提到的两个 jar，删除不再使用的那个。",
+    "severity": "error"
+  },
+  {
+    "needle": "lwjgl version mismatch",
+    "title": "LWJGL 版本不匹配",
+    "detail": "模组自带的 LWJGL 与游戏所需的版本冲突。",
+    "suggestion": "删除自带 LWJGL 的模组，或使用与游戏版本匹配的替代品。",
+    "severity": "error"
+  },
+  {
+    "needle": "address already in use",
+    "title": "端口被占用",
+    "detail": "游戏或本地服务端要监听的端口已被其它程序占用。",
+    "suggestion": "关闭占用该端口的程序，或更换端口后重试。",
+    "severity": "error"
+  },
+  {
+    "needle": "hs_err_pid",
+    "title": "Java 进程异常终止",
+    "detail": "JVM 本身崩溃并写出了 hs_err 日志（非游戏逻辑错误），通常与显卡驱动或内存超配有关。",
+    "suggestion": "更新显卡驱动；把内存从上限下调一档再试。",
+    "severity": "error"
+  },
+  {
+    "needle": "javaw.exe has stopped working",
+    "title": "Java 进程被系统中止",
+    "detail": "Windows 报告 Java 进程停止响应，多为驱动兼容性问题。",
+    "suggestion": "更新显卡驱动；检查是否混用了不匹配的 natives。",
+    "severity": "error"
+  },
+  {
+    "needle": "com.electronwill.nightconfig",
+    "title": "配置文件解析失败",
+    "detail": "某个模组的 TOML 配置损坏（写入中断或手工编辑出错）。",
+    "suggestion": "删除 config 目录里报错提到的那个配置文件，重启游戏会重新生成。",
+    "severity": "error"
+  },
+  {
+    "needle": "registry remapping failed",
+    "title": "注册表合并失败",
+    "detail": "模组向游戏注册表注册了重复或非法的条目，常见于模组版本与游戏版本不匹配。",
+    "suggestion": "确认所有模组都支持当前游戏版本；移除最近新装的那个。",
+    "severity": "error"
+  },
+  {
+    "needle": "failed to create shader",
+    "title": "光影着色器编译失败",
+    "detail": "显卡不支持该光影所需的特性，或驱动过于陈旧。",
+    "suggestion": "更新显卡驱动；更换低配版光影。",
+    "severity": "error"
+  },
+  {
+    "needle": "io.netty.channel",
+    "title": "网络通道初始化失败",
+    "detail": "联机相关组件初始化出错，可能是模组改动了网络协议栈。",
+    "suggestion": "移除与网络/联机相关的模组后重试。",
+    "severity": "warning"
+  },
+  {
+    "needle": "ticking entity",
+    "title": "实体逻辑崩溃",
+    "detail": "某个游戏内实体的更新逻辑出错，常由存档损坏或模组 bug 触发。",
+    "suggestion": "移动到崩溃发生的坐标之外；或用备份恢复该区域存档。",
+    "severity": "error"
+  },
+  {
+    "needle": "ticking block",
+    "title": "方块逻辑崩溃",
+    "detail": "某个方块更新逻辑出错，进服即崩通常是该坐标上的方块数据损坏。",
+    "suggestion": "用 MCE 等工具清理该坐标方块，或恢复存档备份。",
+    "severity": "error"
+  },
+  {
+    "needle": "optifine is not compatible",
+    "title": "OptiFine 与当前环境不兼容",
+    "detail": "OptiFine 与加载器 / 其它模组组合不被支持。",
+    "suggestion": "按 OptiFine 官方说明选择与游戏版本、加载器匹配的组合。",
+    "severity": "error"
+  },
+  {
+    "needle": "duplicate module",
+    "title": "模块重复声明",
+    "detail": "两个 jar 声明了同一个模块，多为同一个模组的新旧两个文件共存。",
+    "suggestion": "在 mods 目录里只保留每个模组的最新版本。",
+    "severity": "error"
+  },
+  {
+    "needle": "modfile resolution failure",
+    "title": "模组文件解析失败",
+    "detail": "jar 结构损坏，无法作为模组加载（下载中断或被杀毒软件破坏）。",
+    "suggestion": "重新下载该模组，并把游戏目录加入杀毒白名单。",
+    "severity": "error"
+  },
+  {
+    "needle": "could not reserve enough space for object heap",
+    "title": "JVM 内存预分配失败",
+    "detail": "Java 无法申请到启动参数要求的内存量，常见于 32 位 Java 或系统可用内存不足。",
+    "suggestion": "把内存调小一档，或确认安装的是 64 位 Java。",
+    "severity": "error"
+  },
+  {
+    "needle": "no lwjgl in java.library.path",
+    "title": "LWJGL 原生库缺失",
+    "detail": "游戏的本地动态库（natives）没有就位，多见于安装中断或文件被杀毒误删。",
+    "suggestion": "用实例菜单的「健康检查」修复文件完整性。",
+    "severity": "error"
+  },
+  {
+    "needle": "invalid session",
+    "title": "登录会话失效",
+    "detail": "服务端认为登录凭据已经过期或无效。",
+    "suggestion": "到账户页重新登录后再进服务器。",
+    "severity": "error"
+  },
+  {
+    "needle": "invalid token",
+    "title": "登录令牌失效",
+    "detail": "微软登录的令牌过期，无法通过正版验证。",
+    "suggestion": "到账户页重新登录微软账户。",
+    "severity": "error"
+  },
+  {
+    "needle": "user not premium",
+    "title": "账户无法通过正版校验",
+    "detail": "服务器要求正版账户，当前会话未通过校验。",
+    "suggestion": "使用正版账户登录，或更换到无需正版验证的服务器。",
+    "severity": "error"
+  },
+  {
+    "needle": "exception in server tick loop",
+    "title": "服务端逻辑崩溃",
+    "detail": "整合包内置服务端（或本地局域网服务端）在处理世界逻辑时出错。",
+    "suggestion": "查看报错里提到的模组；该坐标附近的区块可能损坏。",
+    "severity": "error"
+  },
+  {
+    "needle": "for invalid dist",
+    "title": "客户端 / 服务端模组混装",
+    "detail": "把只用于服务端（或客户端）的模组装错了环境。",
+    "suggestion": "按报错列出的模组，移除标注了 DEDICATED_SERVER 或 CLIENT 的那个。",
+    "severity": "error"
+  },
+  {
+    "needle": "missing mods.toml file",
+    "title": "缺少 mods.toml",
+    "detail": "mods 目录为空或缺少 Forge 必需的描述文件（常见于先装 Forge 后清空 mods）。",
+    "suggestion": "确认 mods 目录里有合法的模组 jar；重新安装 Forge 也可以恢复。",
+    "severity": "error"
+  },
+  {
+    "needle": "modresolutionexception",
+    "title": "Fabric 模组解析失败",
+    "detail": "Fabric 加载器无法满足模组间的依赖关系（缺失、版本不符或冲突）。",
+    "suggestion": "按报错列出的依赖补齐或移除冲突模组。",
+    "severity": "error"
+  },
+  {
+    "needle": "access is denied",
+    "title": "文件被拒绝访问",
+    "detail": "游戏要读写的文件被其它程序（杀毒 / 同步盘）锁定，或权限不足。",
+    "suggestion": "把游戏目录加入杀毒白名单，关闭正在占用文件的程序后重试。",
+    "severity": "error"
+  },
+  {
+    "needle": "java.lang.verifyerror",
+    "title": "类文件校验失败",
+    "detail": "字节码校验不通过——通常是模组文件损坏，或与当前 Java 版本不兼容。",
+    "suggestion": "重新下载报错的模组；确认 Java 版本符合要求。",
+    "severity": "error"
+  },
+  {
+    "needle": "0xc0000005",
+    "title": "原生内存访问冲突",
+    "detail": "JVM 或本地库发生了段错误（0xC0000005），多为显卡驱动或损坏的本地库导致。",
+    "suggestion": "更新显卡驱动；用健康检查修复文件完整性。",
+    "severity": "error"
+  },
+  {
+    "needle": "shaders_mod",
+    "title": "旧版光影加载器冲突",
+    "detail": "检测到旧式 ShadersMod 与 OptiFine / Iris 同时存在，二者互斥。",
+    "suggestion": "只保留一个光影加载方案。",
+    "severity": "error"
+  }
+]

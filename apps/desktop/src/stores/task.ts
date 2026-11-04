@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { DownloadSessionSummary, DownloadSnapshot } from "@/types";
 import { useToastStore } from "./toast";
+import { setTaskbarProgress } from "@/composables/taskbarProgress";
 
 export interface TaskItem {
   id: string; // instanceId
@@ -38,6 +39,33 @@ export const useTaskStore = defineStore("task", {
   },
 
   actions: {
+    /**
+     * 把运行中任务的聚合进度写到系统任务栏。
+     *
+     * 聚合口径：所有 running 任务的 bytes 之和占比（不是文件数——
+     * 一个客户端 jar 和一个 assets 小文件不该等权）。
+     * 没有 running 任务 → 隐藏。
+     */
+    syncTaskbar() {
+      const running = Object.values(this.tasks).filter((task) => task.status === "running");
+      if (running.length === 0) {
+        void setTaskbarProgress(null);
+        return;
+      }
+      let done = 0;
+      let total = 0;
+      for (const task of running) {
+        done += task.summary?.downloadedBytes ?? 0;
+        total += task.summary?.totalBytes ?? 0;
+      }
+      // total 未知（元数据阶段）时给个低速旋转的中间值，避免显示 0%
+      if (total <= 0) {
+        void setTaskbarProgress(1);
+        return;
+      }
+      void setTaskbarProgress((done / total) * 100);
+    },
+
     start(instanceId: string, instanceName: string, cancellable = false) {
       this.tasks[instanceId] = {
         id: instanceId,
@@ -53,6 +81,7 @@ export const useTaskStore = defineStore("task", {
         _lastTime: 0,
       };
       this.activeId = instanceId;
+      this.syncTaskbar();
     },
 
     /** 登记「失败后重试」的动作（任务页据此显示重试按钮）。 */
@@ -91,6 +120,7 @@ export const useTaskStore = defineStore("task", {
         task._lastBytes = current.downloadedBytes;
         task._lastTime = now;
       }
+      this.syncTaskbar();
     },
 
     setStage3Running(instanceId: string) {
@@ -111,6 +141,7 @@ export const useTaskStore = defineStore("task", {
         // 只由发起的页面弹提示会漏掉。
         useToastStore().success("任务完成", task.name);
       }
+      this.syncTaskbar();
     },
 
     setError(instanceId: string, msg: string) {
@@ -121,6 +152,7 @@ export const useTaskStore = defineStore("task", {
         task.errorMsg = msg;
         useToastStore().error("任务失败", `${task.name}：${msg}`);
       }
+      this.syncTaskbar();
     },
 
     /** 用户主动取消：先落状态，避免随后到达的 `Cancelled` 被当成失败。 */
@@ -131,6 +163,7 @@ export const useTaskStore = defineStore("task", {
         task.errorMsg = null;
         task.speedBps = 0;
       }
+      this.syncTaskbar();
     },
 
     setActive(id: string) {
@@ -149,11 +182,13 @@ export const useTaskStore = defineStore("task", {
         const keys = Object.keys(this.tasks);
         if (keys.length > 0) this.activeId = keys[0];
       }
+      this.syncTaskbar();
     },
 
     clearAll() {
       this.tasks = {};
       this.activeId = null;
+      this.syncTaskbar();
     },
   },
 });

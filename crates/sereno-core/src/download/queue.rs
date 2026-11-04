@@ -37,6 +37,66 @@ type PathLockMap = HashMap<PathBuf, Arc<Mutex<()>>>;
 static GLOBAL_PATH_LOCKS: LazyLock<Arc<Mutex<PathLockMap>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+// ---- 单 host 熔断（对齐 PCL 的镜像熔断思路）----
+//
+// 场景：BMCLAPI 抖动时，几十个任务各自把「连不上 → 重试 → 超时」走一遍，
+// 每个任务都白等一轮超时，整段下载就像冻结。熔断后同 host 的源被直接
+// 跳过，流量立刻切到其它源（官方 / 备用镜像）。
+
+/// 连续失败多少次后熔断。
+const HOST_BREAK_THRESHOLD: u32 = 3;
+/// 熔断持续秒数；冷却期结束自动半开（允许一次尝试探测恢复）。
+const HOST_BREAK_OPEN_SECS: u64 = 60;
+
+#[derive(Default)]
+struct HostBreaker {
+    consecutive_fails: u32,
+    open_until: Option<std::time::Instant>,
+}
+
+/// 跨会话共享：一个会话里踩过的坑，下一个会话不必再踩。
+static HOST_BREAKERS: LazyLock<StdMutex<HashMap<String, HostBreaker>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+fn host_of(url: &str) -> Option<String> {
+    reqwest::Url::parse(url)
+        .ok()?
+        .host_str()
+        .map(str::to_string)
+}
+
+fn host_is_open(host: &str) -> bool {
+    let Ok(map) = HOST_BREAKERS.lock() else {
+        return false;
+    };
+    let Some(breaker) = map.get(host) else {
+        return false;
+    };
+    breaker
+        .open_until
+        .is_some_and(|until| std::time::Instant::now() < until)
+}
+
+fn host_mark_success(host: &str) {
+    if let Ok(mut map) = HOST_BREAKERS.lock() {
+        map.remove(host);
+    }
+}
+
+fn host_mark_failure(host: &str) {
+    let Ok(mut map) = HOST_BREAKERS.lock() else {
+        return;
+    };
+    let breaker = map.entry(host.to_string()).or_default();
+    breaker.consecutive_fails += 1;
+    if breaker.consecutive_fails >= HOST_BREAK_THRESHOLD {
+        breaker.open_until =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(HOST_BREAK_OPEN_SECS));
+        breaker.consecutive_fails = 0;
+        tracing::warn!(host, "连续失败达到阈值，熔断 {} 秒", HOST_BREAK_OPEN_SECS);
+    }
+}
+
 fn shared_semaphore(max_concurrent: usize) -> Arc<Semaphore> {
     let max = max_concurrent.max(1);
     let mut guard = GLOBAL_SLOTS
@@ -240,9 +300,21 @@ impl DownloadQueue {
 
         let mut last_error: Option<String> = None;
 
+        let mut skipped_by_breaker = 0usize;
+
         for source in &task.sources {
             if ctx.cancel.is_cancelled() {
                 return Err(LauncherError::Cancelled);
+            }
+
+            // host 熔断中 → 直接跳过该源，流量切到下一个源
+            let host = host_of(&source.url);
+            if let Some(host) = &host
+                && host_is_open(host)
+            {
+                skipped_by_breaker += 1;
+                tracing::debug!(url = %source.url, host, "源处于熔断冷却期，跳过");
+                continue;
             }
 
             let result = if should_chunk(task) {
@@ -254,13 +326,35 @@ impl DownloadQueue {
             };
 
             match result {
-                Ok(()) => return Ok(()),
+                Ok(()) => {
+                    if let Some(host) = &host {
+                        host_mark_success(host);
+                    }
+                    return Ok(());
+                }
                 Err(LauncherError::Cancelled) => return Err(LauncherError::Cancelled),
                 Err(e) => {
+                    if let Some(host) = &host {
+                        host_mark_failure(host);
+                    }
                     tracing::debug!(url = %source.url, error = %e, "源下载失败，尝试下一个源");
                     last_error = Some(e.to_string());
                 }
             }
+        }
+
+        // 所有源都被熔断跳过：给出专门错误让外层退避重试——
+        // 冷却期（60s）通常比退避间隔短，重试时大概率已半开
+        if last_error.is_none()
+            && skipped_by_breaker > 0
+            && skipped_by_breaker == task.sources.len()
+        {
+            return Err(LauncherError::AllSourcesUnavailable {
+                message: format!(
+                    "{} 的全部源都在熔断冷却中（{} 秒后自动恢复）",
+                    task.display_name, HOST_BREAK_OPEN_SECS
+                ),
+            });
         }
         Err(LauncherError::AllSourcesUnavailable {
             message: match last_error {
@@ -761,6 +855,38 @@ fn write_all_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> std::i
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn host_breaker_trips_after_threshold_and_resets_on_success() {
+        // 全局状态跨测试共享：用独立 host 名 + 先清场
+        HOST_BREAKERS.lock().unwrap().clear();
+        let host = "breaker-threshold.test";
+
+        for _ in 0..(HOST_BREAK_THRESHOLD - 1) {
+            host_mark_failure(host);
+        }
+        assert!(!host_is_open(host), "未达阈值不应熔断");
+
+        host_mark_failure(host); // 第 3 次
+        assert!(host_is_open(host), "达到阈值应熔断");
+
+        // 成功即清场（冷却期内的半开被成功覆盖）
+        host_mark_success(host);
+        assert!(!host_is_open(host));
+    }
+
+    #[test]
+    fn host_of_parses_and_tolerates_garbage() {
+        assert!(host_of("not a url").is_none());
+        assert_eq!(
+            host_of("https://bmclapi2.bangbang93.com/forge/minecraft/1.21.1").as_deref(),
+            Some("bmclapi2.bangbang93.com")
+        );
+        assert_eq!(
+            host_of("http://127.0.0.1:8080/a").as_deref(),
+            Some("127.0.0.1")
+        );
+    }
 
     #[test]
     fn retryable_rename_error_codes_cover_antivirus_locks() {

@@ -7,7 +7,8 @@
  * 为什么放 App.vue 级而不是 HomeView：游戏退出事件在任何页面都可能到达，
  * 监听必须跟着应用生命周期而不是某个视图。
  */
-import { launchGame, onGameExited } from "@/api/instance";
+import { onGameExited } from "@/api/instance";
+import { launchGame } from "@/api/launch";
 import { getSettings } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
 
