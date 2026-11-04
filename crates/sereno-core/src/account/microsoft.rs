@@ -610,30 +610,34 @@ pub async fn clear_session(store: &dyn SecureStore) -> Result<()> {
 /// 当前登录态（读设置里的公开资料 + 是否配置了客户端 ID）。
 pub fn account_state(settings: &AppSettings) -> AccountState {
     let microsoft = settings.account.microsoft.as_ref();
-    let is_microsoft = settings.account.kind == kind::MICROSOFT;
     let offline = super::offline::active(settings);
+    let authlib = super::authlib::active(settings);
 
     AccountState {
-        kind: if is_microsoft {
-            kind::MICROSOFT.to_string()
-        } else {
-            kind::OFFLINE.to_string()
-        },
-        name: match is_microsoft {
-            true => microsoft
+        kind: settings.account.kind.clone(),
+        name: match settings.account.kind.as_str() {
+            k if k == kind::MICROSOFT => microsoft
                 .map(|profile| profile.name.clone())
                 .unwrap_or_else(|| offline.name.clone()),
-            false => offline.name.clone(),
+            k if k == kind::AUTHLIB => authlib
+                .as_ref()
+                .map(|profile| profile.name.clone())
+                .unwrap_or_else(|| offline.name.clone()),
+            _ => offline.name.clone(),
         },
-        uuid: match is_microsoft {
-            true => microsoft.map(|profile| profile.uuid.clone()),
-            false => Some(offline.uuid.clone()),
+        uuid: match settings.account.kind.as_str() {
+            k if k == kind::MICROSOFT => microsoft.map(|profile| profile.uuid.clone()),
+            k if k == kind::AUTHLIB => authlib.as_ref().map(|profile| profile.uuid.clone()),
+            _ => Some(offline.uuid.clone()),
         },
         microsoft_available: is_configured(),
         credential_store_ephemeral: secure_store::is_ephemeral(),
         offline_accounts: super::offline::profiles(settings),
         active_offline_id: Some(offline.id),
         microsoft_profile: microsoft.cloned(),
+        authlib_profiles: settings.account.authlib_accounts.clone(),
+        active_authlib_id: settings.account.active_authlib_id.clone(),
+        authlib_api_root: authlib.as_ref().map(|profile| profile.api_root.clone()),
     }
 }
 

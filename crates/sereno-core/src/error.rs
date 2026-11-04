@@ -89,6 +89,9 @@ pub enum LauncherError {
     #[error("未登录微软账号，请先在「账户」页完成登录")]
     NotAuthenticated,
 
+    #[error("第三方登录失败：{message}")]
+    AuthlibAuthFailed { message: String },
+
     #[error("凭据存储不可用：{message}，请检查系统密钥库权限")]
     CredentialStoreUnavailable { message: String },
 
@@ -137,6 +140,7 @@ impl LauncherError {
             Self::InstanceBusy { .. } => "instance_busy",
             Self::InstanceAlreadyExists { .. } => "instance_already_exists",
             Self::NotAuthenticated => "not_authenticated",
+            Self::AuthlibAuthFailed { .. } => "authlib_auth_failed",
             Self::CredentialStoreUnavailable { .. } => "credential_store_unavailable",
             Self::TokenRefreshFailed { .. } => "token_refresh_failed",
             Self::CurseForgeKeyMissing => "curseforge_key_missing",

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   LogOut,
   Plus,
+  ShieldCheck,
   Trash2,
   UserRound,
 } from "@lucide/vue";
@@ -18,14 +19,17 @@ import AppModal from "@/components/common/AppModal.vue";
 import {
   activateMicrosoftAccount,
   addOfflineAccount,
+  authlibLogin,
   cancelMicrosoftLogin,
   completeMicrosoftLogin,
   getAccountState,
   getMicrosoftConfig,
   logoutAccount,
+  logoutAuthlibAccount,
   openMicrosoftLogin,
   removeOfflineAccount,
   startMicrosoftLogin,
+  switchAuthlibAccount,
   switchOfflineAccount,
 } from "@/api/account";
 import { isApiError } from "@/api/invoke";
@@ -59,11 +63,13 @@ const copied = ref(false);
 const autoCopied = ref(false);
 
 const isMicrosoft = computed(() => state.value?.kind === "microsoft");
+const isAuthlib = computed(() => state.value?.kind === "authlib");
 const canLogin = computed(() => Boolean(config.value?.configured));
 const ephemeral = computed(() => state.value?.credentialStoreEphemeral ?? false);
 const apiPending = computed(() => error.value.includes("审批中"));
 const offlineAccounts = computed(() => state.value?.offlineAccounts ?? []);
 const microsoftProfile = computed(() => state.value?.microsoftProfile ?? null);
+const authlibProfiles = computed(() => state.value?.authlibProfiles ?? []);
 
 const nameValid = computed(() => /^[A-Za-z0-9_]{3,16}$/.test(newName.value.trim()));
 
@@ -74,11 +80,38 @@ const nameValid = computed(() => /^[A-Za-z0-9_]{3,16}$/.test(newName.value.trim(
  * 弹窗被拉得很长，而且右侧还压着一个突兀的浅蓝色圆斑。
  * 改成顶部**分段控制器**后，每个分区只展示自己那一类内容，弹窗高度回到一屏之内。
  */
-type AccountTab = "offline" | "microsoft";
+type AccountTab = "offline" | "microsoft" | "authlib";
 const activeTab = ref<AccountTab>("offline");
 const tabs: { id: AccountTab; label: string }[] = [
   { id: "offline", label: "离线档案" },
   { id: "microsoft", label: "微软正版" },
+  { id: "authlib", label: "第三方登录" },
+];
+
+/** 第三方登录表单。 */
+const authlibForm = ref({
+  apiRoot: "",
+  username: "",
+  password: "",
+  serverName: "",
+});
+
+/** 当前正在使用的第三方档案。 */
+const currentAuthlib = computed(() => {
+  const id = state.value?.activeAuthlibId;
+  return authlibProfiles.value.find((profile) => profile.id === id) ?? null;
+});
+
+/** 除当前使用中之外的第三方档案。 */
+const otherAuthlibProfiles = computed(() => {
+  const id = state.value?.activeAuthlibId;
+  return authlibProfiles.value.filter((profile) => profile.id !== id);
+});
+
+/** 常见的第三方皮肤站，省得用户去翻文档。 */
+const AUTHLIB_PRESETS: { label: string; apiRoot: string }[] = [
+  { label: "LittleSkin", apiRoot: "https://littleskin.cn/api/yggdrasil" },
+  { label: "Ely.by", apiRoot: "https://api.ely.by/api/yggdrasil" },
 ];
 
 /** 当前正在使用的离线档案（微软账户占用时为空）。 */
@@ -133,6 +166,7 @@ watch(
   () => state.value?.kind,
   (kind) => {
     if (kind === "microsoft") activeTab.value = "microsoft";
+    else if (kind === "authlib") activeTab.value = "authlib";
     else if (kind === "offline") activeTab.value = "offline";
   },
 );
@@ -272,6 +306,63 @@ async function logout(): Promise<void> {
     busy.value = "";
   }
 }
+
+/* ---------------- 第三方登录（Yggdrasil） ---------------- */
+
+/** 填入常见的皮肤站地址，用户改个域名就能用。 */
+function applyAuthlibPreset(apiRoot: string, serverName: string): void {
+  authlibForm.value.apiRoot = apiRoot;
+  authlibForm.value.serverName = serverName;
+}
+
+async function loginAuthlib(): Promise<void> {
+  if (busy.value) return;
+  const form = authlibForm.value;
+  if (!form.apiRoot.trim() || !form.username.trim() || !form.password) {
+    error.value = "请填写服务器地址、账号与密码";
+    return;
+  }
+
+  busy.value = "authlib-login";
+  error.value = "";
+  try {
+    state.value = await authlibLogin(
+      form.apiRoot.trim(),
+      form.username.trim(),
+      form.password,
+      form.serverName.trim() || null,
+    );
+    toast.success("第三方登录成功", state.value.name);
+    // 密码只在这一刻存在于内存里，用完立刻清掉
+    authlibForm.value.password = "";
+    activeTab.value = "authlib";
+  } catch (err) {
+    const message = toMessage(err);
+    error.value = message;
+    void log.error(`第三方登录失败: ${message}`, { component: "AccountModal" });
+  } finally {
+    busy.value = "";
+  }
+}
+
+function switchAuthlib(id: string): void {
+  if (isAuthlib.value && state.value?.activeAuthlibId === id) return;
+  void run(`switch-authlib-${id}`, () => switchAuthlibAccount(id)).then(() => {
+    if (!error.value) toast.success("已切换第三方账户", state.value?.name ?? "");
+  });
+}
+
+function removeAuthlib(id: string, name: string): void {
+  void askConfirm({
+    title: `退出第三方账户「${name}」？`,
+    message: "会删除本机保存的登录令牌，皮肤站上的账号不受影响。",
+    confirmText: "退出",
+    danger: true,
+  }).then((confirmed) => {
+    if (!confirmed) return;
+    void run(`remove-authlib-${id}`, () => logoutAuthlibAccount(id));
+  });
+}
 </script>
 
 <template>
@@ -282,12 +373,14 @@ async function logout(): Promise<void> {
           class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
         >
           <BadgeCheck v-if="isMicrosoft" :size="18" />
+          <ShieldCheck v-else-if="isAuthlib" :size="18" />
           <UserRound v-else :size="18" />
         </div>
         <div class="min-w-0">
           <h2 class="text-h2 font-semibold leading-5 text-ink">账户中心</h2>
           <p class="truncate text-micro text-ink-muted">
-            {{ isMicrosoft ? "微软正版账户" : "离线档案" }} · {{ state?.name ?? "读取中" }}
+            {{ isMicrosoft ? "微软正版账户" : isAuthlib ? "第三方账户" : "离线档案" }} ·
+            {{ state?.name ?? "读取中" }}
           </p>
         </div>
       </div>
@@ -419,7 +512,7 @@ async function logout(): Promise<void> {
       </div>
 
       <!-- ================= 微软正版 ================= -->
-      <div v-else class="flex flex-col gap-4">
+      <div v-else-if="activeTab === 'microsoft'" class="flex flex-col gap-4">
         <p
           v-if="ephemeral"
           class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
@@ -525,6 +618,160 @@ async function logout(): Promise<void> {
             <p class="text-micro text-ink-muted">登录后会自动复制设备码并打开浏览器</p>
           </div>
         </template>
+      </div>
+
+      <!-- ================= 第三方登录 ================= -->
+      <div v-else class="flex flex-col gap-4">
+        <p
+          v-if="ephemeral"
+          class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
+        >
+          系统凭据管理器不可用，登录令牌只在本次运行内有效，重启后需要重新登录。
+        </p>
+
+        <!-- 正在使用第三方账户 -->
+        <div
+          v-if="currentAuthlib"
+          class="flex items-center gap-3 rounded-lg border border-line bg-surface-muted/50 px-4 py-3"
+        >
+          <span
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-h2 font-semibold text-ink-soft"
+          >
+            {{ currentAuthlib.name.slice(0, 1).toUpperCase() }}
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="truncate text-h2 font-semibold text-ink">
+                {{ currentAuthlib.name }}
+              </span>
+              <span
+                class="shrink-0 rounded-xs bg-ink/6 px-1.5 py-0.5 text-micro font-medium text-ink-muted"
+              >
+                使用中
+              </span>
+            </div>
+            <p class="mt-0.5 truncate font-mono text-micro text-ink-muted">
+              {{ currentAuthlib.serverName || currentAuthlib.apiRoot }}
+            </p>
+          </div>
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="!!busy"
+            @click="removeAuthlib(currentAuthlib.id, currentAuthlib.name)"
+          >
+            退出
+          </AppButton>
+        </div>
+
+        <!-- 已登录但当前使用的是别的账户 -->
+        <div v-if="otherAuthlibProfiles.length" class="flex flex-col gap-2">
+          <h3 class="px-1 text-caption font-medium text-ink-muted">切换其他第三方账户</h3>
+          <div
+            class="flex flex-col divide-y divide-line/50 overflow-hidden rounded-lg border border-line bg-surface"
+          >
+            <div
+              v-for="profile in otherAuthlibProfiles"
+              :key="profile.id"
+              class="group flex items-center justify-between px-4 py-2.5 transition-fast hover:bg-surface-muted"
+            >
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-not-allowed"
+                :disabled="!!busy"
+                @click="switchAuthlib(profile.id)"
+              >
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-body font-semibold text-ink-soft"
+                >
+                  {{ profile.name.slice(0, 1).toUpperCase() }}
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-body font-medium text-ink-soft">
+                    {{ profile.name }}
+                  </span>
+                  <span class="block truncate font-mono text-micro text-ink-muted">
+                    {{ profile.serverName || profile.apiRoot }}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-0 transition-all hover:bg-danger-soft hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/35"
+                :title="`退出 ${profile.name}`"
+                :disabled="!!busy"
+                @click="removeAuthlib(profile.id, profile.name)"
+              >
+                <Trash2 :size="13" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 登录表单 -->
+        <div class="flex flex-col gap-2.5 rounded-lg border border-dashed border-line px-4 py-3">
+          <div class="flex items-center gap-1.5 text-body font-semibold text-ink">
+            <ShieldCheck :size="14" class="text-ink-muted" />
+            使用第三方皮肤站账号登录
+          </div>
+
+          <div class="flex gap-1.5">
+            <button
+              v-for="preset in AUTHLIB_PRESETS"
+              :key="preset.apiRoot"
+              type="button"
+              class="rounded-md border border-line px-2 py-1 text-micro font-medium text-ink-muted transition-colors hover:border-brand-500 hover:text-ink-soft"
+              :disabled="!!busy"
+              @click="applyAuthlibPreset(preset.apiRoot, preset.label)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="text-caption text-ink-muted">Yggdrasil 服务器地址</span>
+            <AppInput
+              v-model="authlibForm.apiRoot"
+              placeholder="https://littleskin.cn/api/yggdrasil"
+              :disabled="!!busy"
+            />
+          </div>
+
+          <div class="flex gap-2">
+            <div class="flex flex-1 flex-col gap-1.5">
+              <span class="text-caption text-ink-muted">账号</span>
+              <AppInput
+                v-model="authlibForm.username"
+                placeholder="皮肤站用户名或邮箱"
+                :disabled="!!busy"
+              />
+            </div>
+            <div class="flex flex-1 flex-col gap-1.5">
+              <span class="text-caption text-ink-muted">密码</span>
+              <AppInput
+                v-model="authlibForm.password"
+                type="password"
+                placeholder="皮肤站密码"
+                :disabled="!!busy"
+                @submit="loginAuthlib"
+              />
+            </div>
+          </div>
+
+          <AppButton
+            variant="primary"
+            :loading="busy === 'authlib-login'"
+            :disabled="!!busy || !authlibForm.apiRoot.trim() || !authlibForm.username.trim() || !authlibForm.password"
+            @click="loginAuthlib"
+          >
+            登录
+          </AppButton>
+
+          <p class="text-micro leading-5 text-ink-muted">
+            密码只用于换取登录令牌，不会保存。令牌存在系统凭据管理器里，
+            重启后仍可自动续期。
+          </p>
+        </div>
       </div>
 
       <p

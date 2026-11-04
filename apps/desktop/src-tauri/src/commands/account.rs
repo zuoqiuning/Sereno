@@ -1,8 +1,10 @@
-//! 账户命令：微软正版登录 / 退出 / 离线用户名。
+//! 账户命令：微软正版登录 / 第三方登录 / 退出 / 离线用户名。
 
 use sereno_core::Result;
-use sereno_core::account::{microsoft, offline, secure_store};
-use sereno_core::models::account::{AccountState, DeviceCodeInfo, MicrosoftConfig, kind};
+use sereno_core::account::{authlib, microsoft, offline, secure_store};
+use sereno_core::models::account::{
+    AccountState, AuthlibProfile, DeviceCodeInfo, MicrosoftConfig, kind,
+};
 
 use crate::state::AppState;
 
@@ -234,4 +236,91 @@ pub async fn warm_account_session(state: tauri::State<'_, AppState>) -> Result<(
         tracing::warn!(%error, "微软会话预热失败，启动时会重试");
     }
     Ok(())
+}
+
+/// 第三方登录（authlib-injective / Yggdrasil）。
+///
+/// 用户提供 Yggdrasil 服务器地址与账号密码，命令用它们换取访问令牌。
+///
+/// **密码只在这一次请求里出现**：不落盘、不进日志、不进诊断包。
+/// 换来的令牌只进系统密钥库，设置文件里只留公开资料。
+#[tauri::command]
+#[specta::specta]
+pub async fn authlib_login(
+    api_root: String,
+    username: String,
+    password: String,
+    server_name: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let settings = state.snapshot_settings()?;
+    let client = sereno_core::utils::http::build_client(&settings)?;
+
+    let session = authlib::authenticate(&client, &api_root, &username, &password).await?;
+
+    // 令牌进系统密钥库
+    let store = secure_store::default_store();
+    authlib::persist_session(store.as_ref(), &session)?;
+
+    // 公开资料进设置，并切到该档案
+    let mut next = settings;
+    authlib::save_profile(&mut next, &session, server_name.as_deref().unwrap_or(""));
+    state.update_settings(next)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 切换到指定的第三方档案。
+#[tauri::command]
+#[specta::specta]
+pub fn switch_authlib_account(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let mut settings = state.snapshot_settings()?;
+    authlib::switch(&mut settings, &id)?;
+    state.update_settings(settings)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 退出第三方登录：删掉凭据并移除档案。
+#[tauri::command]
+#[specta::specta]
+pub async fn logout_authlib_account(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let mut settings = state.snapshot_settings()?;
+
+    // 先让服务端作废令牌（失败也不影响本地退出）
+    if let Some(profile) = settings
+        .account
+        .authlib_accounts
+        .iter()
+        .find(|entry| entry.id == id)
+    {
+        let client = sereno_core::utils::http::build_client(&settings)?;
+        if let Ok(session) = authlib::session(&client, profile).await {
+            authlib::invalidate(&client, &profile.api_root, &session.access_token).await?;
+        }
+        let store = secure_store::default_store();
+        authlib::clear_session(store.as_ref(), profile).await?;
+    }
+
+    authlib::remove(&mut settings, &id)?;
+    state.update_settings(settings)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 列出已登录的第三方档案。
+#[tauri::command]
+#[specta::specta]
+pub fn list_authlib_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<AuthlibProfile>> {
+    let settings = state.snapshot_settings()?;
+    Ok(authlib::profiles(&settings))
 }

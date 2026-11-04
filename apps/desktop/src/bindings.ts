@@ -234,6 +234,21 @@ export const commands = {
 	 */
 	warmAccountSession: () => typedError<null, LauncherError>(__TAURI_INVOKE("warm_account_session")),
 	/**
+	 *  第三方登录（authlib-injective / Yggdrasil）。
+	 * 
+	 *  用户提供 Yggdrasil 服务器地址与账号密码，命令用它们换取访问令牌。
+	 * 
+	 *  **密码只在这一次请求里出现**：不落盘、不进日志、不进诊断包。
+	 *  换来的令牌只进系统密钥库，设置文件里只留公开资料。
+	 */
+	authlibLogin: (apiRoot: string, username: string, password: string, serverName: string | null) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("authlib_login", { apiRoot, username, password, serverName })),
+	/**  切换到指定的第三方档案。 */
+	switchAuthlibAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("switch_authlib_account", { id })),
+	/**  退出第三方登录：删掉凭据并移除档案。 */
+	logoutAuthlibAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("logout_authlib_account", { id })),
+	/**  列出已登录的第三方档案。 */
+	listAuthlibAccounts: () => typedError<AuthlibProfile_Serialize[], LauncherError>(__TAURI_INVOKE("list_authlib_accounts")),
+	/**
 	 *  打开微软设备码授权页。
 	 * 
 	 *  地址来自微软接口返回值，但仍做域名白名单校验：
@@ -276,7 +291,7 @@ export type AccountSettings = AccountSettings_Serialize | AccountSettings_Deseri
  *  微软的 Refresh Token 在系统密钥库里，两者故意分开。
  */
 export type AccountSettings_Deserialize = {
-	/**  `offline` / `microsoft`。 */
+	/**  `offline` / `microsoft` / `authlib`。 */
 	kind?: string,
 	/**  微软资料；离线账户为 null。 */
 	microsoft?: MicrosoftProfile | null,
@@ -284,6 +299,14 @@ export type AccountSettings_Deserialize = {
 	offlineAccounts?: OfflineProfile[],
 	/**  当前选中的离线档案 ID。 */
 	activeOfflineId?: string | null,
+	/**
+	 *  已登录过的第三方（Yggdrasil）档案。
+	 * 
+	 *  这里只存公开资料；访问令牌在系统密钥库里。
+	 */
+	authlibAccounts?: AuthlibProfile_Deserialize[],
+	/**  当前选中的第三方档案 ID。 */
+	activeAuthlibId?: string | null,
 };
 
 /**
@@ -293,7 +316,7 @@ export type AccountSettings_Deserialize = {
  *  微软的 Refresh Token 在系统密钥库里，两者故意分开。
  */
 export type AccountSettings_Serialize = {
-	/**  `offline` / `microsoft`。 */
+	/**  `offline` / `microsoft` / `authlib`。 */
 	kind: string,
 	/**  微软资料；离线账户为 null。 */
 	microsoft: MicrosoftProfile | null,
@@ -301,6 +324,14 @@ export type AccountSettings_Serialize = {
 	offlineAccounts: OfflineProfile[],
 	/**  当前选中的离线档案 ID。 */
 	activeOfflineId: string | null,
+	/**
+	 *  已登录过的第三方（Yggdrasil）档案。
+	 * 
+	 *  这里只存公开资料；访问令牌在系统密钥库里。
+	 */
+	authlibAccounts: AuthlibProfile_Serialize[],
+	/**  当前选中的第三方档案 ID。 */
+	activeAuthlibId: string | null,
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
@@ -308,7 +339,7 @@ export type AccountState = AccountState_Serialize | AccountState_Deserialize;
 
 /**  当前登录态，前端据此渲染账户卡片。 */
 export type AccountState_Deserialize = {
-	/**  `offline` / `microsoft`。 */
+	/**  `offline` / `microsoft` / `authlib`。 */
 	kind: string,
 	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
 	name: string,
@@ -324,11 +355,17 @@ export type AccountState_Deserialize = {
 	activeOfflineId?: string | null,
 	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
 	microsoftProfile?: MicrosoftProfile | null,
+	/**  已登录过的第三方档案。 */
+	authlibProfiles: AuthlibProfile_Deserialize[],
+	/**  当前选中的第三方档案 ID。 */
+	activeAuthlibId?: string | null,
+	/**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
+	authlibApiRoot?: string | null,
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
 export type AccountState_Serialize = {
-	/**  `offline` / `microsoft`。 */
+	/**  `offline` / `microsoft` / `authlib`。 */
 	kind: string,
 	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
 	name: string,
@@ -344,6 +381,12 @@ export type AccountState_Serialize = {
 	activeOfflineId: string | null,
 	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
 	microsoftProfile: MicrosoftProfile | null,
+	/**  已登录过的第三方档案。 */
+	authlibProfiles: AuthlibProfile_Serialize[],
+	/**  当前选中的第三方档案 ID。 */
+	activeAuthlibId: string | null,
+	/**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
+	authlibApiRoot: string | null,
 };
 
 export type AppInfo = {
@@ -410,6 +453,49 @@ export type AssetIndex_Serialize = {
 	size: number,
 	totalSize: number,
 	url: string,
+};
+
+/**
+ *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
+ * 
+ *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
+ */
+export type AuthlibProfile = AuthlibProfile_Serialize | AuthlibProfile_Deserialize;
+
+/**
+ *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
+ * 
+ *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
+ */
+export type AuthlibProfile_Deserialize = {
+	/**  稳定 ID（服务器 + 用户名的散列）。 */
+	id: string,
+	/**  游戏内显示名。 */
+	name: string,
+	/**  带连字符的 UUID。 */
+	uuid: string,
+	/**  Yggdrasil 服务器的 API Root。 */
+	apiRoot: string,
+	/**  服务器显示名（用户自定义，如「LittleSkin」）。 */
+	serverName?: string,
+};
+
+/**
+ *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
+ * 
+ *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
+ */
+export type AuthlibProfile_Serialize = {
+	/**  稳定 ID（服务器 + 用户名的散列）。 */
+	id: string,
+	/**  游戏内显示名。 */
+	name: string,
+	/**  带连字符的 UUID。 */
+	uuid: string,
+	/**  Yggdrasil 服务器的 API Root。 */
+	apiRoot: string,
+	/**  服务器显示名（用户自定义，如「LittleSkin」）。 */
+	serverName: string,
 };
 
 /**  CurseForge 文件依赖：relationType = 3 表示必须安装。 */
@@ -1023,7 +1109,7 @@ export type LatestVersions = {
  *  `rename_all` 作用于**变体名**，`rename_all_fields` 作用于**变体内的字段名**——
  *  两者都要有，前端才能拿到 `requiredMajor` 而不是 `required_major`。
  */
-export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | { type: "curseForgeKeyMissing" } | { type: "resourceNotFound"; projectId: string } | { type: "io"; message: string } | { type: "parse"; message: string } | { type: "invalidConfig"; key: string; message: string } | { type: "cancelled" } | { type: "internal"; message: string };
+export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | { type: "curseForgeKeyMissing" } | { type: "resourceNotFound"; projectId: string } | { type: "io"; message: string } | { type: "parse"; message: string } | { type: "invalidConfig"; key: string; message: string } | { type: "cancelled" } | { type: "internal"; message: string };
 
 export type Library = Library_Serialize | Library_Deserialize;
 

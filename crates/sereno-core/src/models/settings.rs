@@ -212,7 +212,7 @@ impl Default for ProfileSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSettings {
-    /// `offline` / `microsoft`。
+    /// `offline` / `microsoft` / `authlib`。
     #[serde(default = "default_account_kind")]
     pub kind: String,
     /// 微软资料；离线账户为 null。
@@ -224,6 +224,14 @@ pub struct AccountSettings {
     /// 当前选中的离线档案 ID。
     #[serde(default)]
     pub active_offline_id: Option<String>,
+    /// 已登录过的第三方（Yggdrasil）档案。
+    ///
+    /// 这里只存公开资料；访问令牌在系统密钥库里。
+    #[serde(default)]
+    pub authlib_accounts: Vec<crate::models::account::AuthlibProfile>,
+    /// 当前选中的第三方档案 ID。
+    #[serde(default)]
+    pub active_authlib_id: Option<String>,
 }
 
 fn default_account_kind() -> String {
@@ -237,6 +245,8 @@ impl Default for AccountSettings {
             microsoft: None,
             offline_accounts: Vec::new(),
             active_offline_id: None,
+            authlib_accounts: Vec::new(),
+            active_authlib_id: None,
         }
     }
 }

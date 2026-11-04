@@ -1,5 +1,10 @@
 import { commands } from "@/bindings";
-import type { AccountState, DeviceCodeInfo, MicrosoftConfig } from "@/types";
+import type {
+  AccountState,
+  AuthlibProfile,
+  DeviceCodeInfo,
+  MicrosoftConfig,
+} from "@/types";
 
 import { callCommand } from "./invoke";
 
@@ -76,6 +81,36 @@ export async function cancelMicrosoftLogin(): Promise<void> {
 /** 微软登录配置（客户端 ID 是否就绪）。 */
 export function getMicrosoftConfig(): Promise<MicrosoftConfig> {
   return callCommand(() => commands.getMicrosoftConfig());
+}
+
+/**
+ * 第三方登录（Yggdrasil / authlib-injective）。
+ *
+ * 密码只在这一次调用里出现——后端用它换取访问令牌后立即丢弃，
+ * 令牌则存进系统凭据管理器。
+ */
+export function authlibLogin(
+  apiRoot: string,
+  username: string,
+  password: string,
+  serverName: string | null,
+): Promise<AccountState> {
+  return callCommand(() => commands.authlibLogin(apiRoot, username, password, serverName));
+}
+
+/** 切换到已登录过的第三方档案。 */
+export function switchAuthlibAccount(id: string): Promise<AccountState> {
+  return callCommand(() => commands.switchAuthlibAccount(id));
+}
+
+/** 退出第三方账户：删除本机令牌并移除档案。 */
+export function logoutAuthlibAccount(id: string): Promise<AccountState> {
+  return callCommand(() => commands.logoutAuthlibAccount(id));
+}
+
+/** 已登录的第三方档案列表。 */
+export function listAuthlibAccounts(): Promise<AuthlibProfile[]> {
+  return callCommand(() => commands.listAuthlibAccounts());
 }
 
 /** 启动时预热微软会话，失败不阻塞。 */

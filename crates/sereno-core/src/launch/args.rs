@@ -17,7 +17,7 @@ pub struct LaunchOptions {
     pub uuid: String,
     /// 正版访问令牌。离线账户用 `"0"`。
     pub access_token: String,
-    /// `legacy`（离线）/ `msa`（微软正版）。
+    /// `legacy`（离线）/ `msa`（微软正版）/ `mojang`（第三方 Yggdrasil）。
     pub user_type: String,
     /// Xbox 用户 ID。离线账户为空；正版账户必须提供真实 XUID。
     pub xuid: String,
@@ -27,6 +27,11 @@ pub struct LaunchOptions {
     pub auto_chinese: bool,
     /// 实例级附加 JVM 参数，追加在启动器基础参数之后。
     pub extra_jvm_args: Vec<String>,
+    /// 第三方登录（authlib-injective）的 `-javaagent` 参数。
+    ///
+    /// 形如 `-javaagent:<injector.jar>=<API Root>`。
+    /// 有它时游戏内的鉴权请求会被改写到 Yggdrasil 服务，而不是 Mojang。
+    pub authlib_javaagent: Option<String>,
 }
 
 pub fn build_args(
@@ -93,6 +98,10 @@ pub fn build_args(
         "0".to_string()
     };
 
+    // 第三方登录（Yggdrasil）用 `mojang` 这个 userType——
+    // authlib-injector 会拦截鉴权请求并转发到 Yggdrasil 服务，
+    // 但游戏本身仍按「正版」流程走，所以 userType 必须是 mojang。
+
     let mut ctx: HashMap<&str, &str> = HashMap::new();
     ctx.insert("auth_player_name", username);
     ctx.insert("version_name", &version.id);
@@ -148,6 +157,14 @@ pub fn build_args(
     jvm_args.push("-Dfile.encoding=UTF-8".to_string());
     jvm_args.push("-Dstdout.encoding=UTF-8".to_string());
     jvm_args.push("-Dstderr.encoding=UTF-8".to_string());
+
+    // 第三方登录（authlib-injective）：把鉴权请求改写到 Yggdrasil 服务。
+    //
+    // **必须放在 `-cp` 之前**：`-javaagent` 是 JVM 启动期参数，
+    // 放在 classpath 之后虽然也能生效，但顺序固定更不容易出错。
+    if let Some(agent) = options.authlib_javaagent.as_deref() {
+        jvm_args.push(agent.to_string());
+    }
 
     if let Some(logging) = &version.logging
         && let Some(client) = &logging.client
@@ -359,6 +376,7 @@ mod tests {
                 memory_mb: 2048,
                 auto_chinese: false,
                 extra_jvm_args: Vec::new(),
+                authlib_javaagent: None,
             },
         )
         .unwrap();
@@ -397,6 +415,7 @@ mod tests {
                 memory_mb: 2048,
                 auto_chinese: false,
                 extra_jvm_args: vec!["-XX:+UseG1GC".into()],
+                authlib_javaagent: None,
             },
         )
         .unwrap();
@@ -446,6 +465,7 @@ mod tests {
                 memory_mb: 2048,
                 auto_chinese: false,
                 extra_jvm_args: Vec::new(),
+                authlib_javaagent: None,
             },
         )
         .unwrap();
@@ -488,6 +508,7 @@ mod tests {
                 memory_mb: 2048,
                 auto_chinese: false,
                 extra_jvm_args: Vec::new(),
+                authlib_javaagent: None,
             },
         )
         .unwrap();
@@ -537,6 +558,7 @@ mod tests {
                 memory_mb: 2048,
                 auto_chinese: false,
                 extra_jvm_args: Vec::new(),
+                authlib_javaagent: None,
             },
         )
         .unwrap();
@@ -546,6 +568,72 @@ mod tests {
                 .iter()
                 .any(|arg| arg == &offline_uuid("Player")),
             "离线账户必须派生 UUID：{:?}",
+            args.game_args
+        );
+    }
+
+    /// 第三方登录必须把 `-javaagent` 放到 JVM 参数里，且在 `-cp` 之前。
+    #[test]
+    fn authlib_javaagent_is_injected_before_classpath() {
+        let json = r#"{
+            "id": "1.21.1",
+            "type": "release",
+            "mainClass": "net.minecraft.client.main.Main",
+            "libraries": [],
+            "arguments": {
+                "game": [
+                    "--uuid", "${auth_uuid}",
+                    "--accessToken", "${auth_access_token}",
+                    "--userType", "${user_type}"
+                ]
+            }
+        }"#;
+        let version: VersionDetail = serde_json::from_str(json).unwrap();
+        let agent =
+            "-javaagent:C:/cache/authlib-injector-1.2.8.jar=https://littleskin.cn/api/yggdrasil"
+                .to_string();
+        let args = build_args(
+            &version,
+            "cp.jar",
+            "natives",
+            "game",
+            "assets",
+            "libraries",
+            &LaunchOptions {
+                username: "Steve".into(),
+                uuid: "8667ba71-b85a-4004-af54-457a9734eed7".into(),
+                access_token: "ygg-token".into(),
+                user_type: "mojang".into(),
+                xuid: String::new(),
+                memory_mb: 2048,
+                auto_chinese: false,
+                extra_jvm_args: Vec::new(),
+                authlib_javaagent: Some(agent.clone()),
+            },
+        )
+        .unwrap();
+
+        let agent_index = args
+            .jvm_args
+            .iter()
+            .position(|arg| arg == &agent)
+            .expect("必须注入 -javaagent");
+        let cp_index = args
+            .jvm_args
+            .iter()
+            .position(|arg| arg == "-cp")
+            .expect("必须有 -cp");
+        assert!(agent_index < cp_index, "-javaagent 必须位于 -cp 之前");
+
+        // 第三方登录按「正版」流程走，Yggdrasil 令牌原样传入
+        assert!(
+            args.game_args.iter().any(|arg| arg == "ygg-token"),
+            "Yggdrasil 令牌必须原样传入：{:?}",
+            args.game_args
+        );
+        assert!(
+            args.game_args.iter().any(|arg| arg == "mojang"),
+            "第三方登录的 userType 必须是 mojang：{:?}",
             args.game_args
         );
     }

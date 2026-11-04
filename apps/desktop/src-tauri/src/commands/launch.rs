@@ -55,8 +55,9 @@ pub async fn launch_game(
     let java =
         sereno_core::java::detector::resolve(version.required_java_major(), java_path).await?;
 
-    // 账户：微软正版用真实令牌、UUID 与 XUID；离线账户用档案里固化的 UUID。
-    let (username, uuid, access_token, user_type, xuid) =
+    // 账户：微软正版用真实令牌、UUID 与 XUID；离线账户用档案里固化的 UUID；
+    // 第三方登录用 Yggdrasil 的令牌，并注入 authlib-injector。
+    let (username, uuid, access_token, user_type, xuid, authlib_javaagent) =
         if settings.account.kind == sereno_core::models::account::kind::MICROSOFT {
             let session = sereno_core::account::microsoft::session(&client).await?;
             (
@@ -65,6 +66,34 @@ pub async fn launch_game(
                 session.access_token,
                 "msa".to_string(),
                 session.xuid,
+                None,
+            )
+        } else if settings.account.kind == sereno_core::models::account::kind::AUTHLIB {
+            let profile = sereno_core::account::authlib::active(&settings).ok_or_else(|| {
+                LauncherError::InvalidConfig {
+                    key: "account".into(),
+                    message: "第三方账号已失效，请重新登录".into(),
+                }
+            })?;
+            let session = sereno_core::account::authlib::session(&client, &profile).await?;
+
+            // 注入器不存在时自动下载（带 SHA-256 校验）。
+            // 失败就让启动失败——没有注入器的第三方登录进不去游戏，
+            // 与其启动后一堆报错，不如直接说清楚。
+            let jar = sereno_core::account::authlib::ensure_injector(
+                &client,
+                settings.download.prefer_mirror,
+            )
+            .await?;
+            let agent = sereno_core::account::authlib::javaagent_arg(&jar, &profile.api_root);
+
+            (
+                session.name,
+                session.uuid,
+                session.access_token,
+                "mojang".to_string(),
+                String::new(),
+                Some(agent),
             )
         } else {
             let profile = sereno_core::account::offline::active(&settings);
@@ -74,6 +103,7 @@ pub async fn launch_game(
                 "0".to_string(),
                 "legacy".to_string(),
                 String::new(),
+                None,
             )
         };
 
@@ -93,6 +123,7 @@ pub async fn launch_game(
                 .clamp(512, 32768),
             auto_chinese: settings.logging.auto_language_chinese,
             extra_jvm_args: metadata.jvm_args.clone(),
+            authlib_javaagent,
         },
     };
 
