@@ -23,6 +23,27 @@ export function setLocalResourceEnabled(
   ).then(() => undefined);
 }
 
+/** 批量启用 / 禁用本地资源，返回实际处理数量。 */
+export function setLocalResourcesEnabled(
+  instanceId: string,
+  kind: LocalResourceKind,
+  fileNames: string[],
+  enabled: boolean,
+): Promise<number> {
+  return callCommand(() =>
+    commands.setLocalResourcesEnabled(instanceId, kind, fileNames, enabled),
+  );
+}
+
+/** 删除本地资源（单个或批量），返回实际删除数量。 */
+export function removeLocalResources(
+  instanceId: string,
+  kind: LocalResourceKind,
+  fileNames: string[],
+): Promise<number> {
+  return callCommand(() => commands.removeLocalResources(instanceId, kind, fileNames));
+}
+
 export function openLocalResourceFolder(
   instanceId: string,
   kind: LocalResourceKind,

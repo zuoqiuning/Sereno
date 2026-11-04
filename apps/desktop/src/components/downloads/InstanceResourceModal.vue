@@ -9,6 +9,7 @@ import {
   Puzzle,
   RefreshCw,
   Sparkles,
+  Trash2,
   Upload,
 } from "@lucide/vue";
 
@@ -22,9 +23,12 @@ import {
   importLocalResources,
   listLocalResources,
   openLocalResourceFolder,
+  removeLocalResources,
   setLocalResourceEnabled,
+  setLocalResourcesEnabled,
   updateLocalResource,
 } from "@/api/local";
+import { askConfirm } from "@/composables/useConfirm";
 import type {
   InstanceMetadata,
   LocalResource,
@@ -79,6 +83,9 @@ const importing = ref(false);
 const toggling = ref<string | null>(null);
 const updating = ref<string | null>(null);
 const updatingAll = ref(false);
+const batching = ref(false);
+/** 勾选中的文件：批量启用 / 禁用 / 删除的目标。 */
+const selected = ref<string[]>([]);
 const metadata = ref<Record<string, LocalResourceMeta>>({});
 const updates = ref<Record<string, LocalResourceUpdate>>({});
 
@@ -141,6 +148,80 @@ function countFor(filterId: FilterId): number {
   return items.value.length;
 }
 
+/** 当前筛选结果是否已全选。 */
+const allSelected = computed(
+  () =>
+    filteredItems.value.length > 0 &&
+    filteredItems.value.every((item) => selected.value.includes(item.fileName)),
+);
+
+function isSelected(fileName: string): boolean {
+  return selected.value.includes(fileName);
+}
+
+function toggleSelect(fileName: string): void {
+  selected.value = isSelected(fileName)
+    ? selected.value.filter((name) => name !== fileName)
+    : [...selected.value, fileName];
+}
+
+function toggleSelectAll(): void {
+  selected.value = allSelected.value ? [] : filteredItems.value.map((item) => item.fileName);
+}
+
+function clearSelection(): void {
+  selected.value = [];
+}
+
+/** 批量启用 / 禁用。 */
+async function batchSetEnabled(enabled: boolean): Promise<void> {
+  if (selected.value.length === 0) return;
+  const names = [...selected.value];
+  batching.value = true;
+  try {
+    const count = await setLocalResourcesEnabled(
+      props.instance.id,
+      activeKind.value,
+      names,
+      enabled,
+    );
+    setNotice(`已${enabled ? "启用" : "禁用"} ${count} 个资源`, "success");
+    selected.value = [];
+    await loadResources();
+  } catch (err) {
+    setNotice(`批量操作失败：${toErrorMessage(err)}`, "error");
+  } finally {
+    batching.value = false;
+  }
+}
+
+/** 删除一个或多个本地资源。 */
+async function removeFiles(fileNames: string[]): Promise<void> {
+  if (fileNames.length === 0) return;
+  const ok = await askConfirm({
+    title:
+      fileNames.length === 1
+        ? `删除「${fileNames[0]}」？`
+        : `删除选中的 ${fileNames.length} 个资源？`,
+    message: "文件会从实例目录中永久删除，需要重新下载才能恢复。",
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!ok) return;
+
+  batching.value = true;
+  try {
+    const count = await removeLocalResources(props.instance.id, activeKind.value, fileNames);
+    setNotice(`已删除 ${count} 个资源`, "success");
+    selected.value = [];
+    await loadResources();
+  } catch (err) {
+    setNotice(`删除失败：${toErrorMessage(err)}`, "error");
+  } finally {
+    batching.value = false;
+  }
+}
+
 function setNotice(message: string, tone: "success" | "error" | "muted" = "muted"): void {
   notice.value = message;
   noticeTone.value = tone;
@@ -149,6 +230,7 @@ function setNotice(message: string, tone: "success" | "error" | "muted" = "muted
 async function loadResources(): Promise<void> {
   loading.value = true;
   error.value = "";
+  selected.value = [];
   try {
     items.value = await listLocalResources(props.instance.id, activeKind.value);
   } catch (err) {
@@ -390,16 +472,26 @@ onMounted(() => {
         </button>
       </div>
 
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1">
+          <button
+            v-for="option in filterOptions"
+            :key="option.id"
+            type="button"
+            class="rounded-md px-2.5 py-1 text-caption font-medium transition-colors"
+            :class="filter === option.id ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5'"
+            @click="filter = option.id"
+          >
+            {{ option.label }} {{ countFor(option.id) }}
+          </button>
+        </div>
         <button
-          v-for="option in filterOptions"
-          :key="option.id"
+          v-if="filteredItems.length > 0"
           type="button"
-          class="rounded-md px-2.5 py-1 text-caption font-medium transition-colors"
-          :class="filter === option.id ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5'"
-          @click="filter = option.id"
+          class="rounded-md px-2.5 py-1 text-caption font-medium text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink"
+          @click="toggleSelectAll"
         >
-          {{ option.label }} {{ countFor(option.id) }}
+          {{ allSelected ? "取消全选" : `全选 ${filteredItems.length}` }}
         </button>
       </div>
     </div>
@@ -417,6 +509,45 @@ onMounted(() => {
     >
       {{ notice }}
     </p>
+
+    <!-- 批量操作条：勾选后出现，避免每一行都堆按钮 -->
+    <div
+      v-if="selected.length > 0"
+      class="mt-3 flex items-center gap-2 rounded-md bg-surface-muted px-3 py-2"
+    >
+      <span class="text-caption font-medium text-ink-soft">已选 {{ selected.length }} 项</span>
+      <AppButton
+        variant="secondary"
+        size="xs"
+        :disabled="batching"
+        @click="batchSetEnabled(true)"
+      >
+        全部启用
+      </AppButton>
+      <AppButton
+        variant="secondary"
+        size="xs"
+        :disabled="batching"
+        @click="batchSetEnabled(false)"
+      >
+        全部禁用
+      </AppButton>
+      <AppButton
+        variant="danger"
+        size="xs"
+        :loading="batching"
+        @click="removeFiles([...selected])"
+      >
+        删除
+      </AppButton>
+      <button
+        type="button"
+        class="ml-auto text-caption text-ink-muted transition-colors hover:text-ink"
+        @click="clearSelection"
+      >
+        取消选择
+      </button>
+    </div>
 
     <div v-if="loading" class="flex h-64 items-center justify-center">
       <AppLoading :size="64" label="正在读取本地资源…" />
@@ -439,9 +570,19 @@ onMounted(() => {
       <div
         v-for="item in filteredItems"
         :key="item.fileName"
-        class="flex items-center gap-3 rounded-lg border border-line/50 bg-surface px-3 py-2.5"
-        :class="item.enabled ? '' : 'bg-surface-muted/30'"
+        class="flex items-center gap-3 rounded-lg border bg-surface px-3 py-2.5 transition-fast"
+        :class="[
+          item.enabled ? 'border-line/50' : 'border-line/30 bg-surface-muted/30',
+          isSelected(item.fileName) ? 'border-brand-500/45 bg-[var(--alpha-brand-4)]' : '',
+        ]"
       >
+        <input
+          type="checkbox"
+          class="h-3.5 w-3.5 shrink-0 accent-brand-500"
+          :checked="isSelected(item.fileName)"
+          :aria-label="`选择 ${item.displayName}`"
+          @change="toggleSelect(item.fileName)"
+        />
         <img
           v-if="metaFor(item)?.iconUrl || updateFor(item)?.iconUrl"
           :src="metaFor(item)?.iconUrl ?? updateFor(item)?.iconUrl ?? ''"
@@ -495,7 +636,7 @@ onMounted(() => {
           type="button"
           role="switch"
           :aria-checked="item.enabled"
-          :disabled="toggling === item.fileName || updatingAll"
+          :disabled="toggling === item.fileName || updatingAll || batching"
           :title="item.enabled ? '禁用' : '启用'"
           class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40"
           :class="item.enabled ? 'bg-brand-500' : 'bg-ink/15'"
@@ -505,6 +646,16 @@ onMounted(() => {
             class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
             :class="item.enabled ? 'translate-x-4' : ''"
           />
+        </button>
+
+        <button
+          type="button"
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-40"
+          :title="`删除 ${item.displayName}`"
+          :disabled="batching"
+          @click="removeFiles([item.fileName])"
+        >
+          <Trash2 :size="14" />
         </button>
       </div>
     </div>

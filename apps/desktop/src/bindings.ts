@@ -130,6 +130,21 @@ export const commands = {
 	updateLocalResource: (instanceId: string, kind: LocalResourceKind, oldFileName: string, newFileName: string, fileUrl: string, sha1: string | null) => typedError<null, LauncherError>(__TAURI_INVOKE("update_local_resource", { instanceId, kind, oldFileName, newFileName, fileUrl, sha1 })),
 	listLocalResources: (instanceId: string, kind: LocalResourceKind) => typedError<LocalResource[], LauncherError>(__TAURI_INVOKE("list_local_resources", { instanceId, kind })),
 	setLocalResourceEnabled: (instanceId: string, kind: LocalResourceKind, fileName: string, enabled: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("set_local_resource_enabled", { instanceId, kind, fileName, enabled })),
+	/**
+	 *  批量启用 / 禁用本地资源。
+	 * 
+	 *  单条操作用 `set_local_resource_enabled`，批量操作走这里：
+	 *  一次 IPC 往返完成，避免「选中 30 个 Mod」要点 30 次、也发 30 次请求。
+	 */
+	setLocalResourcesEnabled: (instanceId: string, kind: LocalResourceKind, fileNames: string[], enabled: boolean) => typedError<number, LauncherError>(__TAURI_INVOKE("set_local_resources_enabled", { instanceId, kind, fileNames, enabled })),
+	/**
+	 *  删除本地资源（单个或批量）。
+	 * 
+	 *  core 侧 `resource::local::remove` 早已实现，但此前没有对应的命令，
+	 *  结果是**用户在界面上无法删除任何一个已安装的 Mod / 资源包**——
+	 *  只能手动去文件夹里删。这条命令把这个能力接上。
+	 */
+	removeLocalResources: (instanceId: string, kind: LocalResourceKind, fileNames: string[]) => typedError<number, LauncherError>(__TAURI_INVOKE("remove_local_resources", { instanceId, kind, fileNames })),
 	openLocalResourceFolder: (instanceId: string, kind: LocalResourceKind) => typedError<null, LauncherError>(__TAURI_INVOKE("open_local_resource_folder", { instanceId, kind })),
 	importLocalResources: (instanceId: string, kind: LocalResourceKind) => typedError<number, LauncherError>(__TAURI_INVOKE("import_local_resources", { instanceId, kind })),
 	checkLocalResourceUpdates: (instanceId: string, kind: LocalResourceKind) => typedError<LocalResourceScan_Serialize, LauncherError>(__TAURI_INVOKE("check_local_resource_updates", { instanceId, kind })),

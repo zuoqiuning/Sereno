@@ -581,10 +581,41 @@ html.app-visible .sereno-window {
   }
 }
 
+/*
+ * 斜纹流动：给「正在工作」的进度条一点材质感。
+ * 与 progress-shine（追光）叠加使用，两者都不影响可读性。
+ */
+.progress-stripe {
+  background-image: linear-gradient(
+    45deg,
+    rgb(255 255 255 / 0.22) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgb(255 255 255 / 0.22) 50%,
+    rgb(255 255 255 / 0.22) 75%,
+    transparent 75%
+  );
+  background-size: 1rem 1rem;
+  animation: progress-stripe-move 1s linear infinite;
+}
+
+@keyframes progress-stripe-move {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .progress-shine::after {
     animation: none;
     opacity: 0;
+  }
+
+  .progress-stripe {
+    animation: none;
   }
 }
 
