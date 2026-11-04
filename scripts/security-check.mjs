@@ -673,13 +673,21 @@ check("构建", "依赖没有安装期生命周期脚本", () => {
 {
   const kernelDir = join(ROOT, "apps/desktop/src-tauri/resources/easytier");
   check("产物", "联机内核（EasyTier）已就位", () => {
-    const missing = ["easytier-core.exe", "wintun.dll"].filter(
-      (name) => !existsSync(join(kernelDir, name)),
+    // 内核二进制不入库（.gitignore），CI/开发 checkout 里**完全没有**是预期状态：
+    // release.yml 会在构建前显式执行 fetch-easytier.mjs（自带 SHA-256 校验）。
+    // 这里只拦「残缺」：有其中之一但缺另一个、或体积异常——那一定是坏了。
+    const hasCore = existsSync(join(kernelDir, "easytier-core.exe"));
+    const hasTun = existsSync(join(kernelDir, "wintun.dll"));
+    if (!hasCore && !hasTun) {
+      return true; // 干净的 checkout，跳过
+    }
+    const missing = [!hasCore && "easytier-core.exe", !hasTun && "wintun.dll"].filter(
+      Boolean,
     );
     if (missing.length > 0) {
       return {
         ok: false,
-        detail: `缺少 ${missing.join(", ")} —— 运行 node scripts/fetch-easytier.mjs`,
+        detail: `内核残缺：缺少 ${missing.join(", ")} —— 运行 node scripts/fetch-easytier.mjs`,
       };
     }
     const size = statSync(join(kernelDir, "easytier-core.exe")).size;
