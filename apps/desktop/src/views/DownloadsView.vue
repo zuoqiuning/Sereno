@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Loader2, RefreshCw, Search, Check, X } from "@lucide/vue";
 import {
-  Bundle,
-  Clock00,
-  DiamondSword,
-  IronIngot,
-  Map,
-  ShulkerShell,
-} from "minecraft-svg-vue";
+  Check,
+  Database,
+  Gamepad2,
+  Loader2,
+  Package,
+  Palette,
+  Puzzle,
+  RefreshCw,
+  Search,
+  Sparkles,
+  X,
+} from "@lucide/vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AppBadge from "@/components/common/AppBadge.vue";
@@ -32,14 +36,13 @@ import { useVersionStore } from "@/stores/version";
 import { useTaskStore } from "@/stores/task";
 import type { DownloadProgress, VersionSummary, VersionType } from "@/types";
 
-// 分类图标用 Minecraft 原版物品的像素图标——比通用线性图标更贴主题。
 const categories: SideNavItem[] = [
-  { id: "vanilla", label: "原版游戏", icon: IronIngot },
-  { id: "mod", label: "MOD", icon: DiamondSword },
-  { id: "modpack", label: "整合包", icon: ShulkerShell },
-  { id: "resourcepack", label: "资源包", icon: Bundle },
-  { id: "datapack", label: "数据包", icon: Map },
-  { id: "shader", label: "光影", icon: Clock00 },
+  { id: "vanilla", label: "原版游戏", icon: Gamepad2 },
+  { id: "mod", label: "MOD", icon: Puzzle },
+  { id: "modpack", label: "整合包", icon: Package },
+  { id: "resourcepack", label: "资源包", icon: Palette },
+  { id: "datapack", label: "数据包", icon: Database },
+  { id: "shader", label: "光影", icon: Sparkles },
 ];
 
 /** 分类 → 工具条里的一句话提示（不单开一行，宽屏才显示）。 */

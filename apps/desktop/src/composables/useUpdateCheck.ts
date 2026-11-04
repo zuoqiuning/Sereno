@@ -1,96 +1,51 @@
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted } from "vue";
 
-import { checkAppUpdate, getUpdateStatus } from "@/api/update";
-import { isApiError } from "@/api/invoke";
+import { events } from "@/bindings";
 import { log } from "@/api/settings";
-import { useToastStore } from "@/stores/toast";
-import type { AppUpdateInfo } from "@/types";
+import type { UpdateAvailable } from "@/types";
 
 /**
- * 启动时的**静默更新检查**。
+ * 启动时的更新提示接线。
  *
- * ## 为什么放在 composable 而不是 App.vue 里直接写
+ * ## 谁在检查
  *
- * 静默检查有三件容易做错的事，集中在这里做才不会漏：
+ * **Rust 侧**在启动画面（splash）阶段就发起了检查——
+ * 见 `commands/update.rs` 的 `check_update_in_background`。
+ * 它**不等结果**：界面照常显示，检测在后台跑。
  *
- * 1. **必须在应用挂载后才发起**——放在 `main.ts` 顶部会拖慢首屏；
- * 2. **绝不能影响启动**——服务端挂了、证书有问题、网络不通，
- *    都只是「查不到更新」，不能抛到外层让应用起不来；
- * 3. **不要打扰用户**——检查是静默的，只在**真的有新版本**时才提示。
+ * 所以前端**不再自己发请求**，只负责接结果：
+ * 收到 `update-available` 事件就把全局更新卡片叫起来。
  *
- * ## 与「自动检查」开关的关系
+ * ## 为什么不让前端自己查
  *
- * 用户在更新页关掉「启动时自动检查」后，这里就**完全不发请求**——
- * 不是「检查了但静默」，而是一次网络请求都不发。
+ * 前端发起的话要等 `onMounted` 之后才发得出去，
+ * 而那时界面已经在显示了——检查再快也是「界面出来之后才有结果」。
+ * 放到 Rust 的 setup 里，检查能在**窗口显示之前**就开始，
+ * 结果回来时界面早就准备好了。
  */
-/** 把任意抛出物转成可读文案。 */
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
+export function useUpdateCheck(onAvailable: (payload: UpdateAvailable) => void): void {
+  let unlisten: (() => void) | null = null;
 
-export function useUpdateCheck() {
-  const toast = useToastStore();
-
-  /** 检查结果；`null` 表示还没查完或查失败。 */
-  const info = ref<AppUpdateInfo | null>(null);
-  /** 是否正在检查。 */
-  const checking = ref(false);
-
-  /**
-   * 静默检查一次。
-   *
-   * **失败一律吞掉**：更新服务器不可用不是用户的问题，
-   * 也不该在启动路径上抛出异常。
-   */
-  async function checkSilently(): Promise<void> {
-    if (checking.value) return;
-    checking.value = true;
-
-    try {
-      const result = await checkAppUpdate();
-      info.value = result;
-
-      if (result.available) {
-        toast.success(
-          `发现新版本 v${result.latestVersion}`,
-          "可在「更新」页一键安装",
-          5000,
-        );
-      }
-    } catch (err) {
-      // 只记日志，不提示用户——启动路径上的失败不该变成打扰。
-      //
-      // `String(err)` 对 API 错误对象会得到 "[object Object]"，
-      // 排查时什么信息都没有——用 `isApiError` 取真正的消息。
-      void log.warn("静默检查更新失败", {
-        component: "useUpdateCheck",
-        action: "checkSilently",
-        error: toMessage(err),
+  onMounted(() => {
+    void events.updateAvailable
+      .listen((event) => {
+        onAvailable(event.payload);
+      })
+      .then((stop) => {
+        unlisten = stop;
+      })
+      .catch((err) => {
+        // 订阅失败不该影响启动——只是收不到更新提示而已。
+        void log.warn("订阅更新事件失败", {
+          component: "useUpdateCheck",
+          action: "listen",
+          error: String(err),
+        });
       });
-    } finally {
-      checking.value = false;
-    }
-  }
-
-  onMounted(async () => {
-    // 先问用户要不要自动检查——关掉的话一次请求都不该发。
-    try {
-      const status = await getUpdateStatus();
-      if (!status.autoCheck) return;
-    } catch (err) {
-      // 读不到设置时按「开启」处理：静默检查失败不该挡住启动。
-      void log.warn("读取更新设置失败，仍将检查更新", {
-        component: "useUpdateCheck",
-        action: "readStatus",
-        error: toMessage(err),
-      });
-    }
-
-    // 挂载后再触发：先让首屏出来，再去问服务器。
-    void checkSilently();
   });
 
-  return { info, checking, checkSilently };
+  onBeforeUnmount(() => {
+    unlisten?.();
+    unlisten = null;
+  });
 }

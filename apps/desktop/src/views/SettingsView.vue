@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import {
   Coffee,
   Download,
@@ -30,6 +30,7 @@ import { checkAppUpdate, setUpdateAutoCheck } from "@/api/update";
 import { setOfflineAccount } from "@/api/account";
 import { isApiError } from "@/api/invoke";
 import { useToastStore } from "@/stores/toast";
+import { useUpdateStore } from "@/stores/update";
 import { formatBytes } from "@/utils/format";
 import { log } from "@/api/settings";
 import { applyTheme } from "@/utils/theme";
@@ -44,8 +45,8 @@ const sections: SideNavItem[] = [
 ];
 
 const route = useRoute();
-const router = useRouter();
 const toast = useToastStore();
+const updateStore = useUpdateStore();
 
 /** 把任意抛出物转成可读文案。 */
 function toMessage(value: unknown): string {
@@ -114,17 +115,23 @@ async function onToggleAutoCheck(value: boolean): Promise<void> {
   }
 }
 
-/** 手动检查一次更新。 */
+/**
+ * 手动检查一次更新。
+ *
+ * 发现新版本就**叫醒全局更新卡片**——与启动时的自动检查走同一个入口，
+ * 用户看到的东西完全一致（一个常驻卡片，而不是一闪而过的提示）。
+ */
 async function checkNow(): Promise<void> {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
     const result = await checkAppUpdate();
     if (result.available) {
-      toast.success(
-        `发现新版本 v${result.latestVersion}`,
-        `当前版本 v${result.currentVersion}`,
-      );
+      updateStore.show({
+        latestVersion: result.latestVersion,
+        currentVersion: result.currentVersion,
+        notes: result.notes,
+      });
     } else {
       toast.success("已是最新版本", `v${result.currentVersion}`);
     }
@@ -133,11 +140,6 @@ async function checkNow(): Promise<void> {
   } finally {
     checkingUpdate.value = false;
   }
-}
-
-/** 跳到独立的更新页。 */
-function goUpdatePage(): void {
-  void router.push("/update");
 }
 
 /** 磁盘占用：实例、缓存、日志。 */
@@ -694,11 +696,6 @@ onMounted(() => {
                     </p>
                   </div>
 
-                  <div class="mt-4">
-                    <AppButton variant="soft" size="sm" @click="goUpdatePage">
-                      打开更新页
-                    </AppButton>
-                  </div>
                 </AppCard>
                 </template>
               </div>

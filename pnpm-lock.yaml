@@ -181,9 +181,6 @@ importers:
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
-      minecraft-svg-vue:
-        specifier: github:zuoqiuning/minecraft-svg-vue
-        version: https://codeload.github.com/zuoqiuning/minecraft-svg-vue/tar.gz/ac409979ce54b8e5e9e2b243cf9aafcaabf2c579(vue@3.5.43(typescript@6.0.3))
       pinia:
         specifier: 4.1.0
         version: 4.1.0(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.43(typescript@6.0.3))
@@ -1285,13 +1282,6 @@ packages:
 
   magic-string@1.4.5:
     resolution: {integrity: sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w==}
-
-  minecraft-svg-vue@https://codeload.github.com/zuoqiuning/minecraft-svg-vue/tar.gz/ac409979ce54b8e5e9e2b243cf9aafcaabf2c579:
-    resolution: {gitHosted: true, integrity: sha512-graDmgFynXAhn2NdRaaSJiqSKKRuTJzrkU2PriP/IGbLHa5l0ZjXPVqTnTWPjbhJvvn4eVvNLpsL1tZB8z4ZRg==, tarball: https://codeload.github.com/zuoqiuning/minecraft-svg-vue/tar.gz/ac409979ce54b8e5e9e2b243cf9aafcaabf2c579}
-    version: 0.1.0
-    engines: {node: '>=16.0.0'}
-    peerDependencies:
-      vue: ^3.0.0
 
   minimatch@10.2.6:
     resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
@@ -2627,10 +2617,6 @@ snapshots:
   magic-string@1.4.5:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
-
-  minecraft-svg-vue@https://codeload.github.com/zuoqiuning/minecraft-svg-vue/tar.gz/ac409979ce54b8e5e9e2b243cf9aafcaabf2c579(vue@3.5.43(typescript@6.0.3)):
-    dependencies:
-      vue: 3.5.43(typescript@6.0.3)
 
   minimatch@10.2.6:
     dependencies:

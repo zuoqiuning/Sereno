@@ -74,6 +74,16 @@ pub fn run() {
             app.manage(state::AppState::new()?);
             builder.mount_events(app);
 
+            // **启动画面阶段就开始检查更新**。
+            //
+            // 不等结果：界面照常显示，检测在后台跑，
+            // 有新版了再通过 `UpdateAvailable` 事件让前端弹一张全局卡片。
+            // 这样「打开软件就能看到有新版」，又不用为一个网络请求拖慢启动。
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                commands::update::check_update_in_background(handle.clone()).await;
+            });
+
             // 兜底：前端异常或预加载超时后仍没调用 finish_startup 时，
             // 12 秒后强制显示主窗口，避免用户面对一个永远不出现的窗口。
             let handle = app.handle().clone();

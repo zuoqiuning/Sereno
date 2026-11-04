@@ -283,13 +283,11 @@ export const commands = {
 	/**  清空元数据缓存；实例、存档与日志不受影响。 */
 	clearStorageCache: () => typedError<null, LauncherError>(__TAURI_INVOKE("clear_storage_cache")),
 	/**
-	 *  检查是否有新版本。
-	 * 
-	 *  **不产生任何下载**——只是读一次清单。
+	 *  检查是否有新版本（用户手动触发）。
 	 * 
 	 *  结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
-	 *  只在检查那一刻弹一次 Toast 的话，错过就没了；
-	 *  记下来才能在用户下次打开「更新」页时仍然看得到「有新版本」。
+	 *  只在检查那一刻提示一次的话，错过就没了；
+	 *  记下来才能在用户下次打开设置页时仍然看得到「有新版本」。
 	 */
 	checkAppUpdate: () => typedError<AppUpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
 	/**
@@ -329,6 +327,7 @@ export const commands = {
 export const events = {
 	appReady: makeEvent<AppReady, AppReady>("app-ready"),
 	gameExited: makeEvent<GameExited_Serialize, GameExited_Deserialize>("game-exited"),
+	updateAvailable: makeEvent<UpdateAvailable, UpdateAvailable>("update-available"),
 	updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
 };
 
@@ -1797,6 +1796,21 @@ export type StorageUsage = {
 	cacheBytes: number,
 	/**  启动器日志。 */
 	logBytes: number,
+};
+
+/**
+ *  检查到新版本：前端据此弹出全局更新卡片。
+ * 
+ *  在**启动画面阶段**由后台任务发出——检测不等结果，
+ *  界面照常显示，结果回来再提示。
+ */
+export type UpdateAvailable = {
+	/**  新版本号。 */
+	latestVersion: string,
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  更新说明（可能为空）。 */
+	notes: string,
 };
 
 /**

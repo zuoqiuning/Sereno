@@ -50,13 +50,29 @@ pub struct UpdateProgress {
     pub percent: u8,
 }
 
+/// 检查到新版本：前端据此弹出全局更新卡片。
+///
+/// 在**启动画面阶段**由后台任务发出——检测不等结果，
+/// 界面照常显示，结果回来再提示。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAvailable {
+    /// 新版本号。
+    pub latest_version: String,
+    /// 当前版本号。
+    pub current_version: String,
+    /// 更新说明（可能为空）。
+    pub notes: String,
+}
+
 /// 事件注册清单：**全项目唯一一份**。
 macro_rules! all_events {
     () => {
         tauri_specta::collect_events![
             crate::ipc::events::AppReady,
             crate::ipc::events::GameExited,
-            crate::ipc::events::UpdateProgress
+            crate::ipc::events::UpdateProgress,
+            crate::ipc::events::UpdateAvailable
         ]
     };
 }

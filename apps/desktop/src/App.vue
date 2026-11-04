@@ -9,10 +9,14 @@ import CommandPalette from "@/components/layout/CommandPalette.vue";
 import DropOverlay from "@/components/common/DropOverlay.vue";
 import DropImportModal from "@/components/instances/DropImportModal.vue";
 import ToastStack from "@/components/common/ToastStack.vue";
+import UpdateCard from "@/components/common/UpdateCard.vue";
 import { transitionName } from "@/composables/useNavDirection";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { clearDroppedFiles, droppedPaths, useFileDrop } from "@/composables/useFileDrop";
 import { useUpdateCheck } from "@/composables/useUpdateCheck";
+import { useUpdateStore } from "@/stores/update";
+
+const updateStore = useUpdateStore();
 
 // 全局快捷键：Ctrl/Cmd+1~6 切页面、Ctrl/Cmd+K 命令面板、Ctrl/Cmd+, 打开设置
 useKeyboardShortcuts();
@@ -20,8 +24,20 @@ useKeyboardShortcuts();
 // 全局拖放：把 .jar / .zip 从桌面拖进窗口即可导入实例
 useFileDrop();
 
-// 启动后静默检查更新：只在真的有新版本时才提示，失败一律吞掉。
-useUpdateCheck();
+/**
+ * 更新提示接线。
+ *
+ * Rust 侧在启动画面阶段就在后台检查更新了（**不等结果**），
+ * 有新版了通过 `update-available` 事件通知这里。
+ * 收到后写进全局 store，由 `UpdateCard` 渲染。
+ */
+useUpdateCheck((payload) => {
+  updateStore.show({
+    latestVersion: payload.latestVersion,
+    currentVersion: payload.currentVersion,
+    notes: payload.notes,
+  });
+});
 
 /** 有待处理的文件时自动打开导入对话框。 */
 const dropModalOpen = computed(() => droppedPaths.value.length > 0);
@@ -42,6 +58,9 @@ function resetScroll(): void {
   <div class="sereno-window relative flex h-screen flex-col overflow-hidden bg-canvas">
     <!-- 悬浮工具条 -->
     <TitleBar />
+
+    <!-- 全局更新卡片：有新版本时出现，直到用户处理或关掉 -->
+    <UpdateCard />
 
     <!--
       必须用 flex-1 min-h-0，并且去掉 h-full 这种依赖父级百分比高度的写法。

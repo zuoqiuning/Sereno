@@ -33,7 +33,7 @@
 
 use serde::{Deserialize, Serialize};
 use sereno_core::{LauncherError, Result};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::ipc::events;
@@ -72,19 +72,10 @@ pub struct AppUpdateInfo {
     pub pub_date: Option<String>,
 }
 
-/// 检查是否有新版本。
+/// 真正去问一次「有没有新版本」。
 ///
-/// **不产生任何下载**——只是读一次清单。
-///
-/// 结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
-/// 只在检查那一刻弹一次 Toast 的话，错过就没了；
-/// 记下来才能在用户下次打开「更新」页时仍然看得到「有新版本」。
-#[tauri::command]
-#[specta::specta]
-pub async fn check_app_update(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<AppUpdateInfo> {
+/// 不产生任何下载——只是读一次清单。
+async fn query_update(app: &tauri::AppHandle) -> Result<AppUpdateInfo> {
     let current = app.package_info().version.to_string();
 
     let updater = app
@@ -106,7 +97,7 @@ pub async fn check_app_update(
         Err(e) => return Err(update_error("检查更新失败", e)),
     };
 
-    let info = match &update {
+    Ok(match &update {
         Some(update) => AppUpdateInfo {
             available: true,
             latest_version: update.version.clone(),
@@ -121,16 +112,87 @@ pub async fn check_app_update(
             notes: String::new(),
             pub_date: None,
         },
-    };
+    })
+}
 
-    // 记录本次检查结果。写设置失败不该让「检查更新」整体失败——
-    // 用户已经拿到了答案，存不存下来只是下次打开时看不看得见。
-    let mut settings = state.snapshot_settings()?;
+/// 检查是否有新版本（用户手动触发）。
+///
+/// 结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
+/// 只在检查那一刻提示一次的话，错过就没了；
+/// 记下来才能在用户下次打开设置页时仍然看得到「有新版本」。
+#[tauri::command]
+#[specta::specta]
+pub async fn check_app_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<AppUpdateInfo> {
+    let info = query_update(&app).await?;
+    record_check_result(&state, &info);
+    Ok(info)
+}
+
+/// 记录本次检查结果。
+///
+/// 写设置失败不该让「检查更新」整体失败——用户已经拿到了答案，
+/// 存不存下来只是下次打开时看不看得见。
+fn record_check_result(state: &AppState, info: &AppUpdateInfo) {
+    let Ok(mut settings) = state.snapshot_settings() else {
+        return;
+    };
     settings.update.latest_version = Some(info.latest_version.clone());
     settings.update.last_checked_at = Some(now_seconds());
     let _ = state.update_settings(settings);
+}
 
-    Ok(info)
+/// 启动时的后台检查：**不等结果**，有新版就发事件给前端。
+///
+/// 在启动画面（splash）阶段就跑起来——界面照常显示，
+/// 结果回来后前端弹一张全局卡片。
+///
+/// 任何失败都只记日志：启动路径上不该因为更新服务器的问题而报错。
+///
+/// ## 为什么只收 `AppHandle`
+///
+/// `AppState` 不是 `Clone`，克隆不出来；而 `manage` 存的是值本身，
+/// 不是 `Arc`。与其把状态搬进后台任务，不如**用的时候再取**：
+/// `AppHandle` 是 owned 的，它上面借出来的 `State` 可以安全地跨 `await`。
+pub async fn check_update_in_background(app: tauri::AppHandle) {
+    // 用户关掉了自动检查，就一次请求都不发。
+    let auto_check = app
+        .state::<AppState>()
+        .snapshot_settings()
+        .map(|settings| settings.update.auto_check)
+        .unwrap_or(true);
+    if !auto_check {
+        tracing::debug!("已关闭自动检查更新，启动时不发起检查");
+        return;
+    }
+
+    let info = match query_update(&app).await {
+        Ok(info) => info,
+        Err(e) => {
+            tracing::debug!("启动时检查更新失败（不影响启动）: {e}");
+            return;
+        }
+    };
+
+    // 记录本次检查结果（失败不影响流程）。
+    record_check_result(app.state::<AppState>().inner(), &info);
+
+    if !info.available {
+        return;
+    }
+
+    let payload = events::UpdateAvailable {
+        latest_version: info.latest_version.clone(),
+        current_version: info.current_version.clone(),
+        notes: info.notes.clone(),
+    };
+    // 事件名与 `ipc/events.rs` 里 `UpdateAvailable` 派生的一致：
+    // 结构体名转 kebab-case → "update-available"。
+    if let Err(e) = app.emit("update-available", payload) {
+        tracing::warn!("发送更新事件失败: {e}");
+    }
 }
 
 /// 当前的 Unix 时间戳（秒）。

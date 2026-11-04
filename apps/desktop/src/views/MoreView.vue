@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
 import {
   CircleHelp,
   Heart,
@@ -19,6 +18,10 @@ import type { SideNavItem } from "@/components/layout/SideNav.vue";
 import { APP_AUTHOR, APP_NAME, APP_VERSION } from "@/constants/app";
 import { log } from "@/api/settings";
 import { openProjectIssues, openProjectRepo, openSupporterPage, type SupporterTarget } from "@/api/supporters";
+import { checkAppUpdate } from "@/api/update";
+import { isApiError } from "@/api/invoke";
+import { useToastStore } from "@/stores/toast";
+import { useUpdateStore } from "@/stores/update";
 
 /** 「更多」页：关于 / 鸣谢 / 感谢名单 / 帮助 / 反馈。 */
 type SectionId = "about" | "credits" | "thanks" | "help" | "feedback";
@@ -32,11 +35,44 @@ const sections: SideNavItem[] = [
 ];
 
 const activeSection = ref<SectionId>("about");
-const router = useRouter();
+/** 检查更新的进行态。 */
+const checkingUpdate = ref(false);
+const toast = useToastStore();
+const updateStore = useUpdateStore();
+
+/** 把任意抛出物转成可读文案。 */
+function toMessage(value: unknown): string {
+  if (isApiError(value)) return value.message;
+  if (value instanceof Error) return value.message;
+  return String(value);
+}
 
 /** 跳到更新页。 */
-function goUpdate(): void {
-  void router.push("/update");
+/**
+ * 检查更新。
+ *
+ * 没有独立的更新页——发现新版本就**叫醒全局更新卡片**，
+ * 与启动时的自动检查是同一个入口。
+ */
+async function checkUpdate(): Promise<void> {
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    const result = await checkAppUpdate();
+    if (result.available) {
+      updateStore.show({
+        latestVersion: result.latestVersion,
+        currentVersion: result.currentVersion,
+        notes: result.notes,
+      });
+    } else {
+      toast.success("已是最新版本", `v${result.currentVersion}`);
+    }
+  } catch (err) {
+    toast.error("检查更新失败", toMessage(err));
+  } finally {
+    checkingUpdate.value = false;
+  }
 }
 
 /** 赞助名单：后续有赞助者时把名字填进来即可。 */
@@ -206,7 +242,12 @@ function openIssues(): void {
 
               <!-- 更新入口：更新功能有自己的页面，这里只给一个跳转 -->
               <div class="mt-5 w-full max-w-xl">
-                <AppButton variant="soft" size="sm" @click="goUpdate">
+                <AppButton
+                  variant="soft"
+                  size="sm"
+                  :loading="checkingUpdate"
+                  @click="checkUpdate"
+                >
                   <RefreshCw :size="13" />
                   检查更新
                 </AppButton>

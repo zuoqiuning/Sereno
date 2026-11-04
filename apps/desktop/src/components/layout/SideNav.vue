@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { Component } from "vue";
 
-import McIcon from "@/components/common/McIcon.vue";
-
 /**
  * 左侧分类导航：下载 / 设置 / 更多三个页面共用。
  *
@@ -47,7 +45,7 @@ defineEmits<{ "update:modelValue": [id: string] }>();
         :aria-current="item.id === modelValue ? 'page' : undefined"
         @click="$emit('update:modelValue', item.id)"
       >
-        <McIcon v-if="item.icon" :icon="item.icon" :size="15" class="shrink-0" />
+        <component :is="item.icon" v-if="item.icon" :size="15" :stroke-width="2" class="shrink-0" />
         <span class="side-nav__label">{{ item.label }}</span>
         <span v-if="item.count" class="side-nav__count tabular">{{ item.count }}</span>
       </button>
