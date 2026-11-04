@@ -141,6 +141,13 @@ sereno.exe
 Sereno 本身完全免费、无广告、无遥测、不联机验证，也不会因为你没登录任何账号而影响使用。
 本软件与 Mojang Studios、Microsoft、网易公司无关。
 
+**特别鸣谢 [MCIM](https://www.mcimirror.top)（Minecraft Mod Info Mirror）**——它为国内用户提供
+Modrinth 与 CurseForge 的元数据与文件镜像。正是因为它，Sereno 才能在**不配置任何 API Key** 的前提下
+访问 CurseForge（官方接口强制要 Key，而打进安装包的凭据等于公开凭据）。
+若你愿意支持它：[mcimirror.top/sponsor](https://www.mcimirror.top/sponsor)。
+
+同样鸣谢 [BMCLAPI](https://bmclapi2.bangbang93.com/)，它为游戏本体、加载器与 Maven 依赖提供国内加速。
+
 This project is open-source under the [PolyForm Noncommercial License 1.0.0](LICENSE): study it, modify it,
 and use it for any non-commercial purpose — but **commercial use of any kind is not permitted**
 (including selling a repackaged build, monetized private servers, ads, or bundled paid plugins).
