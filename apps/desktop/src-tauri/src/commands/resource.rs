@@ -504,6 +504,96 @@ pub fn set_local_resource_enabled(
     sereno_core::resource::local::set_enabled(&settings, &instance_id, kind, &file_name, enabled)
 }
 
+/// 批量启用 / 禁用本地资源。
+///
+/// 单条操作用 `set_local_resource_enabled`，批量操作走这里：
+/// 一次 IPC 往返完成，避免「选中 30 个 Mod」要点 30 次、也发 30 次请求。
+#[tauri::command]
+#[specta::specta]
+pub fn set_local_resources_enabled(
+    instance_id: String,
+    kind: LocalResourceKind,
+    file_names: Vec<String>,
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<u32> {
+    if state.is_running(&instance_id) {
+        return Err(sereno_core::LauncherError::InstanceBusy {
+            id: instance_id.clone(),
+        });
+    }
+    if file_names.is_empty() {
+        return Ok(0);
+    }
+    let settings = state.snapshot_settings()?;
+    let mut changed = 0u32;
+    let mut failures: Vec<String> = Vec::new();
+    for name in &file_names {
+        match sereno_core::resource::local::set_enabled(
+            &settings,
+            &instance_id,
+            kind,
+            name,
+            enabled,
+        ) {
+            Ok(()) => changed += 1,
+            Err(error) => failures.push(format!("{name}: {error}")),
+        }
+    }
+    if !failures.is_empty() {
+        return Err(sereno_core::LauncherError::Io {
+            message: format!(
+                "已处理 {changed} 个，{} 个失败：\n{}",
+                failures.len(),
+                failures.join("\n")
+            ),
+        });
+    }
+    Ok(changed)
+}
+
+/// 删除本地资源（单个或批量）。
+///
+/// core 侧 `resource::local::remove` 早已实现，但此前没有对应的命令，
+/// 结果是**用户在界面上无法删除任何一个已安装的 Mod / 资源包**——
+/// 只能手动去文件夹里删。这条命令把这个能力接上。
+#[tauri::command]
+#[specta::specta]
+pub fn remove_local_resources(
+    instance_id: String,
+    kind: LocalResourceKind,
+    file_names: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<u32> {
+    if state.is_running(&instance_id) {
+        return Err(sereno_core::LauncherError::InstanceBusy {
+            id: instance_id.clone(),
+        });
+    }
+    if file_names.is_empty() {
+        return Ok(0);
+    }
+    let settings = state.snapshot_settings()?;
+    let mut removed = 0u32;
+    let mut failures: Vec<String> = Vec::new();
+    for name in &file_names {
+        match sereno_core::resource::local::remove(&settings, &instance_id, kind, name) {
+            Ok(()) => removed += 1,
+            Err(error) => failures.push(format!("{name}: {error}")),
+        }
+    }
+    if !failures.is_empty() {
+        return Err(sereno_core::LauncherError::Io {
+            message: format!(
+                "已删除 {removed} 个，{} 个失败：\n{}",
+                failures.len(),
+                failures.join("\n")
+            ),
+        });
+    }
+    Ok(removed)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn open_local_resource_folder(

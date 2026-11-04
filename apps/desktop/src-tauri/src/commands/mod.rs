@@ -61,6 +61,8 @@ macro_rules! all_commands {
             crate::commands::resource::update_local_resource,
             crate::commands::resource::list_local_resources,
             crate::commands::resource::set_local_resource_enabled,
+            crate::commands::resource::set_local_resources_enabled,
+            crate::commands::resource::remove_local_resources,
             crate::commands::resource::open_local_resource_folder,
             crate::commands::resource::import_local_resources,
             crate::commands::resource::check_local_resource_updates,
