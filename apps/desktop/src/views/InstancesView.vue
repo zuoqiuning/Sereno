@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Component } from "vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   Archive,
@@ -18,6 +19,14 @@ import {
   Trash2,
   Wrench,
 } from "@lucide/vue";
+import {
+  Diamond,
+  Emerald,
+  GoldIngot,
+  IronIngot,
+  NetheriteIngot,
+  Redstone,
+} from "minecraft-svg-vue";
 import { useRouter } from "vue-router";
 
 import AppBadge from "@/components/common/AppBadge.vue";
@@ -25,6 +34,7 @@ import AppButton from "@/components/common/AppButton.vue";
 import AppCard from "@/components/common/AppCard.vue";
 import AppEmptyState from "@/components/common/AppEmptyState.vue";
 import AppIconButton from "@/components/common/AppIconButton.vue";
+import McIcon from "@/components/common/McIcon.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppMenu from "@/components/common/AppMenu.vue";
 import AppModal from "@/components/common/AppModal.vue";
@@ -695,6 +705,27 @@ onBeforeUnmount(() => {
   unlistenExit?.();
 });
 
+/**
+ * 实例封面图标：按加载器类型挑一种原版材料。
+ *
+ * 之前所有实例的封面都是同一个「盒子」图标——一屏五个实例看下去
+ * 完全分不出谁是谁。用原版物品做封面，既有辨识度又不引入额外资源
+ * （`minecraft-svg-vue` 里都是本地 SVG，不走网络）。
+ */
+const COVER_ICONS: Record<string, Component> = {
+  vanilla: IronIngot,
+  forge: Diamond,
+  neoforge: Emerald,
+  fabric: Redstone,
+  quilt: GoldIngot,
+  optifine: NetheriteIngot,
+};
+
+/** 取某个实例的封面图标。 */
+function coverIcon(loaderType: string): Component {
+  return COVER_ICONS[loaderType] ?? IronIngot;
+}
+
 function loaderLabel(type: string): string {
   switch (type) {
     case "vanilla":
@@ -800,7 +831,7 @@ function formatPlaytime(secs: number): string {
             <!-- 封面位：64px 方块 + 极淡品牌渐变，让卡片有「物品栏」的识别度，
                  而不是一排长得完全一样的白框 -->
             <div class="instance-cover" :class="{ 'is-running': isRunning(inst.id) }">
-              <Boxes :size="26" :stroke-width="1.6" />
+              <McIcon :icon="coverIcon(inst.loader.type)" :size="32" />
             </div>
 
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -1010,8 +1041,8 @@ function formatPlaytime(secs: number): string {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-lg);
+  /* 底色压淡，让 32px 的像素图标自己成为视觉主体 */
   background: var(--color-surface-muted);
-  color: var(--color-ink-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-line) 70%, transparent);
 }
 
