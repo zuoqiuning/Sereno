@@ -9,7 +9,6 @@ pub mod detail;
 pub mod inherits;
 pub mod manifest;
 pub mod rules;
-pub mod update;
 
 pub use detail::{fetch_detail, parse_detail, resolve_detail};
 pub use inherits::{merge_inherits, merge_libraries, resolve_with, resolve_with_async};

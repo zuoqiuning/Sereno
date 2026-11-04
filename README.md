@@ -28,7 +28,7 @@ A quiet, minimalist Minecraft launcher.
 - Instance health checks: Java, memory, disk space, file integrity, mod dependencies, and recent crash diagnostics.
 - World backups, log viewer, crash diagnostics, and diagnostic package export.
 - Download speed limiting, mirror preference, resumable downloads, and incremental verification.
-- **In-app updates** — the installer is checked against the published `SHA256SUMS.txt` before it is ever executed.
+- **In-app updates** — update bundles are signed with minisign and verified with a public key embedded in the app. A bundle that fails verification is never installed.
 
 ## Screenshots
 
@@ -96,7 +96,7 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 - 实例健康检查：Java、内存、磁盘、文件完整性、Mod 依赖与最近崩溃一次说清
 - 世界备份、日志查看、崩溃自动诊断与诊断包导出
 - 下载限速、镜像优先、断点续传与增量校验
-- **启动器自身的更新**：安装包要与随包发布的 `SHA256SUMS.txt` 对得上才允许执行
+- **启动器自身的更新**：更新包经 minisign 数字签名校验，验签不过绝不安装
 
 ### 当前状态
 

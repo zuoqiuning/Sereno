@@ -105,6 +105,15 @@ pub enum LauncherError {
     #[error("资源 {project_id} 未找到")]
     ResourceNotFound { project_id: String },
 
+    // ---------------- 更新通道 ----------------
+    /// 更新通道出错（检查、下载、验签或安装失败）。
+    ///
+    /// 单独成一个变体而不是复用 `Internal`：前端要能区分
+    /// 「更新失败」与「其它内部错误」，给用户不同的引导
+    /// （前者提示「稍后重试或手动下载」，后者提示「查看日志」）。
+    #[error("更新失败：{message}")]
+    UpdateFailed { message: String },
+
     // ---------------- 通用 ----------------
     #[error("文件读写失败：{message}")]
     Io { message: String },
@@ -145,6 +154,7 @@ impl LauncherError {
             Self::TokenRefreshFailed { .. } => "token_refresh_failed",
             Self::CurseForgeKeyMissing => "curseforge_key_missing",
             Self::ResourceNotFound { .. } => "resource_not_found",
+            Self::UpdateFailed { .. } => "update_failed",
             Self::Io { .. } => "io",
             Self::Parse { .. } => "parse",
             Self::InvalidConfig { .. } => "invalid_config",

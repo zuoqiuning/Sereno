@@ -63,6 +63,10 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 更新通道：updater 负责拉清单、验 minisign 签名、下载并安装。
+        // 安装完成后重启应用用的是 Tauri 核心的 `AppHandle::request_restart()`，
+        // 因此**不需要** tauri-plugin-process（少一个插件就少一份权限面）。
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             // 状态初始化可能失败（状态目录不可写、元数据迁移失败）。

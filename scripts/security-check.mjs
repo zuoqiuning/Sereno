@@ -297,42 +297,102 @@ check("权限", "Rust 侧不拼接 shell 命令", () => {
   return hits.length === 0 ? true : { ok: false, detail: hits.join(", ") };
 });
 
-check("权限", "更新通道只信任官方仓库", () => {
-  const update = readText("crates/sereno-core/src/version/update.rs");
-  // 只允许 github.com 的官方仓库；出现别的域名说明可能被劫持
-  const domains = [...update.matchAll(/https:\/\/([a-z0-9.-]+)/g)].map((m) => m[1]);
-  const bad = domains.filter(
-    (d) => d !== "api.github.com" && d !== "github.com",
-  );
+check("权限", "更新端点只信任官方域名", () => {
+  const conf = readText("apps/desktop/src-tauri/tauri.conf.json");
+  // 只取 updater 段里的端点——别的 URL（如 $schema）不参与更新。
+  const section = conf.match(/"updater"\s*:\s*\{[\s\S]*?\n\s{4}\}/);
+  if (!section) {
+    return { ok: false, detail: "tauri.conf.json 里没有 plugins.updater 段" };
+  }
+  const endpoints = [...section[0].matchAll(/https:\/\/([^/"\s]+)/g)].map((m) => m[1]);
+  const allowed = new Set([
+    // 腾讯云 COS（国内下载源）
+    "sereno-updates-1316381240.cos.ap-beijing.myqcloud.com",
+    // GitHub Release（兜底源）
+    "github.com",
+  ]);
+  const bad = endpoints.filter((d) => !allowed.has(d));
   return bad.length === 0
     ? true
-    : { ok: false, detail: `更新通道出现了非官方域名: ${bad.join(", ")}` };
+    : { ok: false, detail: `更新端点出现了非白名单域名: ${bad.join(", ")}` };
 });
 
-check("权限", "更新安装包必须校验 SHA-256", () => {
-  const update = readText("crates/sereno-core/src/version/update.rs");
-  const hasChecksum = update.includes("ChecksumMismatch") && update.includes("sha256_bytes");
-  const checksBeforeWrite =
-    update.indexOf("sha256_bytes(&bytes)") < update.indexOf("atomic_write(&path, &bytes)");
-  if (!hasChecksum) {
-    return { ok: false, detail: "update.rs 里没有看到 SHA-256 校验" };
+check("权限", "更新通道启用了 minisign 签名校验", () => {
+  const conf = readText("apps/desktop/src-tauri/tauri.conf.json");
+  // pubkey 必须存在且非空
+  const pubkey = conf.match(/"pubkey"\s*:\s*"([^"]+)"/);
+  if (!pubkey || !pubkey[1].trim()) {
+    return { ok: false, detail: "tauri.conf.json 里没有配置 updater.pubkey" };
   }
-  if (!checksBeforeWrite) {
-    return { ok: false, detail: "安装包在校验之前就落盘了" };
+  // 必须开启版本一致性校验（防降级攻击）
+  if (!/"requireSignedVersion"\s*:\s*true/.test(conf)) {
+    return {
+      ok: false,
+      detail: "没有开启 requireSignedVersion——攻击者可用旧包的合法签名把用户降级",
+    };
+  }
+  // 不允许关闭传输安全
+  if (/dangerousInsecureTransportProtocol"\s*:\s*true/.test(conf)) {
+    return { ok: false, detail: "开启了 dangerousInsecureTransportProtocol" };
+  }
+  return true;
+});
+
+check("权限", "更新私钥不在仓库里", () => {
+  // 私钥必须是「环境变量引用」或「文件路径」，不能是密钥本体。
+  // 扫全部受版本控制的文本文件，命中即视为泄漏。
+  const scanned = [
+    ...vueFiles,
+    ...rustFiles,
+    ...shellFiles,
+    ...walk(join(ROOT, "scripts"), [], [".mjs", ".js"]),
+    ...walk(join(ROOT, ".github/workflows"), [], [".yml", ".yaml"]),
+  ];
+  const hits = grepFiles(scanned, /TAURI_SIGNING_PRIVATE_KEY\s*=\s*[A-Za-z0-9+/=]{40,}/);
+  return hits.length === 0
+    ? true
+    : { ok: false, detail: `疑似私钥泄漏在: ${hits.join(", ")}` };
+});
+
+check("权限", "更新安装包必须通过签名校验", () => {
+  // 构建时必须产出 .sig，且清单脚本必须校验它存在
+  const script = readText("scripts/gen-updater-manifest.mjs");
+  if (!script.includes(".sig")) {
+    return { ok: false, detail: "清单脚本没有引用 .sig 签名文件" };
+  }
+  // 命令层不能自己下载——下载与验签都由插件完成
+  const cmd = readText("apps/desktop/src-tauri/src/commands/update.rs");
+  if (/reqwest|download_url|https:\/\//.test(cmd)) {
+    return {
+      ok: false,
+      detail: "命令层自己发起下载或拼了 URL——必须走插件的验签通道",
+    };
   }
   return true;
 });
 
 check("权限", "更新下载地址不由前端传入", () => {
-  const update = readText("crates/sereno-core/src/version/update.rs");
   const cmd = readText("apps/desktop/src-tauri/src/commands/update.rs");
   // 命令层不能接收 url 参数
   if (/url\s*:\s*String/.test(cmd)) {
     return { ok: false, detail: "命令层出现了 url 参数——前端可以构造任意下载地址" };
   }
-  // 下载地址必须来自 Release 的资产列表
-  if (!update.includes("browser_download_url")) {
-    return { ok: false, detail: "下载地址没有取自 Release 的资产列表" };
+  // 前端 API 层同样不能有 url 参数
+  const api = readText("apps/desktop/src/api/update.ts");
+  if (/url\s*:\s*string/i.test(api)) {
+    return { ok: false, detail: "前端 API 层出现了 url 参数" };
+  }
+  return true;
+});
+
+check("权限", "更新产物必须签名后才发布", () => {
+  const workflow = readText(".github/workflows/release.yml");
+  if (!workflow.includes("TAURI_SIGNING_PRIVATE_KEY")) {
+    return { ok: false, detail: "发布流程没有注入签名私钥" };
+  }
+  // 必须检查 .sig 产物存在
+  if (!workflow.includes(".sig")) {
+    return { ok: false, detail: "发布流程没有检查签名产物" };
   }
   return true;
 });

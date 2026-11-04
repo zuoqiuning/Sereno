@@ -97,8 +97,8 @@ macro_rules! all_commands {
             crate::commands::storage::get_storage_usage,
             crate::commands::storage::clear_storage_cache,
             crate::commands::update::check_app_update,
-            crate::commands::update::download_app_update,
-            crate::commands::update::launch_app_updater,
+            crate::commands::update::install_app_update,
+            crate::commands::update::relaunch_app,
         ]
     };
 }

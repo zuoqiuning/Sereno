@@ -275,28 +275,37 @@ export const commands = {
 	getStorageUsage: () => typedError<StorageUsage, LauncherError>(__TAURI_INVOKE("get_storage_usage")),
 	/**  清空元数据缓存；实例、存档与日志不受影响。 */
 	clearStorageCache: () => typedError<null, LauncherError>(__TAURI_INVOKE("clear_storage_cache")),
-	/**  检查是否有新版本。 */
-	checkAppUpdate: () => typedError<UpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
 	/**
-	 *  下载更新并校验 SHA-256。
+	 *  检查是否有新版本。
 	 * 
-	 *  校验不通过时**不会**返回可执行的路径——下载的文件会被留在磁盘上供排查，
-	 *  但前端拿到的 `path` 只在校验通过时才存在。
+	 *  **不产生任何下载**——只是读一次清单。
 	 */
-	downloadAppUpdate: (info: UpdateInfo_Deserialize) => typedError<UpdateDownload, LauncherError>(__TAURI_INVOKE("download_app_update", { info })),
+	checkAppUpdate: () => typedError<AppUpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
 	/**
-	 *  启动安装程序。
+	 *  下载更新、验签并安装。
 	 * 
-	 *  只接受**已经校验过**的安装包路径——路径来自 `download_app_update` 的返回，
-	 *  前端无法凭空构造一个通过校验的路径。
+	 *  **Windows 上插件会在安装器启动后自动退出应用**，因此这个命令
+	 *  大概率不会正常返回到前端——这是预期行为，不是错误。
+	 * 
+	 *  进度通过 `UpdateProgress` 事件广播（而不是 Channel）：
+	 *  安装完成后进程可能立刻退出，Channel 的发送端会随命令一起被 drop，
+	 *  最后一个进度事件可能来不及送达。事件是广播式的，不受此影响。
 	 */
-	launchAppUpdater: (path: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_app_updater", { path })),
+	installAppUpdate: () => typedError<null, LauncherError>(__TAURI_INVOKE("install_app_update")),
+	/**
+	 *  重启应用（安装完成后调用）。
+	 * 
+	 *  用的是 Tauri 核心的 `request_restart()`——
+	 *  它会在退出时把「需要重启」标记置上，由运行循环在退出后重新拉起进程。
+	 */
+	relaunchApp: () => typedError<null, LauncherError>(__TAURI_INVOKE("relaunch_app")),
 };
 
 /** Events */
 export const events = {
 	appReady: makeEvent<AppReady, AppReady>("app-ready"),
 	gameExited: makeEvent<GameExited_Serialize, GameExited_Deserialize>("game-exited"),
+	updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
 };
 
 /* Types */
@@ -459,6 +468,37 @@ export type AppSettings_Serialize = {
 	http: HttpSettings_Serialize,
 	theme: string,
 	instancesRoot: string | null,
+};
+
+/**  检查更新的结果。 */
+export type AppUpdateInfo = AppUpdateInfo_Serialize | AppUpdateInfo_Deserialize;
+
+/**  检查更新的结果。 */
+export type AppUpdateInfo_Deserialize = {
+	/**  是否有新版本。 */
+	available: boolean,
+	/**  最新版本号（无更新时等于当前版本）。 */
+	latestVersion: string,
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  更新说明（可能为空）。 */
+	notes: string,
+	/**  发布日期（RFC 3339，可能为空）。 */
+	pubDate?: string | null,
+};
+
+/**  检查更新的结果。 */
+export type AppUpdateInfo_Serialize = {
+	/**  是否有新版本。 */
+	available: boolean,
+	/**  最新版本号（无更新时等于当前版本）。 */
+	latestVersion: string,
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  更新说明（可能为空）。 */
+	notes: string,
+	/**  发布日期（RFC 3339，可能为空）。 */
+	pubDate: string | null,
 };
 
 export type AssetIndex = AssetIndex_Serialize | AssetIndex_Deserialize;
@@ -1133,7 +1173,15 @@ export type LatestVersions = {
  *  `rename_all` 作用于**变体名**，`rename_all_fields` 作用于**变体内的字段名**——
  *  两者都要有，前端才能拿到 `requiredMajor` 而不是 `required_major`。
  */
-export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | { type: "curseForgeKeyMissing" } | { type: "resourceNotFound"; projectId: string } | { type: "io"; message: string } | { type: "parse"; message: string } | { type: "invalidConfig"; key: string; message: string } | { type: "cancelled" } | { type: "internal"; message: string };
+export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | { type: "curseForgeKeyMissing" } | { type: "resourceNotFound"; projectId: string } | 
+/**
+ *  更新通道出错（检查、下载、验签或安装失败）。
+ * 
+ *  单独成一个变体而不是复用 `Internal`：前端要能区分
+ *  「更新失败」与「其它内部错误」，给用户不同的引导
+ *  （前者提示「稍后重试或手动下载」，后者提示「查看日志」）。
+ */
+{ type: "updateFailed"; message: string } | { type: "io"; message: string } | { type: "parse"; message: string } | { type: "invalidConfig"; key: string; message: string } | { type: "cancelled" } | { type: "internal"; message: string };
 
 export type Library = Library_Serialize | Library_Deserialize;
 
@@ -1715,53 +1763,25 @@ export type StorageUsage = {
 	logBytes: number,
 };
 
-/**  下载更新的结果。 */
-export type UpdateDownload = {
-	/**  安装包的本地路径。 */
-	path: string,
-	/**  文件大小（字节）。 */
-	size: number,
-	/**  校验用的 SHA-256。 */
-	sha256: string,
-};
-
-/**  更新检查的结果。 */
-export type UpdateInfo = UpdateInfo_Serialize | UpdateInfo_Deserialize;
-
-/**  更新检查的结果。 */
-export type UpdateInfo_Deserialize = {
-	/**  是否有可用更新。 */
-	available: boolean,
-	/**  最新版本号（不带 `v` 前缀）。 */
-	latestVersion: string,
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  更新说明（Markdown 原文）。 */
-	notes: string,
-	/**  安装包文件名。 */
-	assetName?: string | null,
-	/**  安装包大小（字节）。 */
-	assetSize: number,
-	/**  是否是预发布版本。 */
-	prerelease: boolean,
-};
-
-/**  更新检查的结果。 */
-export type UpdateInfo_Serialize = {
-	/**  是否有可用更新。 */
-	available: boolean,
-	/**  最新版本号（不带 `v` 前缀）。 */
-	latestVersion: string,
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  更新说明（Markdown 原文）。 */
-	notes: string,
-	/**  安装包文件名。 */
-	assetName: string | null,
-	/**  安装包大小（字节）。 */
-	assetSize: number,
-	/**  是否是预发布版本。 */
-	prerelease: boolean,
+/**
+ *  更新下载进度：前端据此画进度条。
+ * 
+ *  **用事件而不是 Channel**：Windows 上安装器启动后进程会立刻退出，
+ *  Channel 的发送端随命令一起被 drop，最后一个进度事件可能送不到。
+ *  事件是广播式的，不受影响。
+ */
+export type UpdateProgress = {
+	/**
+	 *  已下载字节数。
+	 * 
+	 *  映射成 JS `number`（而不是 BigInt）：下载进度只用于画进度条，
+	 *  字节数超过 2^53 的场景不存在（PB 级）。
+	 */
+	downloaded: number,
+	/**  总字节数（服务端未提供时为 0）。 */
+	total: number,
+	/**  0–100 的百分比（总量未知时为 0）。 */
+	percent: number,
 };
 
 export type VersionDetail = VersionDetail_Serialize | VersionDetail_Deserialize;

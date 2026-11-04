@@ -57,11 +57,25 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "RWT7sMy1vyZqSRDFN+5q4u65ByxXpbXUL5TcTWw+ECwHKaU3MKyNt1bk",
+      "endpoints": [
+        "https://sereno-updates-1316381240.cos.ap-beijing.myqcloud.com/latest.json",
+        "https://github.com/zuoqiuning/Sereno/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": [
       "nsis"
     ],
+    "createUpdaterArtifacts": true,
     "licenseFile": "../../../LICENSE",
     "icon": [
       "icons/32x32.png",

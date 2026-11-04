@@ -12,12 +12,16 @@ import ToastStack from "@/components/common/ToastStack.vue";
 import { transitionName } from "@/composables/useNavDirection";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { clearDroppedFiles, droppedPaths, useFileDrop } from "@/composables/useFileDrop";
+import { useUpdateCheck } from "@/composables/useUpdateCheck";
 
 // 全局快捷键：Ctrl/Cmd+1~6 切页面、Ctrl/Cmd+K 命令面板、Ctrl/Cmd+, 打开设置
 useKeyboardShortcuts();
 
 // 全局拖放：把 .jar / .zip 从桌面拖进窗口即可导入实例
 useFileDrop();
+
+// 启动后静默检查更新：只在真的有新版本时才提示，失败一律吞掉。
+useUpdateCheck();
 
 /** 有待处理的文件时自动打开导入对话框。 */
 const dropModalOpen = computed(() => droppedPaths.value.length > 0);

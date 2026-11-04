@@ -17,6 +17,10 @@ apps/desktop/src-tauri/gen/
 *.key
 *.pem
 
+# ---- 发布暂存区 ----
+# CI 生成的两份更新清单（COS 与 GitHub 各一份），构建时临时产出
+.release/
+
 # ---- 日志与临时文件 ----
 *.log
 npm-debug.log*

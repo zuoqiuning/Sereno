@@ -29,10 +29,35 @@ pub struct GameExited {
     pub exit_code: Option<i32>,
 }
 
+/// 更新下载进度：前端据此画进度条。
+///
+/// **用事件而不是 Channel**：Windows 上安装器启动后进程会立刻退出，
+/// Channel 的发送端随命令一起被 drop，最后一个进度事件可能送不到。
+/// 事件是广播式的，不受影响。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgress {
+    /// 已下载字节数。
+    ///
+    /// 映射成 JS `number`（而不是 BigInt）：下载进度只用于画进度条，
+    /// 字节数超过 2^53 的场景不存在（PB 级）。
+    #[specta(type = specta_typescript::Number)]
+    pub downloaded: u64,
+    /// 总字节数（服务端未提供时为 0）。
+    #[specta(type = specta_typescript::Number)]
+    pub total: u64,
+    /// 0–100 的百分比（总量未知时为 0）。
+    pub percent: u8,
+}
+
 /// 事件注册清单：**全项目唯一一份**。
 macro_rules! all_events {
     () => {
-        tauri_specta::collect_events![crate::ipc::events::AppReady, crate::ipc::events::GameExited]
+        tauri_specta::collect_events![
+            crate::ipc::events::AppReady,
+            crate::ipc::events::GameExited,
+            crate::ipc::events::UpdateProgress
+        ]
     };
 }
 pub(crate) use all_events;
