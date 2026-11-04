@@ -3,6 +3,7 @@
 use tauri_plugin_dialog::DialogExt;
 
 use sereno_core::Result;
+use sereno_core::instance::import::ImportScan;
 use sereno_core::instance::lifecycle;
 use sereno_core::models::crash::InstanceLogs;
 use sereno_core::models::instance::InstanceMetadata;
@@ -176,5 +177,134 @@ pub async fn update_instance_options(
         .collect();
 
     write_metadata(&inst_dir, &metadata)?;
+    Ok(metadata)
+}
+
+/// 扫描外部目录，找出可导入的实例候选。
+///
+/// 支持官方启动器 / PCL / HMCL（有 `versions/`）、
+/// MultiMC / Prism（有 `.minecraft/`）与裸游戏目录。
+#[tauri::command]
+#[specta::specta]
+pub fn scan_import_candidates(source: String) -> Result<ImportScan> {
+    let path = std::path::PathBuf::from(source.trim());
+    if path.as_os_str().is_empty() {
+        return Err(sereno_core::LauncherError::InvalidConfig {
+            key: "source".into(),
+            message: "请先选择要导入的目录".into(),
+        });
+    }
+    sereno_core::instance::import::scan(&path)
+}
+
+/// 打开系统原生的“选择文件夹”对话框，用来指定要导入的外部实例目录。
+#[tauri::command]
+#[specta::specta]
+pub async fn select_import_directory(app: tauri::AppHandle) -> Result<Option<String>> {
+    let path = app
+        .dialog()
+        .file()
+        .set_title("选择要导入的实例目录")
+        .blocking_pick_folder();
+
+    Ok(path.map(|p| p.to_string()))
+}
+
+/// 导入外部实例：新建实例 + 搬运用户数据（Mod、配置、存档）。
+///
+/// 游戏本体与库文件**不复制**，而是走 Sereno 自己的安装流程重新下载——
+/// 更快、更准，还能用上镜像与 SHA-1 校验。
+#[tauri::command]
+#[specta::specta]
+pub async fn import_instance(
+    source: String,
+    candidate_label: String,
+    game_version: String,
+    loader_type: String,
+    loader_version: Option<String>,
+    display_name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<InstanceMetadata> {
+    let source_path = std::path::PathBuf::from(source.trim());
+    let display_name = display_name.trim().to_string();
+    if display_name.is_empty() {
+        return Err(sereno_core::LauncherError::InvalidConfig {
+            key: "displayName".into(),
+            message: "实例名称不能为空".into(),
+        });
+    }
+    let display_name: String = display_name.chars().take(64).collect();
+
+    let game_version = game_version.trim().to_string();
+    if game_version.is_empty() {
+        return Err(sereno_core::LauncherError::InvalidConfig {
+            key: "gameVersion".into(),
+            message: "外部目录里没有识别出 Minecraft 版本，请手动指定".into(),
+        });
+    }
+
+    let settings = state.snapshot_settings()?;
+
+    // 先确认游戏版本在 Mojang 清单里存在，否则装出来的实例根本进不去
+    let client = sereno_core::utils::http::build_client(&settings)?;
+    let manifest = match state.manifest_cache.get() {
+        Some(manifest) => manifest,
+        None => {
+            let manifest = sereno_core::version::fetch_manifest(&client).await?;
+            state.manifest_cache.set(manifest.clone());
+            manifest
+        }
+    };
+    if manifest.find(&game_version).is_none() {
+        return Err(sereno_core::LauncherError::VersionNotFound {
+            id: game_version.clone(),
+        });
+    }
+
+    // 扫描源目录，取出游戏目录位置
+    let scan = sereno_core::instance::import::scan(&source_path)?;
+    let candidate = scan
+        .candidates
+        .iter()
+        .find(|item| item.label == candidate_label)
+        .or_else(|| scan.candidates.first())
+        .ok_or_else(|| sereno_core::LauncherError::InvalidConfig {
+            key: "source".into(),
+            message: "选中的目录里没有可导入的实例".into(),
+        })?;
+
+    let source_game_dir = std::path::PathBuf::from(&candidate.game_dir);
+
+    // 新建实例
+    let mut metadata =
+        sereno_core::instance::lifecycle::create_instance(&settings, &game_version, &display_name)?;
+    metadata.loader = sereno_core::models::instance::LoaderInfo {
+        r#type: if loader_type.trim().is_empty() {
+            "vanilla".to_string()
+        } else {
+            loader_type.trim().to_string()
+        },
+        version: loader_version
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+    };
+
+    let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &metadata.id)?;
+    sereno_core::storage::instance::write_metadata(&inst_dir, &metadata)?;
+
+    // 搬运用户数据：Mod、配置、存档
+    let (files, bytes) = sereno_core::instance::import::copy_user_data(
+        &source_game_dir,
+        &inst_dir.join("minecraft"),
+    )?;
+    tracing::info!(
+        instance = %metadata.id,
+        files,
+        bytes,
+        "外部实例数据导入完成"
+    );
+
     Ok(metadata)
 }

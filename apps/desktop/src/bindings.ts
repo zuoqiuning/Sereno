@@ -35,6 +35,22 @@ export const commands = {
 	updateInstanceOptions: (instanceId: string, javaPath: string | null, memoryMb: number | null, jvmArgs: string[]) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("update_instance_options", { instanceId, javaPath, memoryMb, jvmArgs })),
 	setInstanceFavorite: (instanceId: string, favorite: boolean) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_favorite", { instanceId, favorite })),
 	readInstanceLogs: (instanceId: string) => typedError<InstanceLogs_Serialize, LauncherError>(__TAURI_INVOKE("read_instance_logs", { instanceId })),
+	/**
+	 *  扫描外部目录，找出可导入的实例候选。
+	 * 
+	 *  支持官方启动器 / PCL / HMCL（有 `versions/`）、
+	 *  MultiMC / Prism（有 `.minecraft/`）与裸游戏目录。
+	 */
+	scanImportCandidates: (source: string) => typedError<ImportScan_Serialize, LauncherError>(__TAURI_INVOKE("scan_import_candidates", { source })),
+	/**  打开系统原生的“选择文件夹”对话框，用来指定要导入的外部实例目录。 */
+	selectImportDirectory: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_import_directory")),
+	/**
+	 *  导入外部实例：新建实例 + 搬运用户数据（Mod、配置、存档）。
+	 * 
+	 *  游戏本体与库文件**不复制**，而是走 Sereno 自己的安装流程重新下载——
+	 *  更快、更准，还能用上镜像与 SHA-1 校验。
+	 */
+	importInstance: (source: string, candidateLabel: string, gameVersion: string, loaderType: string, loaderVersion: string | null, displayName: string) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("import_instance", { source, candidateLabel, gameVersion, loaderType, loaderVersion, displayName })),
 	createWorldBackup: (instanceId: string) => typedError<WorldBackup, LauncherError>(__TAURI_INVOKE("create_world_backup", { instanceId })),
 	listWorldBackups: (instanceId: string) => typedError<WorldBackup[], LauncherError>(__TAURI_INVOKE("list_world_backups", { instanceId })),
 	restoreWorldBackup: (instanceId: string, name: string) => typedError<null, LauncherError>(__TAURI_INVOKE("restore_world_backup", { instanceId, name })),
@@ -164,7 +180,12 @@ export const commands = {
 	 *  这里只负责把内容装进那个实例。
 	 */
 	installModpack: (instanceId: string, projectId: string, versionId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_modpack", { instanceId, projectId, versionId, channel })),
-	/**  CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。 */
+	/**
+	 *  CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。
+	 * 
+	 *  **按需读取**：整合包在 CF 上是几十 MB 的 zip，这里只用 HTTP Range
+	 *  取回根目录的 `manifest.json`（几 KB），不必先下载整个包。
+	 */
 	getCfModpackInfo: (projectId: number, fileId: number) => typedError<ModpackInfo, LauncherError>(__TAURI_INVOKE("get_cf_modpack_info", { projectId, fileId })),
 	/**
 	 *  安装 CurseForge 整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
@@ -775,6 +796,81 @@ export type HttpSettings_Serialize = {
 	readTimeoutSecs: number,
 	maxRedirects: number,
 	proxy: string | null,
+};
+
+/**  一个可导入的候选实例。 */
+export type ImportCandidate = ImportCandidate_Serialize | ImportCandidate_Deserialize;
+
+/**  一个可导入的候选实例。 */
+export type ImportCandidate_Deserialize = {
+	/**  展示名（来自目录名或版本 ID）。 */
+	label: string,
+	/**  Minecraft 版本。 */
+	gameVersion: string,
+	/**  加载器信息。 */
+	loader: LoaderInfo_Deserialize,
+	/**  游戏目录（`--gameDir` 对应的那一层）。 */
+	gameDir: string,
+	/**  目录布局类型。 */
+	layout: ImportLayout,
+	/**  `mods/` 里的文件数。 */
+	modCount: number,
+	/**  `saves/` 里的世界数。 */
+	saveCount: number,
+};
+
+/**  一个可导入的候选实例。 */
+export type ImportCandidate_Serialize = {
+	/**  展示名（来自目录名或版本 ID）。 */
+	label: string,
+	/**  Minecraft 版本。 */
+	gameVersion: string,
+	/**  加载器信息。 */
+	loader: LoaderInfo_Serialize,
+	/**  游戏目录（`--gameDir` 对应的那一层）。 */
+	gameDir: string,
+	/**  目录布局类型。 */
+	layout: ImportLayout,
+	/**  `mods/` 里的文件数。 */
+	modCount: number,
+	/**  `saves/` 里的世界数。 */
+	saveCount: number,
+};
+
+/**  扫描到的外部布局类型。 */
+export type ImportLayout = 
+/**  官方启动器 / PCL / HMCL：有 `versions/` 目录。 */
+"flat" | 
+/**  MultiMC / Prism：游戏目录在 `.minecraft/` 子目录里。 */
+"nested" | 
+/**  裸游戏目录：只有 `mods/` / `saves/` 等，没有版本信息。 */
+"gameDirOnly";
+
+/**  一次扫描的结果。 */
+export type ImportScan = ImportScan_Serialize | ImportScan_Deserialize;
+
+/**  一次扫描的结果。 */
+export type ImportScan_Deserialize = {
+	/**  扫描的根目录。 */
+	source: string,
+	/**  识别出的布局。 */
+	layout: ImportLayout,
+	/**  游戏目录。 */
+	gameDir: string,
+	/**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
+	candidates: ImportCandidate_Deserialize[],
+};
+
+/**  一次扫描的结果。 */
+export type ImportScan_Serialize = {
+	/**  扫描的根目录。 */
+	source: string,
+	/**  识别出的布局。 */
+	layout: ImportLayout,
+	/**  游戏目录。 */
+	gameDir: string,
+	/**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
+	candidates: ImportCandidate_Serialize[],
 };
 
 /**  实例的日志快照：最新日志 + 最近的崩溃报告 + 诊断结论。 */

@@ -6,6 +6,7 @@ import {
   FileText,
   Folder,
   HeartPulse,
+  Import,
   Package,
   Play,
   Puzzle,
@@ -36,6 +37,7 @@ import WorldBackupModal from "@/components/instances/WorldBackupModal.vue";
 import LogViewerModal from "@/components/instances/LogViewerModal.vue";
 import HealthModal from "@/components/instances/HealthModal.vue";
 import InstanceSettingsModal from "@/components/instances/InstanceSettingsModal.vue";
+import ImportInstanceModal from "@/components/instances/ImportInstanceModal.vue";
 import {
   exportDiagnostic,
   getRunningInstances,
@@ -72,6 +74,8 @@ const backupModal = useModalState<InstanceMetadata>();
 const logModal = useModalState<InstanceMetadata>();
 const healthModal = useModalState<InstanceMetadata>();
 const settingsModal = useModalState<InstanceMetadata>();
+/** 导入外部实例弹窗。 */
+const importModalVisible = ref(false);
 let unlistenExit: (() => void) | null = null;
 
 /* ---------------- 搜索与排序 ---------------- */
@@ -132,6 +136,17 @@ const visibleInstances = computed(() => {
 function onInstanceSaved(updated: InstanceMetadata): void {
   const index = instances.value.findIndex((item) => item.id === updated.id);
   if (index >= 0) instances.value[index] = updated;
+}
+
+/**
+ * 导入完成后继续安装游戏本体。
+ *
+ * 导入只搬了 Mod 与配置，游戏本体还没下载——
+ * 这里直接续上安装流程，用户不用再手动点一次「安装」。
+ */
+async function onInstanceImported(instance: InstanceMetadata): Promise<void> {
+  await loadInstances();
+  await handleInstall(instance);
 }
 
 function browseResources(kind: LocalResourceKind): void {
@@ -685,6 +700,10 @@ function formatPlaytime(secs: number): string {
       <AppIconButton size="sm" label="刷新实例列表" :disabled="loading" @click="loadInstances">
         <RefreshCw :size="14" :class="{ 'animate-spin': loading }" />
       </AppIconButton>
+      <AppButton variant="secondary" size="sm" @click="importModalVisible = true">
+        <Import :size="14" />
+        导入实例
+      </AppButton>
     </template>
 
     <div class="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
@@ -926,6 +945,12 @@ function formatPlaytime(secs: number): string {
       :open="settingsModal.visible"
       @close="settingsModal.close"
       @saved="onInstanceSaved"
+    />
+
+    <ImportInstanceModal
+      :open="importModalVisible"
+      @close="importModalVisible = false"
+      @imported="onInstanceImported"
     />
   </PageShell>
 </template>

@@ -1,5 +1,5 @@
 import { commands, events } from "@/bindings";
-import type { GameExited, InstanceLogs, InstanceMetadata } from "@/types";
+import type { GameExited, ImportScan, InstanceLogs, InstanceMetadata } from "@/types";
 
 import { callCommand } from "./invoke";
 
@@ -69,4 +69,44 @@ export function setInstanceFavorite(
   favorite: boolean,
 ): Promise<InstanceMetadata> {
   return callCommand(() => commands.setInstanceFavorite(instanceId, favorite));
+}
+
+/**
+ * 扫描外部目录，找出可导入的实例候选。
+ *
+ * 支持官方启动器 / PCL / HMCL（含 `versions/`）、MultiMC / Prism（含 `.minecraft/`）
+ * 与裸游戏目录。
+ */
+export function scanImportCandidates(source: string): Promise<ImportScan> {
+  return callCommand(() => commands.scanImportCandidates(source));
+}
+
+/** 选择要导入的外部实例目录；取消返回 `null`。 */
+export function selectImportDirectory(): Promise<string | null> {
+  return callCommand(() => commands.selectImportDirectory());
+}
+
+/**
+ * 导入外部实例：新建实例 + 搬运用户数据（Mod、配置、存档）。
+ *
+ * 游戏本体与库文件**不复制**，走 Sereno 自己的安装流程重新下载。
+ */
+export function importInstance(
+  source: string,
+  candidateLabel: string,
+  gameVersion: string,
+  loaderType: string,
+  loaderVersion: string | null,
+  displayName: string,
+): Promise<InstanceMetadata> {
+  return callCommand(() =>
+    commands.importInstance(
+      source,
+      candidateLabel,
+      gameVersion,
+      loaderType,
+      loaderVersion,
+      displayName,
+    ),
+  );
 }
