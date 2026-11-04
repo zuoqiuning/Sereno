@@ -47,6 +47,7 @@ pub async fn host_multiplayer(
 pub async fn join_multiplayer(
     room_code: String,
     mc_port: u16,
+    tun_mode: Option<bool>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<MultiplayerStatus> {
@@ -62,7 +63,13 @@ pub async fn join_multiplayer(
     let bundled = bundled_kernel_dir(&app);
     state
         .multiplayer
-        .guest(&client, &room_code, mc_port, bundled.as_deref())
+        .guest(
+            &client,
+            &room_code,
+            mc_port,
+            bundled.as_deref(),
+            tun_mode.unwrap_or(false),
+        )
         .await
 }
 

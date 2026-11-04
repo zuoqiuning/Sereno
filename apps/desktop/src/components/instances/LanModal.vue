@@ -39,6 +39,8 @@ const working = ref(false);
 const error = ref("");
 const detecting = ref(false);
 const detectedInfo = ref("");
+/** TUN 模式：创建虚拟网卡（需 UAC），换取游戏内自动发现世界。默认关。 */
+const tunMode = ref(false);
 const status = ref<MultiplayerStatus | null>(null);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -57,6 +59,18 @@ const phaseBadge = computed(() => {
       return { text: "出错", class: "bg-danger/15 text-danger" };
     default:
       return { text: "未连接", class: "bg-surface-muted text-ink-muted" };
+  }
+});
+
+/** 链路类型徽章：直连（延迟低）/ 中继（稳定）。 */
+const linkBadge = computed(() => {
+  switch (status.value?.linkType) {
+    case "direct":
+      return { text: "直连", class: "bg-success/15 text-success" };
+    case "relay":
+      return { text: "中继", class: "bg-brand-500/15 text-brand-600" };
+    default:
+      return null;
   }
 });
 
@@ -144,7 +158,7 @@ async function startJoin(): Promise<void> {
   working.value = true;
   error.value = "";
   try {
-    status.value = await joinMultiplayer(formattedInput.value, mcPort.value);
+    status.value = await joinMultiplayer(formattedInput.value, mcPort.value, tunMode.value);
   } catch (err) {
     error.value = `加入失败：${toMessage(err)}`;
     void log.error(error.value, { component: "LanModal", action: "join" });
@@ -206,8 +220,13 @@ onBeforeUnmount(stopPolling);
           {{ instance.displayName }} · Minecraft {{ instance.gameVersion }}
         </p>
       </div>
-      <span class="rounded-full px-2.5 py-1 text-micro font-medium" :class="phaseBadge.class">
-        {{ phaseBadge.text }}
+      <span :class="phaseBadge.class" class="rounded-xs px-1.5 py-0.5 text-micro font-medium">{{ phaseBadge.text }}</span>
+      <span
+        v-if="linkBadge"
+        :class="linkBadge.class"
+        class="rounded-xs px-1.5 py-0.5 text-micro font-medium"
+      >
+        {{ linkBadge.text }}
       </span>
     </template>
 
@@ -366,6 +385,21 @@ onBeforeUnmount(stopPolling);
           <span class="text-micro text-ink-muted">房主开房时设置的端口（默认 25565）</span>
         </label>
 
+        <label class="flex cursor-pointer items-start gap-2">
+          <input
+            v-model="tunMode"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 accent-[var(--color-brand-500)]"
+          />
+          <span class="flex flex-col gap-0.5">
+            <span class="text-caption text-ink">虚拟网卡模式（自动发现世界）</span>
+            <span class="text-micro text-ink-muted">
+              在游戏多人列表直接看到房主的世界，无需复制地址。需要一次 UAC 授权；
+              默认关闭（免授权，手动输入地址）。
+            </span>
+          </span>
+        </label>
+
         <AppButton
           variant="primary"
           :loading="working"
@@ -375,7 +409,11 @@ onBeforeUnmount(stopPolling);
           <LogIn :size="14" /> 加入房间
         </AppButton>
         <p class="text-micro leading-4 text-ink-muted">
-          加入成功后，在游戏内「多人游戏 → 直接连接」输入弹窗给出的地址即可，无需输入 IP。
+          {{
+            tunMode
+              ? "加入成功后，游戏内「多人游戏」列表会自动出现房主的世界，双击即可进入。"
+              : "加入成功后，在游戏内「多人游戏 → 直接连接」输入弹窗给出的地址即可，无需输入 IP。"
+          }}
         </p>
       </div>
     </template>

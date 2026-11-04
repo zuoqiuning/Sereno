@@ -17,6 +17,7 @@
 //! 设计决策与参数语义的核实过程见各子模块文档注释。
 pub mod detect;
 pub mod kernel;
+pub mod link;
 pub mod ping;
 pub mod room_code;
 pub mod session;

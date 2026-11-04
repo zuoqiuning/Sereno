@@ -45,6 +45,7 @@ use crate::utils::paths;
 use crate::{LauncherError, Result};
 
 use super::kernel::{self, DEFAULT_PUBLIC_SERVERS};
+use super::link::{self, LinkKind};
 use super::ping;
 use super::room_code::{self, RoomCodeError};
 
@@ -97,6 +98,9 @@ pub struct MultiplayerStatus {
     pub detail: String,
     /// 内核最近日志（排障用，最多 8 行）。
     pub last_log: Vec<String>,
+    /// 到对端的链路类型：`direct`（直连，延迟低）/ `relay`（中继，稳定）。
+    /// None = 尚未探测到。
+    pub link_type: Option<String>,
 }
 
 struct SharedState {
@@ -104,6 +108,10 @@ struct SharedState {
     room_code: Option<String>,
     mc_port: u16,
     local_port: Option<u16>,
+    /// 本内核的 RPC 门户端口（直连/中继徽章的查询通道）。
+    rpc_portal: Option<u16>,
+    /// 到对端的链路类型（由后台监控刷新）。
+    link_type: Option<LinkKind>,
     phase: Phase,
     motd: String,
     detail: String,
@@ -177,6 +185,7 @@ impl SessionManager {
                 motd: s.motd.clone(),
                 detail: s.detail.clone(),
                 last_log: s.last_log.iter().cloned().collect(),
+                link_type: s.link_type.map(|kind| kind.as_str().into()),
             },
         }
     }
@@ -223,9 +232,24 @@ impl SessionManager {
         code: &str,
         mc_port: u16,
         bundled_dir: Option<&std::path::Path>,
+        tun_mode: bool,
     ) -> Result<MultiplayerStatus> {
         let normalized = room_code::parse(code).map_err(room_code_error)?;
         self.begin(Role::Guest, &normalized, mc_port)?;
+
+        // TUN 模式走独立的提权启动路径（虚拟网卡 + UDP 广播中继）
+        if tun_mode {
+            let result = self
+                .guest_inner_tun(client, &normalized, mc_port, bundled_dir)
+                .await;
+            return match result {
+                Ok(()) => Ok(self.status()),
+                Err(error) => {
+                    self.finish(Phase::Error, &error.to_string());
+                    Err(error)
+                }
+            };
+        }
 
         let result = self
             .guest_inner(client, &normalized, mc_port, bundled_dir)
@@ -321,6 +345,8 @@ impl SessionManager {
             room_code: Some(code.to_string()),
             mc_port,
             local_port: None,
+            rpc_portal: None,
+            link_type: None,
             phase: Phase::Starting,
             motd: String::new(),
             detail: match role {
@@ -381,6 +407,14 @@ impl SessionManager {
             args.push((*server).to_string());
         }
 
+        // RPC 门户钉到空闲端口：直连/中继徽章的查询通道（默认 15888
+        // 容易与其它启动器的内核撞车）；UDP 广播中继让 TUN 模式的房客
+        // 在多人列表自动发现本世界
+        let rpc_portal = pick_free_port()?;
+        args.push("--rpc-portal".into());
+        args.push(format!("127.0.0.1:{rpc_portal}"));
+        args.push("--enable-udp-broadcast-relay".into());
+
         let log_dir = paths::state_dir()?.join("multiplayer");
         std::fs::create_dir_all(&log_dir).map_err(|e| LauncherError::Io {
             message: format!("创建联机目录失败: {e}"),
@@ -434,6 +468,7 @@ impl SessionManager {
 
         self.update(|s| {
             s.phase = Phase::WaitingPeer;
+            s.rpc_portal = Some(rpc_portal);
             s.detail = "虚拟网络已建立。请在游戏内「对局域网开放」，世界端口可点「自动检测」填入"
                 .to_string();
         });
@@ -458,6 +493,16 @@ impl SessionManager {
         };
         tokio::spawn(probe.run());
 
+        // 直连/中继徽章监控
+        spawn_link_monitor(
+            self.state.clone(),
+            kernel
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from(".")),
+            rpc_portal,
+        );
+
         Ok(())
     }
 
@@ -480,11 +525,18 @@ impl SessionManager {
             s.detail = "正在加入房间网络…".into();
         });
 
+        let rpc_portal = pick_free_port()?;
+        self.update(|s| s.rpc_portal = Some(rpc_portal));
+
         let mut args: Vec<String> = vec![
             "--network-name".into(),
             creds.network_name.clone(),
             "--network-secret".into(),
             creds.network_secret.clone(),
+            // RPC 门户钉空闲端口：直连/中继徽章的查询通道（默认 15888
+            // 容易与其它启动器的内核撞车）
+            "--rpc-portal".into(),
+            format!("127.0.0.1:{rpc_portal}"),
             "--no-tun".into(),
             "--port-forward".into(),
             format!("tcp://127.0.0.1:{local_port}/{host_addr}"),
@@ -552,12 +604,183 @@ impl SessionManager {
             }
         });
 
+        // 直连/中继徽章监控
+        spawn_link_monitor(
+            self.state.clone(),
+            kernel
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| std::path::PathBuf::from(".")),
+            rpc_portal,
+        );
+
         self.update(|s| {
             s.phase = Phase::WaitingPeer;
             s.detail = "已发起连接，等待房主的网络可达…".into();
         });
 
         Ok(local_port)
+    }
+
+    /// **TUN 模式房客**：创建虚拟网卡 + UDP 广播中继 → 游戏内多人
+    /// 列表自动发现房主的世界（PCL / Terraria 式体验）。
+    ///
+    /// 需要 UAC（提权包装进程托管，与房主同款双层 EncodedCommand；
+    /// 停止走停止文件，无二次授权）。探测目标直接是房主虚拟 IP。
+    async fn guest_inner_tun(
+        &self,
+        client: &reqwest::Client,
+        code: &str,
+        mc_port: u16,
+        bundled_dir: Option<&std::path::Path>,
+    ) -> Result<()> {
+        let kernel = kernel::ensure_kernel_with_bundled(client, bundled_dir).await?;
+        let creds = room_code::credentials(code);
+        let host_addr = room_code::host_virtual_addr(mc_port);
+        let rpc_portal = pick_free_port()?;
+
+        self.update(|s| {
+            s.rpc_portal = Some(rpc_portal);
+            s.detail = "正在创建虚拟网卡（需要在 UAC 弹窗中授权）…".into();
+        });
+
+        let mut args: Vec<String> = vec![
+            "--network-name".into(),
+            creds.network_name.clone(),
+            "--network-secret".into(),
+            creds.network_secret.clone(),
+            "--rpc-portal".into(),
+            format!("127.0.0.1:{rpc_portal}"),
+            // UDP 广播中继：Minecraft 局域网发现靠 224.0.2.60 广播包，
+            // EasyTier 2.7.0 的这个开关把它转发到虚拟网对端
+            "--enable-udp-broadcast-relay".into(),
+        ];
+        for server in DEFAULT_PUBLIC_SERVERS {
+            args.push("-p".into());
+            args.push((*server).to_string());
+        }
+
+        let log_dir = paths::state_dir()?.join("multiplayer");
+        std::fs::create_dir_all(&log_dir).map_err(|e| LauncherError::Io {
+            message: format!("创建联机目录失败: {e}"),
+        })?;
+        let stdout_log = log_dir.join("guest-stdout.log");
+        let stderr_log = log_dir.join("guest-stderr.log");
+        let script = host_wrapper_script(&kernel, &args, &stdout_log, &stderr_log, &self.stop_file);
+        let encoded = encode_powershell_command(&script);
+        let inner = encode_powershell_command(&format!(
+            "try {{ $p = Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile','-EncodedCommand','{encoded}' -Verb RunAs -PassThru; $p.WaitForExit() }} catch {{ exit 1 }}"
+        ));
+
+        let mut outer = Command::new("powershell")
+            .args(["-NoProfile", "-EncodedCommand", &inner])
+            .creation_flags(0x0800_0000)
+            .spawn()
+            .map_err(|e| LauncherError::Io {
+                message: format!("无法启动 PowerShell: {e}"),
+            })?;
+
+        // 授权窗口最多等 90 秒（与房主一致）
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+        loop {
+            if stdout_log.is_file() || stderr_log.is_file() {
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                let _ = outer.kill().await;
+                return Err(LauncherError::Internal {
+                    message: "等待授权超时：请重试并在 UAC 弹窗中选择「是」".into(),
+                });
+            }
+            if let Some(status) = outer.try_wait().map_err(|e| LauncherError::Io {
+                message: format!("轮询联机进程失败: {e}"),
+            })? {
+                return Err(LauncherError::Internal {
+                    message: if status.success() {
+                        "联机未启动（授权被取消或失败）".to_string()
+                    } else {
+                        "UAC 授权被取消，联机未启动".to_string()
+                    },
+                });
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
+        // 会话标记：与房主共用（孤儿回收兜底）
+        let _ = std::fs::write(log_dir.join("session.host"), b"hosting");
+
+        self.update(|s| {
+            s.phase = Phase::WaitingPeer;
+            s.detail = format!(
+                "已进入虚拟网络（虚拟网卡模式）：游戏内多人列表会自动发现房主的世界，或直接连接 {host_addr}"
+            );
+        });
+
+        let manager_log = LogTap {
+            state: self.state.clone(),
+        };
+        tokio::spawn(supervise_log_file(stderr_log.clone(), manager_log));
+        tokio::spawn(async move {
+            let _ = outer.wait().await;
+            let _ = stdout_log;
+            let _ = stderr_log;
+        });
+
+        // 探测目标直接是房主虚拟 IP（世界开放即 Connected）
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            let addr = host_addr;
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                {
+                    let guard = state.lock().expect("联机状态锁中毒");
+                    match guard.as_ref() {
+                        Some(s) if !matches!(s.phase, Phase::Error | Phase::Stopped) => {}
+                        _ => return,
+                    }
+                }
+                match ping::ping(&addr, Duration::from_secs(3)).await {
+                    Ok(status) => {
+                        let mut guard = state.lock().expect("联机状态锁中毒");
+                        if let Some(s) = guard.as_mut()
+                            && s.phase != Phase::Stopped
+                        {
+                            s.phase = Phase::Connected;
+                            s.motd = status.motd.clone();
+                            s.detail = format!(
+                                "已连接到世界「{}」（{}，{}/{} 人在线）。游戏内多人列表会自动发现世界，或直接连接 {addr}",
+                                status.motd.trim(),
+                                status.version,
+                                status.players_online,
+                                status.players_max,
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        let mut guard = state.lock().expect("联机状态锁中毒");
+                        if let Some(s) = guard.as_mut()
+                            && s.phase == Phase::Connected
+                        {
+                            s.phase = Phase::WaitingPeer;
+                            s.motd.clear();
+                            s.detail = "与世界的连接中断，等待恢复…".into();
+                        }
+                    }
+                }
+            }
+        });
+
+        // 直连/中继徽章监控
+        spawn_link_monitor(
+            self.state.clone(),
+            kernel
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| std::path::PathBuf::from(".")),
+            rpc_portal,
+        );
+
+        Ok(())
     }
 
     /// 房客后台探测循环：每 5 秒 ping 一次本地转发端口。
@@ -731,6 +954,30 @@ async fn tap_stream<R: tokio::io::AsyncRead + Unpin>(stream: R, state: SharedHan
 }
 
 /// 挑一个空闲的本地端口（房客转发监听用）。
+/// 直连/中继徽章的后台监控：每 5 秒查一次 RPC 门户的 peer 列表。
+///
+/// 查询失败静默保留上一次的值；会话结束（Error/Stopped/清空）即退出。
+fn spawn_link_monitor(state: SharedHandle, cli_dir: PathBuf, rpc_portal: u16) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            {
+                let guard = state.lock().expect("联机状态锁中毒");
+                match guard.as_ref() {
+                    Some(s) if !matches!(s.phase, Phase::Error | Phase::Stopped) => {}
+                    _ => return,
+                }
+            }
+            if let Some(kind) = link::query(&cli_dir, rpc_portal).await {
+                let mut guard = state.lock().expect("联机状态锁中毒");
+                if let Some(s) = guard.as_mut() {
+                    s.link_type = Some(kind);
+                }
+            }
+        }
+    });
+}
+
 fn pick_free_port() -> Result<u16> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| LauncherError::Io {
         message: format!("分配本地端口失败: {e}"),

@@ -16,8 +16,12 @@ export function hostMultiplayer(
 }
 
 /** 房客加入房间（支持小写 / 混淆字符 / 缺分隔符，后端自动纠偏）。 */
-export function joinMultiplayer(roomCode: string, mcPort: number): Promise<MultiplayerStatus> {
-  return callCommand(() => commands.joinMultiplayer(roomCode, mcPort));
+export function joinMultiplayer(
+  roomCode: string,
+  mcPort: number,
+  tunMode = false,
+): Promise<MultiplayerStatus> {
+  return callCommand(() => commands.joinMultiplayer(roomCode, mcPort, tunMode));
 }
 
 /** 停止当前联机会话。 */
