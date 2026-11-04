@@ -646,8 +646,7 @@ fn require_client_id() -> CoreResult<String> {
     if !is_configured() {
         return Err(LauncherError::InvalidConfig {
             key: "microsoft.clientId".into(),
-            message: "微软登录尚未配置客户端 ID（SERENO_MS_CLIENT_ID），请先在 Azure 注册应用"
-                .into(),
+            message: "微软正版登录正在申请权限，暂未开放".into(),
         });
     }
     Ok(client_id())

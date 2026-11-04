@@ -561,8 +561,8 @@ function removeAuthlib(id: string, name: string): void {
             v-if="!canLogin"
             class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
           >
-            登录尚未开放：需要先在 Azure 门户注册应用，并把客户端 ID 填入
-            <code class="font-mono">SERENO_MS_CLIENT_ID</code>。
+            微软正版登录正在申请权限，暂未开放。开放后即可直接用 Microsoft
+            账号登录，无需任何额外配置。
           </p>
 
           <div

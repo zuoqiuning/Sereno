@@ -23,7 +23,7 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 | | |
 | :--- | :--- |
 | [功能特性](#功能特性--features) | [截图](#截图--screenshots) |
-| [快速上手](#快速上手--getting-started) | [启用微软正版登录](#启用微软正版登录--enabling-microsoft-login) |
+| [快速上手](#快速上手--getting-started) | [微软正版登录](#微软正版登录--microsoft-login) |
 | [支持作者](#支持作者--support) | [开源协议](#开源协议--license) |
 | [特别鸣谢](#特别鸣谢--acknowledgements) | |
 
@@ -32,9 +32,9 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 ## 功能特性 / Features
 
 - 原版游戏与 Fabric / Quilt / Forge / NeoForge / OptiFine 的安装与启动
-- 微软正版登录与离线档案，令牌保存在系统凭据管理器
-  **注意：微软正版登录需要你自行在 Azure 注册应用**，见
-  [启用微软正版登录](#启用微软正版登录--enabling-microsoft-login)
+- 离线档案：可创建多个并随时切换，玩家数据互不影响
+- 微软正版登录**正在申请权限**，暂未开放，见
+  [微软正版登录](#微软正版登录--microsoft-login)
 - 第三方登录（authlib-injective / Yggdrasil）：支持 LittleSkin、Ely.by 等兼容的皮肤站
 - Mod、整合包、资源包、光影的搜索与下载，聚合 Modrinth 与 CurseForge
 - **CurseForge 整合包安装**：解析 `manifest.json`，逐文件校验 SHA-1
@@ -49,9 +49,9 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 <summary><b>English</b></summary>
 
 - Install and launch Vanilla, Fabric, Quilt, Forge, NeoForge, and OptiFine.
-- Microsoft OAuth 2.0 login (Device Code Flow) and offline accounts; tokens are stored in the system keychain.
-  **Note:** Microsoft login needs your own Azure app registration — see
-  [Enabling Microsoft login](#启用微软正版登录--enabling-microsoft-login).
+- Offline profiles: create several and switch between them at any time; each keeps its own player data.
+- Microsoft login is **under review** and not available yet — see
+  [Microsoft login](#微软正版登录--microsoft-login).
 - Third-party login via authlib-injective / Yggdrasil (LittleSkin, Ely.by, and any compatible server).
 - Search and download mods, modpacks, resource packs, and shaders from Modrinth and CurseForge.
 - **Install CurseForge modpacks** — `manifest.json` is resolved through the CF API, with per-file SHA-1 verification.
@@ -84,32 +84,21 @@ The last-played instance takes the stage — one click to launch.
 
 ---
 
-## 启用微软正版登录 / Enabling Microsoft Login
+## 微软正版登录 / Microsoft Login
 
-离线档案开箱即用；**微软正版登录不随包附带客户端 ID**——用别人的 Azure 应用等于
-把你的 Minecraft 账号经由第三方回调地址走一遍。请自行注册一个免费应用：
+**正在申请权限，暂未开放。**
 
-Offline accounts work out of the box. Microsoft login does **not** ship with a
-client ID — using someone else's Azure application would route your Minecraft
-account through a third party's redirect URI. Register your own free Azure app
-and point Sereno at it:
+微软正版登录需要向 Microsoft 申请应用发布权限，目前申请正在进行中。
+开放之后会在这里更新说明，届时直接用你的 Microsoft 账号登录即可，
+无需任何额外配置。
 
-1. Azure 门户 → **应用注册** → **新注册**
-   / Azure Portal → **App registrations** → **New registration**
-2. 名称随意；**支持的账户类型**选「个人 Microsoft 账户」
-   / Name it anything; set **Supported account types** to *Personal Microsoft accounts*
-3. 添加 **Web** 重定向 URI：`https://login.live.com/oauth20_desktop.srf`
-   / Add a **Web** redirect URI: `https://login.live.com/oauth20_desktop.srf`
-4. 复制**应用程序（客户端）ID**
-   / Copy the **Application (client) ID**
-5. 用该值启动 Sereno：
+**Under review.** Microsoft login requires an application publishing permission
+from Microsoft; the request is currently in progress. This section will be
+updated once it goes live — at that point you will be able to sign in with your
+own Microsoft account with no extra setup.
 
-```
-set SERENO_MS_CLIENT_ID=<你的客户端 ID>
-sereno.exe
-```
-
-未配置时，界面会明确提示「登录尚未开放」，而不是在登录流程中途失败。
+> 离线档案不受影响，现在就能用。
+> Offline profiles are unaffected and available right now.
 
 Until then the launcher says "login is not configured yet" up front, instead of
 failing halfway through the sign-in flow.
