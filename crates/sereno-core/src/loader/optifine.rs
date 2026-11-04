@@ -27,6 +27,24 @@
 //!
 //! 安装器 class 文件的 major version 减 44 就是它需要的 Java 主版本
 //! （class 52 → Java 8）。这是 PCL 用的同一套换算。
+//!
+//! ## 弹窗陷阱（重要）
+//!
+//! 安装器内部任何异常都会走 `optifine.Utils.showErrorMessage`，
+//! 而它是 `javax.swing.JOptionPane.showMessageDialog`——**一个模态对话框**。
+//! 无头运行时会弹出真实的 Error 窗口，并且**进程永远不退出**，
+//! 只能等到超时被杀掉。
+//!
+//! 最常见的触发点是缺少 `<minecraft>/launcher_profiles.json`：
+//! 安装器装完补丁后会去更新原版启动器的配置档案，文件不在就抛
+//! 「File not found」并弹窗。
+//!
+//! 因此这里做了两道防线：
+//!
+//! 1. 沙箱里**预置** `launcher_profiles.json`（内容与 PCL 的做法一致），
+//!    让安装器有档案可更新，不进入错误分支；
+//! 2. 运行时加 `-Djava.awt.headless=true`，万一还有别的路径触发弹窗，
+//!    会抛 `HeadlessException` 快速失败，而不是挂起等用户点「确定」。
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -231,18 +249,39 @@ pub async fn install_optifine(
     }
     crate::utils::paths::ensure_dir(&minecraft_dir.join("libraries"))?;
 
+    // 3.5 预置 launcher_profiles.json
+    //
+    // 安装器装完补丁后会去更新原版启动器的配置档案。文件不存在时它会
+    // 抛「File not found」并弹一个 Swing 模态框，**进程不会退出**——
+    // 用户会看到一个 Error 窗口，任务则一直挂到超时。
+    // 这里先造一份最小可用的档案，安装器就能正常走完更新流程。
+    write_launcher_profiles(&minecraft_dir)?;
+
     // 4. 跑安装器
-    let output = run_installer(&java.path, &installer, &sandbox).await?;
+    let run = run_installer(&java.path, &installer, &sandbox).await?;
 
     // 5. 收集产物
-    let produced = collect_produced(&minecraft_dir, mc_version).ok_or_else(|| {
-        LauncherError::LoaderInstallFailed {
+    //
+    // **以产物判定成败，而不是看退出码**：headless 下安装器可能抛
+    // HeadlessException 后退出码非 0，但它写出来的版本文件其实完好
+    // （补丁是在报错之前打的）。反过来，退出码为 0 也不保证产物齐全。
+    let Some(produced) = collect_produced(&minecraft_dir, mc_version) else {
+        return Err(LauncherError::LoaderInstallFailed {
             message: format!(
                 "OptiFine 安装器没有产出任何版本文件。安装器输出：\n{}",
-                tail(&output)
+                tail(&run.output)
             ),
-        }
-    })?;
+        });
+    };
+
+    if !run.success {
+        // 产物齐全但退出码异常：记录下来，不阻断安装。
+        tracing::warn!(
+            exit_code = ?run.exit_code,
+            version = %produced.id,
+            "OptiFine 安装器退出码非零，但版本文件已产出，继续安装"
+        );
+    }
 
     // 6. 把版本 JSON 与打过补丁的 jar 放进实例
     let target = instance_dir.join("versions").join(&produced.id);
@@ -380,16 +419,66 @@ pub fn required_java_major(installer: &Path) -> Result<Option<u32>> {
     Ok(Some(class_version.saturating_sub(44)))
 }
 
+/// 在沙箱里写一份最小的 `launcher_profiles.json`。
+///
+/// 安装器结束时会把新版本登记进原版启动器的配置档案，
+/// 文件缺失会触发模态错误框（见模块文档）。
+///
+/// 结构与官方启动器一致：一个 `profiles` 对象、`selectedProfile` 与
+/// `clientToken`。档案名固定用 `Sereno`——沙箱是一次性的，
+/// 这个名字不会被用户看到。
+fn write_launcher_profiles(minecraft_dir: &Path) -> Result<()> {
+    let path = minecraft_dir.join("launcher_profiles.json");
+
+    let profiles = serde_json::json!({
+        "profiles": {
+            "Sereno": {
+                "icon": "Grass",
+                "name": "Sereno",
+                "lastVersionId": "latest-release",
+                "type": "latest-release",
+                "lastUsed": "2026-01-01T00:00:00.0000Z"
+            }
+        },
+        "selectedProfile": "Sereno",
+        "clientToken": "23323323323323323323323323323333"
+    });
+
+    let text = serde_json::to_string_pretty(&profiles).map_err(|e| LauncherError::Io {
+        message: format!("生成 launcher_profiles.json 失败：{e}"),
+    })?;
+
+    crate::utils::fs::atomic_write(&path, text.as_bytes()).map_err(|e| LauncherError::Io {
+        message: format!("写入 launcher_profiles.json 失败：{e}"),
+    })
+}
+
+/// 安装器的一次运行结果。
+struct InstallerRun {
+    /// 标准输出与标准错误合并后的文本。
+    output: String,
+    /// 退出码是否为零。
+    success: bool,
+    /// 退出码（进程被信号杀死时为 `None`）。
+    exit_code: Option<i32>,
+}
+
 /// 运行安装器。
 ///
 /// **环境变量与系统属性都指向沙箱**：安装器据此定位 Minecraft 目录，
 /// 绝不会写到用户的真实游戏目录里。
-async fn run_installer(java_exe: &str, installer: &Path, sandbox: &Path) -> Result<String> {
+///
+/// **不因退出码非零直接判失败**：调用方应以「产物是否齐全」为准。
+async fn run_installer(java_exe: &str, installer: &Path, sandbox: &Path) -> Result<InstallerRun> {
     let sandbox_str = sandbox.to_string_lossy().to_string();
     let installer_str = installer.to_string_lossy().to_string();
 
     let mut command = tokio::process::Command::new(java_exe);
     command
+        // headless：安装器内部任何错误都会走 Swing 的模态对话框，
+        // 无头环境下会挂起等用户点「确定」。加上这个参数后，
+        // 同样的错误会抛 HeadlessException 快速失败。
+        .arg("-Djava.awt.headless=true")
         .arg(format!("-Duser.home={sandbox_str}"))
         .arg("-cp")
         .arg(&installer_str)
@@ -432,17 +521,21 @@ async fn run_installer(java_exe: &str, installer: &Path, sandbox: &Path) -> Resu
     let mut text = String::from_utf8_lossy(&output.stdout).to_string();
     text.push_str(&String::from_utf8_lossy(&output.stderr));
 
-    if !output.status.success() {
-        return Err(LauncherError::LoaderInstallFailed {
-            message: format!(
-                "OptiFine 安装器退出码 {:?}：\n{}",
-                output.status.code(),
-                tail(&text)
-            ),
-        });
+    let success = output.status.success();
+    let exit_code = output.status.code();
+
+    if !success {
+        tracing::debug!(
+            ?exit_code,
+            "OptiFine 安装器退出码非零（以产物是否齐全判定成败）"
+        );
     }
 
-    Ok(text)
+    Ok(InstallerRun {
+        output: text,
+        success,
+        exit_code,
+    })
 }
 
 /// 安装器产出的版本。
@@ -616,6 +709,34 @@ mod tests {
         }
 
         assert!(required_java_major(&jar).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 沙箱里必须有一份合法的 `launcher_profiles.json`，
+    /// 否则安装器会弹 Swing 模态框并且永不退出。
+    #[test]
+    fn writes_launcher_profiles_for_sandbox() {
+        let dir = std::env::temp_dir().join(format!("sereno-of-profiles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        write_launcher_profiles(&dir).expect("必须写出 launcher_profiles.json");
+
+        let path = dir.join("launcher_profiles.json");
+        assert!(path.is_file(), "launcher_profiles.json 必须落盘");
+
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+
+        // 安装器要读这三个字段，缺一个就进错误分支
+        assert!(value.get("profiles").is_some(), "缺少 profiles");
+        assert_eq!(value.get("selectedProfile").unwrap(), "Sereno");
+        assert!(value.get("clientToken").is_some(), "缺少 clientToken");
+
+        // profiles 必须是个非空对象
+        let profiles = value.get("profiles").unwrap().as_object().unwrap();
+        assert!(!profiles.is_empty(), "profiles 不能为空");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
