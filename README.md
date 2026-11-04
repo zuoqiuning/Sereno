@@ -18,7 +18,7 @@ A quiet, minimalist Minecraft launcher.
 
 ## Features
 
-- Install and launch Vanilla, Fabric, Quilt, Forge, and NeoForge.
+- Install and launch Vanilla, Fabric, Quilt, Forge, NeoForge, and OptiFine.
 - Microsoft OAuth 2.0 login (Device Code Flow) and offline accounts; tokens are stored in the system keychain.
   **Note:** Microsoft login needs your own Azure app registration — see [Enabling Microsoft login](#enabling-microsoft-login).
 - Third-party login via authlib-injective / Yggdrasil (LittleSkin, Ely.by, and any compatible server).
@@ -85,7 +85,7 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 
 ### 目前能做的
 
-- 原版游戏与 Fabric / Quilt / Forge / NeoForge 安装、启动
+- 原版游戏与 Fabric / Quilt / Forge / NeoForge / OptiFine 安装、启动
 - 微软正版登录与离线账户，令牌保存在系统凭据管理器
   **注意：微软正版登录需要你自行在 Azure 注册应用**，见 [启用微软正版登录](#启用微软正版登录)
 - 第三方登录（authlib-injective / Yggdrasil）：支持 LittleSkin、Ely.by 等兼容的皮肤站

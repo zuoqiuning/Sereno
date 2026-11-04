@@ -79,6 +79,44 @@ pub async fn install_loader_into(
     }
 }
 
+/// 安装 OptiFine。
+///
+/// 与其它加载器不同：OptiFine 的「安装器」是一个无头运行的 Java 程序，
+/// 它把打过补丁的客户端 jar 与版本 JSON 直接写进实例的 `versions/`。
+///
+/// 编排放在 core 里（命令层不碰 `reqwest`）：下载版本列表 → 选版本 →
+/// 下载安装器 → 无头运行 → 收集产物。
+pub async fn install_optifine_into(
+    settings: &AppSettings,
+    inst_dir: &Path,
+    metadata: &InstanceMetadata,
+    version_label: Option<&str>,
+) -> Result<LoaderInfo> {
+    let Some(label) = version_label
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(LauncherError::InvalidConfig {
+            key: "loaderVersion".into(),
+            message: "请选择一个 OptiFine 版本".into(),
+        });
+    };
+
+    let client = crate::utils::http::build_client(settings)?;
+    let mc_version = metadata.game_version.clone();
+
+    let versions = crate::loader::optifine::list_versions(&client, &mc_version).await?;
+    let version = crate::loader::optifine::find_by_label(&versions, label).ok_or_else(|| {
+        LauncherError::LoaderNotFound {
+            loader: "optifine".into(),
+            version: label.to_string(),
+        }
+    })?;
+
+    crate::loader::optifine::install_optifine(&client, settings, inst_dir, &mc_version, &version)
+        .await
+}
+
 /// 加载器安装器所需的 Java 主版本。
 ///
 /// 只用于「版本 JSON 还没落盘」时的兜底；有本地 JSON 时以 `javaVersion` 为准。

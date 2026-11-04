@@ -367,6 +367,41 @@ pub async fn resolve(
     })
 }
 
+/// 按**最低版本**要求选出 Java。
+///
+/// 与 [`resolve`] 的区别：这里的 `min_major` 是「至少要这么新」，
+/// 而不是「正好是这一版」。适合 OptiFine 这类安装器——
+/// 它的 class 文件版本只给出下限（class 52 → Java 8），
+/// 但用 Java 21 跑同样的安装器完全正常。
+///
+/// 选择策略：优先**刚好不低于下限**的那一版（离下限越近越稳），
+/// 没有就退而求其次选可用的最低版本。
+pub async fn resolve_at_least(min_major: u32, custom_path: Option<&str>) -> Result<JavaCandidate> {
+    if let Some(path) = custom_path.map(str::trim).filter(|p| !p.is_empty()) {
+        let mut candidate = probe(path).await?;
+        ensure_launchable(&candidate)?;
+        candidate.is_custom = true;
+        return Ok(candidate);
+    }
+
+    let mut candidates = detect_all().await?;
+    if cfg!(target_pointer_width = "64") {
+        candidates.retain(|c| c.arch != "x86");
+    }
+
+    if let Some(best) = candidates
+        .iter()
+        .filter(|c| c.major_version >= min_major)
+        .min_by_key(|c| c.major_version)
+    {
+        return Ok(best.clone());
+    }
+
+    Err(LauncherError::JavaNotFound {
+        required_major: min_major,
+    })
+}
+
 /// 启动前的运行时校验。
 ///
 /// 目前只做「位数不匹配」这一项硬性检查：32 位 Java 启动 64 位游戏

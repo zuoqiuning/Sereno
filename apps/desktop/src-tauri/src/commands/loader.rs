@@ -138,24 +138,13 @@ pub async fn get_loader_versions(
                     .await?;
         }
         LoaderType::OptiFine => {
-            let url = format!("https://bmclapi2.bangbang93.com/optifine/{}", mc_version);
-            if let Ok(resp) = client.get(&url).send().await
-                && let Ok(json) =
-                    sereno_core::utils::http::read_json_limited::<Value>(resp, MAX_METADATA_BYTES)
-                        .await
-                && let Some(arr) = json.as_array()
-            {
-                for item in arr {
-                    // 只提取 release 版本（如 J1），过滤掉 pre9 等预览版
-                    let ty = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    if ty == "release"
-                        && let Some(patch) = item.get("patch").and_then(|v| v.as_str())
-                    {
-                        versions.push(patch.to_string());
-                    }
-                }
-            }
-            versions.dedup();
+            // OptiFine 的版本标签形如 `1.20.1 HD_U I6`——
+            // 安装时要用完整标签才能拼出下载地址，只给补丁号不够。
+            versions = sereno_core::loader::optifine::list_versions(&client, &mc_version)
+                .await?
+                .into_iter()
+                .map(|version| version.label)
+                .collect();
         }
     }
 
@@ -194,16 +183,29 @@ pub async fn install_loader(
         });
     }
 
-    if loader_type == "optifine" {
-        return Err(sereno_core::LauncherError::Internal {
-            message: "OptiFine 安装暂未实现，请先使用 Forge/Fabric 实例".into(),
-        });
-    }
     if loader_type == "vanilla" {
         return Ok(());
     }
 
     let spec_ver = loader_version.as_deref().filter(|v| *v != "latest");
+
+    // OptiFine 走的是「下载安装器 → 无头跑一次 → 收集产物」的特殊流程，
+    // 与其它加载器的安装器协议完全不同，单独处理。
+    if loader_type == "optifine" {
+        let info = sereno_core::loader::install::install_optifine_into(
+            &settings, &inst_dir, &metadata, spec_ver,
+        )
+        .await?;
+        metadata.loader = info;
+        write_metadata(&inst_dir, &metadata)?;
+
+        if sereno_core::loader::resolve_installed_version(&inst_dir, &metadata).is_none() {
+            return Err(sereno_core::LauncherError::LoaderInstallFailed {
+                message: "OptiFine 安装器执行完成，但没有找到可启动的版本 JSON".into(),
+            });
+        }
+        return Ok(());
+    }
 
     // 取消键与前端任务 ID 对齐（任务页按 `loader-<实例 id>` 登记）。
     let cancel_key = format!("loader-{instance_id}");

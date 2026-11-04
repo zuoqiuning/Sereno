@@ -160,12 +160,13 @@ function browseResources(kind: LocalResourceKind): void {
   });
 }
 
-type LoaderChoice = "neoforge" | "forge" | "fabric" | "quilt";
+type LoaderChoice = "neoforge" | "forge" | "fabric" | "quilt" | "optifine";
 const loaderChoices: { id: LoaderChoice; name: string }[] = [
   { id: "neoforge", name: "NeoForge" },
   { id: "forge", name: "Forge" },
   { id: "fabric", name: "Fabric" },
   { id: "quilt", name: "Quilt" },
+  { id: "optifine", name: "OptiFine" },
 ];
 
 interface LoaderDialogState {
@@ -386,7 +387,11 @@ async function handleOpenFolder(instanceId: string): Promise<void> {
 async function openLoaderDialog(inst: InstanceMetadata): Promise<void> {
   const current = inst.loader.type;
   const initial: LoaderChoice =
-    current === "forge" || current === "neoforge" || current === "fabric" || current === "quilt"
+    current === "forge" ||
+    current === "neoforge" ||
+    current === "fabric" ||
+    current === "quilt" ||
+    current === "optifine"
       ? current
       : "neoforge";
 
