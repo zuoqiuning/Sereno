@@ -1,11 +1,5 @@
 import { commands, events } from "@/bindings";
-import type {
-  GameExited,
-  ImportScan,
-  InstanceLogs,
-  InstanceMetadata,
-  SaveSummary,
-} from "@/types";
+import type { GameExited, ImportScan, InstanceLogs, InstanceMetadata, SaveSummary } from "@/types";
 
 export type { SaveSummary };
 
@@ -133,17 +127,11 @@ export function listInstanceSaves(instanceId: string): Promise<SaveSummary[]> {
 }
 
 /** 删除存档（回收站优先，失败自动回退物理删除）。 */
-export function deleteInstanceSave(
-  instanceId: string,
-  saveName: string,
-): Promise<null> {
+export function deleteInstanceSave(instanceId: string, saveName: string): Promise<null> {
   return callCommand(() => commands.deleteInstanceSave(instanceId, saveName));
 }
 
 /** 打开某个存档的目录。 */
-export function openSaveFolder(
-  instanceId: string,
-  saveName: string,
-): Promise<null> {
+export function openSaveFolder(instanceId: string, saveName: string): Promise<null> {
   return callCommand(() => commands.openSaveFolder(instanceId, saveName));
 }

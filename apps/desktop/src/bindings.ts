@@ -5,378 +5,638 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
-	getAppInfo: () => typedError<AppInfo, LauncherError>(__TAURI_INVOKE("get_app_info")),
-	logFromFrontend: (level: LogLevel, message: string, fields: { [key in string]: string } | null) => typedError<null, LauncherError>(__TAURI_INVOKE("log_from_frontend", { level, message, fields })),
-	/**
-	 *  获取 Mojang 版本清单。
-	 * 
-	 *  优先读内存缓存（10 分钟 TTL），避免每次进下载页都重新走网络。
-	 */
-	getVersionManifest: () => typedError<VersionManifest_Serialize, LauncherError>(__TAURI_INVOKE("get_version_manifest")),
-	/**  获取指定版本的详情（已合并 inheritsFrom）。 */
-	getVersionDetail: (id: string) => typedError<VersionDetail_Serialize, LauncherError>(__TAURI_INVOKE("get_version_detail", { id })),
-	/**  扫描并返回系统中所有可用的 Java 运行时。 */
-	getJavaCandidates: () => typedError<JavaCandidate[], LauncherError>(__TAURI_INVOKE("get_java_candidates")),
-	/**  自动下载并安装 Zulu JRE（8 / 17 / 21）。 */
-	installJavaRuntime: (major: number) => typedError<JavaCandidate, LauncherError>(__TAURI_INVOKE("install_java_runtime", { major })),
-	listInstances: () => typedError<InstanceMetadata_Serialize[], LauncherError>(__TAURI_INVOKE("list_instances")),
-	getRunningInstances: () => typedError<string[], LauncherError>(__TAURI_INVOKE("get_running_instances")),
-	createInstance: (gameVersion: string, displayName: string) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("create_instance", { gameVersion, displayName })),
-	deleteInstance: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("delete_instance", { instanceId })),
-	openInstanceFolder: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_instance_folder", { instanceId })),
-	/**  打开系统原生的“选择文件”对话框，用来指定实例专用 Java。 */
-	selectJavaExecutable: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_java_executable")),
-	/**
-	 *  更新实例级启动配置：Java、内存与附加 JVM 参数。
-	 * 
-	 *  传 `null` / 空列表表示“回落到全局设置”。Java 路径会先探测一次，
-	 *  避免把一个不是 Java 的文件存进去、到启动时才报错。
-	 */
-	updateInstanceOptions: (instanceId: string, javaPath: string | null, memoryMb: number | null, jvmArgs: string[]) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("update_instance_options", { instanceId, javaPath, memoryMb, jvmArgs })),
-	setInstanceFavorite: (instanceId: string, favorite: boolean) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_favorite", { instanceId, favorite })),
-	/**
-	 *  设置 / 清除实例分组。
-	 * 
-	 *  归一化：首尾空白去掉；空串 = 移出分组（`None`）；上限 32 字符；
-	 *  禁止控制字符。分组只是展示元数据，不参与目录结构，无需迁移。
-	 */
-	setInstanceGroup: (instanceId: string, group: string | null) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_group", { instanceId, group })),
-	/**
-	 *  列出实例的全部存档（按最后游玩时间倒序）。
-	 * 
-	 *  目录遍历可能较慢（大型存档数千个文件），走 spawn_blocking。
-	 */
-	listInstanceSaves: (instanceId: string) => typedError<SaveSummary_Serialize[], LauncherError>(__TAURI_INVOKE("list_instance_saves", { instanceId })),
-	/**  删除存档（回收站优先，失败自动回退物理删除）。 */
-	deleteInstanceSave: (instanceId: string, saveName: string) => typedError<null, LauncherError>(__TAURI_INVOKE("delete_instance_save", { instanceId, saveName })),
-	/**  打开某个存档的目录。 */
-	openSaveFolder: (instanceId: string, saveName: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_save_folder", { instanceId, saveName })),
-	readInstanceLogs: (instanceId: string) => typedError<InstanceLogs_Serialize, LauncherError>(__TAURI_INVOKE("read_instance_logs", { instanceId })),
-	/**
-	 *  扫描外部目录，找出可导入的实例候选。
-	 * 
-	 *  支持官方启动器 / PCL / HMCL（有 `versions/`）、
-	 *  MultiMC / Prism（有 `.minecraft/`）与裸游戏目录。
-	 */
-	scanImportCandidates: (source: string) => typedError<ImportScan_Serialize, LauncherError>(__TAURI_INVOKE("scan_import_candidates", { source })),
-	/**  打开系统原生的“选择文件夹”对话框，用来指定要导入的外部实例目录。 */
-	selectImportDirectory: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_import_directory")),
-	/**
-	 *  导入外部实例：新建实例 + 搬运用户数据（Mod、配置、存档）。
-	 * 
-	 *  游戏本体与库文件**不复制**，而是走 Sereno 自己的安装流程重新下载——
-	 *  更快、更准，还能用上镜像与 SHA-1 校验。
-	 */
-	importInstance: (source: string, candidateLabel: string, gameVersion: string, loaderType: string, loaderVersion: string | null, displayName: string) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("import_instance", { source, candidateLabel, gameVersion, loaderType, loaderVersion, displayName })),
-	createWorldBackup: (instanceId: string) => typedError<WorldBackup, LauncherError>(__TAURI_INVOKE("create_world_backup", { instanceId })),
-	listWorldBackups: (instanceId: string) => typedError<WorldBackup[], LauncherError>(__TAURI_INVOKE("list_world_backups", { instanceId })),
-	restoreWorldBackup: (instanceId: string, name: string) => typedError<null, LauncherError>(__TAURI_INVOKE("restore_world_backup", { instanceId, name })),
-	/**
-	 *  创建内容快照（mods / config / 资源包 / 光影）。
-	 * 
-	 *  打包整个内容目录是 IO 密集型操作（几百 MB 的整合包要几秒），
-	 *  放到阻塞线程里执行，避免占住 IPC 运行时。
-	 */
-	createContentSnapshot: (instanceId: string, reason: string | null, pinned: boolean | null) => typedError<ContentSnapshot, LauncherError>(__TAURI_INVOKE("create_content_snapshot", { instanceId, reason, pinned })),
-	listContentSnapshots: (instanceId: string) => typedError<ContentSnapshot[], LauncherError>(__TAURI_INVOKE("list_content_snapshots", { instanceId })),
-	/**  回滚到某个快照。回滚会**替换**当前 mods / config，属于破坏性操作。 */
-	restoreContentSnapshot: (instanceId: string, snapshotId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("restore_content_snapshot", { instanceId, snapshotId })),
-	deleteContentSnapshot: (instanceId: string, snapshotId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("delete_content_snapshot", { instanceId, snapshotId })),
-	pinContentSnapshot: (instanceId: string, snapshotId: string, pinned: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("pin_content_snapshot", { instanceId, snapshotId, pinned })),
-	/**
-	 *  导出诊断包（启动器日志 + 实例日志/崩溃报告），返回 zip 路径。
-	 * 
-	 *  `instance_id` 为空时只导出启动器级日志。
-	 */
-	exportDiagnostic: (instanceId: string | null) => typedError<string, LauncherError>(__TAURI_INVOKE("export_diagnostic", { instanceId })),
-	getSettings: () => typedError<AppSettings_Serialize, LauncherError>(__TAURI_INVOKE("get_settings")),
-	saveSettings: (settings: AppSettings_Deserialize) => typedError<null, LauncherError>(__TAURI_INVOKE("save_settings", { settings })),
-	/**  打开系统原生的“选择文件夹”对话框。 */
-	selectDirectory: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_directory")),
-	/**  前端预加载结束后调用：显示主窗口并关闭启动画面。 */
-	finishStartup: () => typedError<null, LauncherError>(__TAURI_INVOKE("finish_startup")),
-	/**
-	 *  保存窗口尺寸与位置。
-	 * 
-	 *  单独一个命令而不是让前端「读整份设置 → 改 window → 整体保存」：
-	 *  那样在用户同时改内存 / 主题时会把对方的改动覆盖掉。
-	 *  这里只改 `window` 一段，写盘前仍走 `update_settings` 的合并逻辑。
-	 */
-	saveWindowState: (width: number, height: number, x: number, y: number) => typedError<null, LauncherError>(__TAURI_INVOKE("save_window_state", { width, height, x, y })),
-	/**  鸣谢页与关于页的赞助入口。 */
-	openSupporterPage: (target: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_supporter_page", { target })),
-	/**  关于页：直达项目仓库。 */
-	openProjectRepo: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_repo")),
-	/**  反馈页：直达 GitHub Issues。 */
-	openProjectIssues: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_issues")),
-	/**
-	 *  安装原版游戏，全程推送同一条整体进度。
-	 * 
-	 *  **失败时把状态回退到 `created`**：否则实例会永久卡在 `installing`，
-	 *  界面上既不能启动也无法重试。
-	 */
-	installGame: (instanceId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_game", { instanceId, channel })),
-	/**
-	 *  校验并修复实例：重新跑一遍安装计划，已存在且 SHA-1 正确的文件会被跳过。
-	 * 
-	 *  与 `install_game` 不同，这里不因 `status == "ready"` 提前返回；
-	 *  失败时保留原来的状态，避免把可用的实例降级成 `created`。
-	 */
-	repairInstance: (instanceId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("repair_instance", { instanceId, channel })),
-	installLoader: (instanceId: string, loaderType: string, loaderVersion: string | null) => typedError<null, LauncherError>(__TAURI_INVOKE("install_loader", { instanceId, loaderType, loaderVersion })),
-	getLoaderVersions: (mcVersion: string, loaderType: LoaderType) => typedError<string[], LauncherError>(__TAURI_INVOKE("get_loader_versions", { mcVersion, loaderType })),
-	searchResources: (query: ResourceSearchQuery_Deserialize) => typedError<ResourceSearchPage_Serialize, LauncherError>(__TAURI_INVOKE("search_resources", { query })),
-	/**
-	 *  Modrinth 获取版本列表。
-	 * 
-	 *  `game_versions` 可以一次传多个游戏版本（Modrinth 的接口支持多值），
-	 *  这样「某个版本前缀下的全部小版本」只要一次请求。
-	 */
-	getModVersions: (projectId: string, gameVersions: string[], loader: string) => typedError<ModVersion_Serialize[], LauncherError>(__TAURI_INVOKE("get_mod_versions", { projectId, gameVersions, loader })),
-	/**
-	 *  下载资源文件。
-	 * 
-	 *  `instance_id` 为空时下载到启动器的下载目录（`%APPDATA%\Sereno\downloads\<kind>`），
-	 *  用户可以先下载、再决定放进哪个实例。
-	 */
-	downloadResource: (instanceId: string | null, kind: ResourceKind, fileUrl: string, filename: string, sha1: string | null, taskId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("download_resource", { instanceId, kind, fileUrl, filename, sha1, taskId, channel })),
-	/**  取消一个资源下载任务（任务页的“取消”按钮）；返回是否命中任务。 */
-	cancelDownload: (taskId: string) => typedError<boolean, LauncherError>(__TAURI_INVOKE("cancel_download", { taskId })),
-	/**  安装单个必需前置：按目标实例的游戏版本 / 加载器挑选文件后下载到 `mods`。 */
-	installResourceDependency: (instanceId: string, source: string, projectId: string, versionId: string | null) => typedError<string, LauncherError>(__TAURI_INVOKE("install_resource_dependency", { instanceId, source, projectId, versionId })),
-	getCfModVersions: (modId: string, mcVersion: string, loader: string) => typedError<CfFile_Serialize[], LauncherError>(__TAURI_INVOKE("get_cf_mod_versions", { modId, mcVersion, loader })),
-	/**
-	 *  批量补全 CurseForge 的版本分支：一次 IPC 拿回多个游戏版本的文件。
-	 * 
-	 *  CurseForge 的文件列表按上传时间排序，只查一次会漏掉较早发布的分支
-	 *  （例如 JEI 的 1.21.4 / 1.21.8）。这里按具体游戏版本逐个查询，
-	 *  查询之间并发执行，由后端统一限速。
-	 */
-	getCfModVersionsBatch: (modId: string, versions: string[], loader: string) => typedError<CfFile_Serialize[], LauncherError>(__TAURI_INVOKE("get_cf_mod_versions_batch", { modId, versions, loader })),
-	/**  解析 MOD 版本声明的必需前置，返回名称与图标供详情页展示。 */
-	getResourceDependencies: (source: string, ids: string[]) => typedError<ResourceDependencyInfo_Serialize[], LauncherError>(__TAURI_INVOKE("get_resource_dependencies", { source, ids })),
-	/**
-	 *  在系统浏览器打开资源项目页。slug 只允许字母数字与 `-_`，
-	 *  因此 URL 只能是两个站点的项目页，不接受前端传任意地址。
-	 */
-	openResourcePage: (source: string, slug: string, kind: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_resource_page", { source, slug, kind })),
-	updateLocalResource: (instanceId: string, kind: LocalResourceKind, oldFileName: string, newFileName: string, fileUrl: string, sha1: string | null) => typedError<null, LauncherError>(__TAURI_INVOKE("update_local_resource", { instanceId, kind, oldFileName, newFileName, fileUrl, sha1 })),
-	listLocalResources: (instanceId: string, kind: LocalResourceKind) => typedError<LocalResource[], LauncherError>(__TAURI_INVOKE("list_local_resources", { instanceId, kind })),
-	setLocalResourceEnabled: (instanceId: string, kind: LocalResourceKind, fileName: string, enabled: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("set_local_resource_enabled", { instanceId, kind, fileName, enabled })),
-	/**
-	 *  批量启用 / 禁用本地资源。
-	 * 
-	 *  单条操作用 `set_local_resource_enabled`，批量操作走这里：
-	 *  一次 IPC 往返完成，避免「选中 30 个 Mod」要点 30 次、也发 30 次请求。
-	 */
-	setLocalResourcesEnabled: (instanceId: string, kind: LocalResourceKind, fileNames: string[], enabled: boolean) => typedError<number, LauncherError>(__TAURI_INVOKE("set_local_resources_enabled", { instanceId, kind, fileNames, enabled })),
-	/**
-	 *  删除本地资源（单个或批量）。
-	 * 
-	 *  core 侧 `resource::local::remove` 早已实现，但此前没有对应的命令，
-	 *  结果是**用户在界面上无法删除任何一个已安装的 Mod / 资源包**——
-	 *  只能手动去文件夹里删。这条命令把这个能力接上。
-	 */
-	removeLocalResources: (instanceId: string, kind: LocalResourceKind, fileNames: string[]) => typedError<number, LauncherError>(__TAURI_INVOKE("remove_local_resources", { instanceId, kind, fileNames })),
-	openLocalResourceFolder: (instanceId: string, kind: LocalResourceKind) => typedError<null, LauncherError>(__TAURI_INVOKE("open_local_resource_folder", { instanceId, kind })),
-	importLocalResources: (instanceId: string, kind: LocalResourceKind) => typedError<number, LauncherError>(__TAURI_INVOKE("import_local_resources", { instanceId, kind })),
-	/**
-	 *  从**绝对路径**导入本地资源（拖拽导入用）。
-	 * 
-	 *  `import_local_resources` 走系统文件选择框，由用户在对话框里挑文件；
-	 *  拖拽导入时路径已经知道了，这里直接收路径，省掉一次「再选一遍」。
-	 */
-	importLocalResourcesFromPaths: (instanceId: string, kind: LocalResourceKind, paths: string[]) => typedError<number, LauncherError>(__TAURI_INVOKE("import_local_resources_from_paths", { instanceId, kind, paths })),
-	checkLocalResourceUpdates: (instanceId: string, kind: LocalResourceKind) => typedError<LocalResourceScan_Serialize, LauncherError>(__TAURI_INVOKE("check_local_resource_updates", { instanceId, kind })),
-	/**  整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。 */
-	getModpackInfo: (projectId: string, versionId: string) => typedError<ModpackInfo, LauncherError>(__TAURI_INVOKE("get_modpack_info", { projectId, versionId })),
-	/**
-	 *  安装整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
-	 * 
-	 *  整合包不决定实例名，实例由前端先用 `create_instance` 建好，
-	 *  这里只负责把内容装进那个实例。
-	 */
-	installModpack: (instanceId: string, projectId: string, versionId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_modpack", { instanceId, projectId, versionId, channel })),
-	/**
-	 *  CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。
-	 * 
-	 *  **按需读取**：整合包在 CF 上是几十 MB 的 zip，这里只用 HTTP Range
-	 *  取回根目录的 `manifest.json`（几 KB），不必先下载整个包。
-	 */
-	getCfModpackInfo: (projectId: number, fileId: number) => typedError<ModpackInfo, LauncherError>(__TAURI_INVOKE("get_cf_modpack_info", { projectId, fileId })),
-	/**
-	 *  安装 CurseForge 整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
-	 * 
-	 *  与 Modrinth 的差别在第 3 步：CF 的 `manifest.json` 里没有下载地址，
-	 *  必须先回查 CurseForge API 解析 `fileID`，否则整个整合包装不上。
-	 */
-	installCfModpack: (instanceId: string, projectId: number, fileId: number, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_cf_modpack", { instanceId, projectId, fileId, channel })),
-	/**
-	 *  导出实例为 Modrinth 整合包（`.mrpack`）。
-	 * 
-	 *  追溯得到 Modrinth 来源的 Mod 写进索引条目（只含哈希与下载地址），
-	 *  其余内容与配置打进 `overrides/`。
-	 *  **存档、日志与崩溃报告不导出**——它们是个人数据，不是实例内容。
-	 */
-	exportInstanceModpack: (instanceId: string) => typedError<string, LauncherError>(__TAURI_INVOKE("export_instance_modpack", { instanceId })),
-	launchGame: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_game", { instanceId })),
-	/**
-	 *  房主开房。
-	 * 
-	 *  `room_code` 可为空：为空时生成新房间码。
-	 *  `mc_port`：游戏世界端口（专用服务端 25565；单人世界「对局域网开放」
-	 *  后聊天栏显示的随机端口）。
-	 */
-	hostMultiplayer: (roomCode: string | null, mcPort: number) => typedError<MultiplayerStatus_Serialize, LauncherError>(__TAURI_INVOKE("host_multiplayer", { roomCode, mcPort })),
-	/**
-	 *  房客加入房间。
-	 * 
-	 *  `room_code` 必填（支持小写 / 混淆字符 / 缺分隔符，核心会纠偏）。
-	 */
-	joinMultiplayer: (roomCode: string, mcPort: number) => typedError<MultiplayerStatus_Serialize, LauncherError>(__TAURI_INVOKE("join_multiplayer", { roomCode, mcPort })),
-	/**  停止当前联机会话。 */
-	stopMultiplayer: () => typedError<null, LauncherError>(__TAURI_INVOKE("stop_multiplayer")),
-	/**  查询联机状态（前端 1–2 秒轮询一次）。 */
-	getMultiplayerStatus: () => __TAURI_INVOKE<MultiplayerStatus_Serialize>("get_multiplayer_status"),
-	/**
-	 *  自动探测本机游戏世界端口。
-	 * 
-	 *  枚举 Java 进程的监听端口并逐个做 MC 状态探测；命中即返回端口与世界信息。
-	 *  游戏未开 / 未「对局域网开放」时返回 `None`，前端保持手动输入兜底。
-	 */
-	detectWorldPort: () => typedError<DetectedWorld | null, LauncherError>(__TAURI_INVOKE("detect_world_port")),
-	/**  当前登录态。 */
-	getAccountState: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),
-	/**  微软登录第一步：申请设备码，前端把短码与链接展示给用户。 */
-	startMicrosoftLogin: () => typedError<DeviceCodeInfo, LauncherError>(__TAURI_INVOKE("start_microsoft_login")),
-	/**
-	 *  微软登录第二步：轮询授权结果，成功后保存令牌并切到微软账户。
-	 * 
-	 *  这一步会阻塞到用户在浏览器里完成授权（或超时），前端用 loading 态承载。
-	 */
-	completeMicrosoftLogin: (deviceCode: string, interval: number, expiresIn: number) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("complete_microsoft_login", { deviceCode, interval, expiresIn })),
-	/**
-	 *  退出登录：删除凭据、清空会话缓存、切回离线账户。
-	 * 
-	 *  只清掉微软资料，**离线档案列表必须保留**，否则用户建过的档案会全部丢失。
-	 */
-	logoutAccount: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("logout_account")),
-	/**  设置离线用户名（切回离线账户）；同名档案存在时直接切换过去。 */
-	setOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("set_offline_account", { name })),
-	/**  新建离线档案并切换过去。 */
-	addOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("add_offline_account", { name })),
-	/**
-	 *  列出已保存的离线档案。
-	 * 
-	 *  老配置没有档案列表时，会用当前 `profile.name` 派生一个，
-	 *  保证升级后至少有一个可用档案。
-	 */
-	listOfflineAccounts: () => typedError<OfflineProfile[], LauncherError>(__TAURI_INVOKE("list_offline_accounts")),
-	/**  切换到某个离线档案。 */
-	switchOfflineAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("switch_offline_account", { id })),
-	/**  删除离线档案（至少保留一个）。 */
-	removeOfflineAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("remove_offline_account", { id })),
-	/**  切换回已登录过的微软账户（令牌仍在系统密钥库）。 */
-	activateMicrosoftAccount: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("activate_microsoft_account")),
-	/**
-	 *  诊断用：当前是否配置了微软客户端 ID。
-	 * 
-	 *  单独给前端一个命令而不是塞进设置，避免把 Azure 配置混进用户可见设置项。
-	 */
-	getMicrosoftConfig: () => typedError<MicrosoftConfig, LauncherError>(__TAURI_INVOKE("get_microsoft_config")),
-	/**
-	 *  启动时预热：如果当前是微软账户，提前刷新令牌。
-	 * 
-	 *  让「点启动」这一步不用再等三次网络往返；失败不阻塞启动，下一次启动会重试。
-	 */
-	warmAccountSession: () => typedError<null, LauncherError>(__TAURI_INVOKE("warm_account_session")),
-	/**
-	 *  第三方登录（authlib-injective / Yggdrasil）。
-	 * 
-	 *  用户提供 Yggdrasil 服务器地址与账号密码，命令用它们换取访问令牌。
-	 * 
-	 *  **密码只在这一次请求里出现**：不落盘、不进日志、不进诊断包。
-	 *  换来的令牌只进系统密钥库，设置文件里只留公开资料。
-	 */
-	authlibLogin: (apiRoot: string, username: string, password: string, serverName: string | null) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("authlib_login", { apiRoot, username, password, serverName })),
-	/**  切换到指定的第三方档案。 */
-	switchAuthlibAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("switch_authlib_account", { id })),
-	/**  退出第三方登录：删掉凭据并移除档案。 */
-	logoutAuthlibAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("logout_authlib_account", { id })),
-	/**  列出已登录的第三方档案。 */
-	listAuthlibAccounts: () => typedError<AuthlibProfile_Serialize[], LauncherError>(__TAURI_INVOKE("list_authlib_accounts")),
-	/**
-	 *  打开微软设备码授权页。
-	 * 
-	 *  地址来自微软接口返回值，但仍做域名白名单校验：
-	 *  前端永远不能借这个命令打开任意链接。
-	 */
-	openMicrosoftLogin: (url: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_microsoft_login", { url })),
-	/**  取消正在进行的设备码轮询（关闭登录弹窗时调用）。 */
-	cancelMicrosoftLogin: () => typedError<null, LauncherError>(__TAURI_INVOKE("cancel_microsoft_login")),
-	/**  运行一次健康检查：启动预检 + Mod 依赖图 + 最近崩溃诊断。 */
-	checkInstanceHealth: (instanceId: string) => typedError<HealthReport_Serialize, LauncherError>(__TAURI_INVOKE("check_instance_health", { instanceId })),
-	/**
-	 *  统计实例 / 缓存 / 日志的磁盘占用。
-	 * 
-	 *  目录遍历是阻塞 IO，放到阻塞线程里跑，避免卡住 IPC 运行时。
-	 */
-	getStorageUsage: () => typedError<StorageUsage, LauncherError>(__TAURI_INVOKE("get_storage_usage")),
-	/**  清空元数据缓存；实例、存档与日志不受影响。 */
-	clearStorageCache: () => typedError<null, LauncherError>(__TAURI_INVOKE("clear_storage_cache")),
-	/**
-	 *  检查是否有新版本（用户手动触发）。
-	 * 
-	 *  结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
-	 *  只在检查那一刻提示一次的话，错过就没了；
-	 *  记下来才能在用户下次打开设置页时仍然看得到「有新版本」。
-	 */
-	checkAppUpdate: () => typedError<AppUpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
-	/**
-	 *  下载更新、验签并安装。
-	 * 
-	 *  **Windows 上插件会在安装器启动后自动退出应用**，因此这个命令
-	 *  大概率不会正常返回到前端——这是预期行为，不是错误。
-	 * 
-	 *  进度通过 `UpdateProgress` 事件广播（而不是 Channel）：
-	 *  安装完成后进程可能立刻退出，Channel 的发送端会随命令一起被 drop，
-	 *  最后一个进度事件可能来不及送达。事件是广播式的，不受此影响。
-	 */
-	installAppUpdate: () => typedError<null, LauncherError>(__TAURI_INVOKE("install_app_update")),
-	/**
-	 *  重启应用（安装完成后调用）。
-	 * 
-	 *  用的是 Tauri 核心的 `request_restart()`——
-	 *  它会在退出时把「需要重启」标记置上，由运行循环在退出后重新拉起进程。
-	 */
-	relaunchApp: () => typedError<null, LauncherError>(__TAURI_INVOKE("relaunch_app")),
-	/**
-	 *  读取更新页的状态。
-	 * 
-	 *  **不发起网络请求**——只是把设置里的记录读出来。
-	 *  页面据此显示「上次检查于……」与已知的最新版本。
-	 */
-	getUpdateStatus: () => typedError<UpdateStatus_Serialize, LauncherError>(__TAURI_INVOKE("get_update_status")),
-	/**
-	 *  设置「启动时自动检查更新」。
-	 * 
-	 *  关闭后启动器不再自动发起检查请求，用户只能手动检查。
-	 */
-	setUpdateAutoCheck: (autoCheck: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("set_update_auto_check", { autoCheck })),
+  getAppInfo: () => typedError<AppInfo, LauncherError>(__TAURI_INVOKE("get_app_info")),
+  logFromFrontend: (level: LogLevel, message: string, fields: { [key in string]: string } | null) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("log_from_frontend", { level, message, fields }),
+    ),
+  /**
+   *  获取 Mojang 版本清单。
+   *
+   *  优先读内存缓存（10 分钟 TTL），避免每次进下载页都重新走网络。
+   */
+  getVersionManifest: () =>
+    typedError<VersionManifest_Serialize, LauncherError>(__TAURI_INVOKE("get_version_manifest")),
+  /**  获取指定版本的详情（已合并 inheritsFrom）。 */
+  getVersionDetail: (id: string) =>
+    typedError<VersionDetail_Serialize, LauncherError>(
+      __TAURI_INVOKE("get_version_detail", { id }),
+    ),
+  /**  扫描并返回系统中所有可用的 Java 运行时。 */
+  getJavaCandidates: () =>
+    typedError<JavaCandidate[], LauncherError>(__TAURI_INVOKE("get_java_candidates")),
+  /**  自动下载并安装 Zulu JRE（8 / 17 / 21）。 */
+  installJavaRuntime: (major: number) =>
+    typedError<JavaCandidate, LauncherError>(__TAURI_INVOKE("install_java_runtime", { major })),
+  listInstances: () =>
+    typedError<InstanceMetadata_Serialize[], LauncherError>(__TAURI_INVOKE("list_instances")),
+  getRunningInstances: () =>
+    typedError<string[], LauncherError>(__TAURI_INVOKE("get_running_instances")),
+  createInstance: (gameVersion: string, displayName: string) =>
+    typedError<InstanceMetadata_Serialize, LauncherError>(
+      __TAURI_INVOKE("create_instance", { gameVersion, displayName }),
+    ),
+  deleteInstance: (instanceId: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("delete_instance", { instanceId })),
+  openInstanceFolder: (instanceId: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("open_instance_folder", { instanceId })),
+  /**  打开系统原生的“选择文件”对话框，用来指定实例专用 Java。 */
+  selectJavaExecutable: () =>
+    typedError<string | null, LauncherError>(__TAURI_INVOKE("select_java_executable")),
+  /**
+   *  更新实例级启动配置：Java、内存与附加 JVM 参数。
+   *
+   *  传 `null` / 空列表表示“回落到全局设置”。Java 路径会先探测一次，
+   *  避免把一个不是 Java 的文件存进去、到启动时才报错。
+   */
+  updateInstanceOptions: (
+    instanceId: string,
+    javaPath: string | null,
+    memoryMb: number | null,
+    jvmArgs: string[],
+  ) =>
+    typedError<InstanceMetadata_Serialize, LauncherError>(
+      __TAURI_INVOKE("update_instance_options", { instanceId, javaPath, memoryMb, jvmArgs }),
+    ),
+  setInstanceFavorite: (instanceId: string, favorite: boolean) =>
+    typedError<InstanceMetadata_Serialize, LauncherError>(
+      __TAURI_INVOKE("set_instance_favorite", { instanceId, favorite }),
+    ),
+  /**
+   *  设置 / 清除实例分组。
+   *
+   *  归一化：首尾空白去掉；空串 = 移出分组（`None`）；上限 32 字符；
+   *  禁止控制字符。分组只是展示元数据，不参与目录结构，无需迁移。
+   */
+  setInstanceGroup: (instanceId: string, group: string | null) =>
+    typedError<InstanceMetadata_Serialize, LauncherError>(
+      __TAURI_INVOKE("set_instance_group", { instanceId, group }),
+    ),
+  /**
+   *  列出实例的全部存档（按最后游玩时间倒序）。
+   *
+   *  目录遍历可能较慢（大型存档数千个文件），走 spawn_blocking。
+   */
+  listInstanceSaves: (instanceId: string) =>
+    typedError<SaveSummary_Serialize[], LauncherError>(
+      __TAURI_INVOKE("list_instance_saves", { instanceId }),
+    ),
+  /**  删除存档（回收站优先，失败自动回退物理删除）。 */
+  deleteInstanceSave: (instanceId: string, saveName: string) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("delete_instance_save", { instanceId, saveName }),
+    ),
+  /**  打开某个存档的目录。 */
+  openSaveFolder: (instanceId: string, saveName: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("open_save_folder", { instanceId, saveName })),
+  readInstanceLogs: (instanceId: string) =>
+    typedError<InstanceLogs_Serialize, LauncherError>(
+      __TAURI_INVOKE("read_instance_logs", { instanceId }),
+    ),
+  /**
+   *  扫描外部目录，找出可导入的实例候选。
+   *
+   *  支持官方启动器 / PCL / HMCL（有 `versions/`）、
+   *  MultiMC / Prism（有 `.minecraft/`）与裸游戏目录。
+   */
+  scanImportCandidates: (source: string) =>
+    typedError<ImportScan_Serialize, LauncherError>(
+      __TAURI_INVOKE("scan_import_candidates", { source }),
+    ),
+  /**  打开系统原生的“选择文件夹”对话框，用来指定要导入的外部实例目录。 */
+  selectImportDirectory: () =>
+    typedError<string | null, LauncherError>(__TAURI_INVOKE("select_import_directory")),
+  /**
+   *  导入外部实例：新建实例 + 搬运用户数据（Mod、配置、存档）。
+   *
+   *  游戏本体与库文件**不复制**，而是走 Sereno 自己的安装流程重新下载——
+   *  更快、更准，还能用上镜像与 SHA-1 校验。
+   */
+  importInstance: (
+    source: string,
+    candidateLabel: string,
+    gameVersion: string,
+    loaderType: string,
+    loaderVersion: string | null,
+    displayName: string,
+  ) =>
+    typedError<InstanceMetadata_Serialize, LauncherError>(
+      __TAURI_INVOKE("import_instance", {
+        source,
+        candidateLabel,
+        gameVersion,
+        loaderType,
+        loaderVersion,
+        displayName,
+      }),
+    ),
+  createWorldBackup: (instanceId: string) =>
+    typedError<WorldBackup, LauncherError>(__TAURI_INVOKE("create_world_backup", { instanceId })),
+  listWorldBackups: (instanceId: string) =>
+    typedError<WorldBackup[], LauncherError>(__TAURI_INVOKE("list_world_backups", { instanceId })),
+  restoreWorldBackup: (instanceId: string, name: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("restore_world_backup", { instanceId, name })),
+  /**
+   *  创建内容快照（mods / config / 资源包 / 光影）。
+   *
+   *  打包整个内容目录是 IO 密集型操作（几百 MB 的整合包要几秒），
+   *  放到阻塞线程里执行，避免占住 IPC 运行时。
+   */
+  createContentSnapshot: (instanceId: string, reason: string | null, pinned: boolean | null) =>
+    typedError<ContentSnapshot, LauncherError>(
+      __TAURI_INVOKE("create_content_snapshot", { instanceId, reason, pinned }),
+    ),
+  listContentSnapshots: (instanceId: string) =>
+    typedError<ContentSnapshot[], LauncherError>(
+      __TAURI_INVOKE("list_content_snapshots", { instanceId }),
+    ),
+  /**  回滚到某个快照。回滚会**替换**当前 mods / config，属于破坏性操作。 */
+  restoreContentSnapshot: (instanceId: string, snapshotId: string) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("restore_content_snapshot", { instanceId, snapshotId }),
+    ),
+  deleteContentSnapshot: (instanceId: string, snapshotId: string) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("delete_content_snapshot", { instanceId, snapshotId }),
+    ),
+  pinContentSnapshot: (instanceId: string, snapshotId: string, pinned: boolean) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("pin_content_snapshot", { instanceId, snapshotId, pinned }),
+    ),
+  /**
+   *  导出诊断包（启动器日志 + 实例日志/崩溃报告），返回 zip 路径。
+   *
+   *  `instance_id` 为空时只导出启动器级日志。
+   */
+  exportDiagnostic: (instanceId: string | null) =>
+    typedError<string, LauncherError>(__TAURI_INVOKE("export_diagnostic", { instanceId })),
+  getSettings: () =>
+    typedError<AppSettings_Serialize, LauncherError>(__TAURI_INVOKE("get_settings")),
+  saveSettings: (settings: AppSettings_Deserialize) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("save_settings", { settings })),
+  /**  打开系统原生的“选择文件夹”对话框。 */
+  selectDirectory: () =>
+    typedError<string | null, LauncherError>(__TAURI_INVOKE("select_directory")),
+  /**  前端预加载结束后调用：显示主窗口并关闭启动画面。 */
+  finishStartup: () => typedError<null, LauncherError>(__TAURI_INVOKE("finish_startup")),
+  /**
+   *  保存窗口尺寸与位置。
+   *
+   *  单独一个命令而不是让前端「读整份设置 → 改 window → 整体保存」：
+   *  那样在用户同时改内存 / 主题时会把对方的改动覆盖掉。
+   *  这里只改 `window` 一段，写盘前仍走 `update_settings` 的合并逻辑。
+   */
+  saveWindowState: (width: number, height: number, x: number, y: number) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("save_window_state", { width, height, x, y })),
+  /**  鸣谢页与关于页的赞助入口。 */
+  openSupporterPage: (target: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("open_supporter_page", { target })),
+  /**  关于页：直达项目仓库。 */
+  openProjectRepo: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_repo")),
+  /**  反馈页：直达 GitHub Issues。 */
+  openProjectIssues: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_issues")),
+  /**
+   *  安装原版游戏，全程推送同一条整体进度。
+   *
+   *  **失败时把状态回退到 `created`**：否则实例会永久卡在 `installing`，
+   *  界面上既不能启动也无法重试。
+   */
+  installGame: (instanceId: string, channel: Channel<DownloadProgress_Deserialize>) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("install_game", { instanceId, channel })),
+  /**
+   *  校验并修复实例：重新跑一遍安装计划，已存在且 SHA-1 正确的文件会被跳过。
+   *
+   *  与 `install_game` 不同，这里不因 `status == "ready"` 提前返回；
+   *  失败时保留原来的状态，避免把可用的实例降级成 `created`。
+   */
+  repairInstance: (instanceId: string, channel: Channel<DownloadProgress_Deserialize>) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("repair_instance", { instanceId, channel })),
+  installLoader: (instanceId: string, loaderType: string, loaderVersion: string | null) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("install_loader", { instanceId, loaderType, loaderVersion }),
+    ),
+  getLoaderVersions: (mcVersion: string, loaderType: LoaderType) =>
+    typedError<string[], LauncherError>(
+      __TAURI_INVOKE("get_loader_versions", { mcVersion, loaderType }),
+    ),
+  searchResources: (query: ResourceSearchQuery_Deserialize) =>
+    typedError<ResourceSearchPage_Serialize, LauncherError>(
+      __TAURI_INVOKE("search_resources", { query }),
+    ),
+  /**
+   *  Modrinth 获取版本列表。
+   *
+   *  `game_versions` 可以一次传多个游戏版本（Modrinth 的接口支持多值），
+   *  这样「某个版本前缀下的全部小版本」只要一次请求。
+   */
+  getModVersions: (projectId: string, gameVersions: string[], loader: string) =>
+    typedError<ModVersion_Serialize[], LauncherError>(
+      __TAURI_INVOKE("get_mod_versions", { projectId, gameVersions, loader }),
+    ),
+  /**
+   *  下载资源文件。
+   *
+   *  `instance_id` 为空时下载到启动器的下载目录（`%APPDATA%\Sereno\downloads\<kind>`），
+   *  用户可以先下载、再决定放进哪个实例。
+   */
+  downloadResource: (
+    instanceId: string | null,
+    kind: ResourceKind,
+    fileUrl: string,
+    filename: string,
+    sha1: string | null,
+    taskId: string,
+    channel: Channel<DownloadProgress_Deserialize>,
+  ) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("download_resource", {
+        instanceId,
+        kind,
+        fileUrl,
+        filename,
+        sha1,
+        taskId,
+        channel,
+      }),
+    ),
+  /**  取消一个资源下载任务（任务页的“取消”按钮）；返回是否命中任务。 */
+  cancelDownload: (taskId: string) =>
+    typedError<boolean, LauncherError>(__TAURI_INVOKE("cancel_download", { taskId })),
+  /**  安装单个必需前置：按目标实例的游戏版本 / 加载器挑选文件后下载到 `mods`。 */
+  installResourceDependency: (
+    instanceId: string,
+    source: string,
+    projectId: string,
+    versionId: string | null,
+  ) =>
+    typedError<string, LauncherError>(
+      __TAURI_INVOKE("install_resource_dependency", { instanceId, source, projectId, versionId }),
+    ),
+  getCfModVersions: (modId: string, mcVersion: string, loader: string) =>
+    typedError<CfFile_Serialize[], LauncherError>(
+      __TAURI_INVOKE("get_cf_mod_versions", { modId, mcVersion, loader }),
+    ),
+  /**
+   *  批量补全 CurseForge 的版本分支：一次 IPC 拿回多个游戏版本的文件。
+   *
+   *  CurseForge 的文件列表按上传时间排序，只查一次会漏掉较早发布的分支
+   *  （例如 JEI 的 1.21.4 / 1.21.8）。这里按具体游戏版本逐个查询，
+   *  查询之间并发执行，由后端统一限速。
+   */
+  getCfModVersionsBatch: (modId: string, versions: string[], loader: string) =>
+    typedError<CfFile_Serialize[], LauncherError>(
+      __TAURI_INVOKE("get_cf_mod_versions_batch", { modId, versions, loader }),
+    ),
+  /**  解析 MOD 版本声明的必需前置，返回名称与图标供详情页展示。 */
+  getResourceDependencies: (source: string, ids: string[]) =>
+    typedError<ResourceDependencyInfo_Serialize[], LauncherError>(
+      __TAURI_INVOKE("get_resource_dependencies", { source, ids }),
+    ),
+  /**
+   *  在系统浏览器打开资源项目页。slug 只允许字母数字与 `-_`，
+   *  因此 URL 只能是两个站点的项目页，不接受前端传任意地址。
+   */
+  openResourcePage: (source: string, slug: string, kind: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("open_resource_page", { source, slug, kind })),
+  updateLocalResource: (
+    instanceId: string,
+    kind: LocalResourceKind,
+    oldFileName: string,
+    newFileName: string,
+    fileUrl: string,
+    sha1: string | null,
+  ) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("update_local_resource", {
+        instanceId,
+        kind,
+        oldFileName,
+        newFileName,
+        fileUrl,
+        sha1,
+      }),
+    ),
+  listLocalResources: (instanceId: string, kind: LocalResourceKind) =>
+    typedError<LocalResource[], LauncherError>(
+      __TAURI_INVOKE("list_local_resources", { instanceId, kind }),
+    ),
+  setLocalResourceEnabled: (
+    instanceId: string,
+    kind: LocalResourceKind,
+    fileName: string,
+    enabled: boolean,
+  ) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("set_local_resource_enabled", { instanceId, kind, fileName, enabled }),
+    ),
+  /**
+   *  批量启用 / 禁用本地资源。
+   *
+   *  单条操作用 `set_local_resource_enabled`，批量操作走这里：
+   *  一次 IPC 往返完成，避免「选中 30 个 Mod」要点 30 次、也发 30 次请求。
+   */
+  setLocalResourcesEnabled: (
+    instanceId: string,
+    kind: LocalResourceKind,
+    fileNames: string[],
+    enabled: boolean,
+  ) =>
+    typedError<number, LauncherError>(
+      __TAURI_INVOKE("set_local_resources_enabled", { instanceId, kind, fileNames, enabled }),
+    ),
+  /**
+   *  删除本地资源（单个或批量）。
+   *
+   *  core 侧 `resource::local::remove` 早已实现，但此前没有对应的命令，
+   *  结果是**用户在界面上无法删除任何一个已安装的 Mod / 资源包**——
+   *  只能手动去文件夹里删。这条命令把这个能力接上。
+   */
+  removeLocalResources: (instanceId: string, kind: LocalResourceKind, fileNames: string[]) =>
+    typedError<number, LauncherError>(
+      __TAURI_INVOKE("remove_local_resources", { instanceId, kind, fileNames }),
+    ),
+  openLocalResourceFolder: (instanceId: string, kind: LocalResourceKind) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("open_local_resource_folder", { instanceId, kind }),
+    ),
+  importLocalResources: (instanceId: string, kind: LocalResourceKind) =>
+    typedError<number, LauncherError>(
+      __TAURI_INVOKE("import_local_resources", { instanceId, kind }),
+    ),
+  /**
+   *  从**绝对路径**导入本地资源（拖拽导入用）。
+   *
+   *  `import_local_resources` 走系统文件选择框，由用户在对话框里挑文件；
+   *  拖拽导入时路径已经知道了，这里直接收路径，省掉一次「再选一遍」。
+   */
+  importLocalResourcesFromPaths: (instanceId: string, kind: LocalResourceKind, paths: string[]) =>
+    typedError<number, LauncherError>(
+      __TAURI_INVOKE("import_local_resources_from_paths", { instanceId, kind, paths }),
+    ),
+  checkLocalResourceUpdates: (instanceId: string, kind: LocalResourceKind) =>
+    typedError<LocalResourceScan_Serialize, LauncherError>(
+      __TAURI_INVOKE("check_local_resource_updates", { instanceId, kind }),
+    ),
+  /**  整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。 */
+  getModpackInfo: (projectId: string, versionId: string) =>
+    typedError<ModpackInfo, LauncherError>(
+      __TAURI_INVOKE("get_modpack_info", { projectId, versionId }),
+    ),
+  /**
+   *  安装整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
+   *
+   *  整合包不决定实例名，实例由前端先用 `create_instance` 建好，
+   *  这里只负责把内容装进那个实例。
+   */
+  installModpack: (
+    instanceId: string,
+    projectId: string,
+    versionId: string,
+    channel: Channel<DownloadProgress_Deserialize>,
+  ) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("install_modpack", { instanceId, projectId, versionId, channel }),
+    ),
+  /**
+   *  CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。
+   *
+   *  **按需读取**：整合包在 CF 上是几十 MB 的 zip，这里只用 HTTP Range
+   *  取回根目录的 `manifest.json`（几 KB），不必先下载整个包。
+   */
+  getCfModpackInfo: (projectId: number, fileId: number) =>
+    typedError<ModpackInfo, LauncherError>(
+      __TAURI_INVOKE("get_cf_modpack_info", { projectId, fileId }),
+    ),
+  /**
+   *  安装 CurseForge 整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
+   *
+   *  与 Modrinth 的差别在第 3 步：CF 的 `manifest.json` 里没有下载地址，
+   *  必须先回查 CurseForge API 解析 `fileID`，否则整个整合包装不上。
+   */
+  installCfModpack: (
+    instanceId: string,
+    projectId: number,
+    fileId: number,
+    channel: Channel<DownloadProgress_Deserialize>,
+  ) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("install_cf_modpack", { instanceId, projectId, fileId, channel }),
+    ),
+  /**
+   *  导出实例为 Modrinth 整合包（`.mrpack`）。
+   *
+   *  追溯得到 Modrinth 来源的 Mod 写进索引条目（只含哈希与下载地址），
+   *  其余内容与配置打进 `overrides/`。
+   *  **存档、日志与崩溃报告不导出**——它们是个人数据，不是实例内容。
+   */
+  exportInstanceModpack: (instanceId: string) =>
+    typedError<string, LauncherError>(__TAURI_INVOKE("export_instance_modpack", { instanceId })),
+  launchGame: (instanceId: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("launch_game", { instanceId })),
+  /**
+   *  房主开房。
+   *
+   *  `room_code` 可为空：为空时生成新房间码。
+   *  `mc_port`：游戏世界端口（专用服务端 25565；单人世界「对局域网开放」
+   *  后聊天栏显示的随机端口）。
+   */
+  hostMultiplayer: (roomCode: string | null, mcPort: number) =>
+    typedError<MultiplayerStatus_Serialize, LauncherError>(
+      __TAURI_INVOKE("host_multiplayer", { roomCode, mcPort }),
+    ),
+  /**
+   *  房客加入房间。
+   *
+   *  `room_code` 必填（支持小写 / 混淆字符 / 缺分隔符，核心会纠偏）。
+   */
+  joinMultiplayer: (roomCode: string, mcPort: number) =>
+    typedError<MultiplayerStatus_Serialize, LauncherError>(
+      __TAURI_INVOKE("join_multiplayer", { roomCode, mcPort }),
+    ),
+  /**  停止当前联机会话。 */
+  stopMultiplayer: () => typedError<null, LauncherError>(__TAURI_INVOKE("stop_multiplayer")),
+  /**  查询联机状态（前端 1–2 秒轮询一次）。 */
+  getMultiplayerStatus: () => __TAURI_INVOKE<MultiplayerStatus_Serialize>("get_multiplayer_status"),
+  /**
+   *  自动探测本机游戏世界端口。
+   *
+   *  枚举 Java 进程的监听端口并逐个做 MC 状态探测；命中即返回端口与世界信息。
+   *  游戏未开 / 未「对局域网开放」时返回 `None`，前端保持手动输入兜底。
+   */
+  detectWorldPort: () =>
+    typedError<DetectedWorld | null, LauncherError>(__TAURI_INVOKE("detect_world_port")),
+  /**  当前登录态。 */
+  getAccountState: () =>
+    typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),
+  /**  微软登录第一步：申请设备码，前端把短码与链接展示给用户。 */
+  startMicrosoftLogin: () =>
+    typedError<DeviceCodeInfo, LauncherError>(__TAURI_INVOKE("start_microsoft_login")),
+  /**
+   *  微软登录第二步：轮询授权结果，成功后保存令牌并切到微软账户。
+   *
+   *  这一步会阻塞到用户在浏览器里完成授权（或超时），前端用 loading 态承载。
+   */
+  completeMicrosoftLogin: (deviceCode: string, interval: number, expiresIn: number) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("complete_microsoft_login", { deviceCode, interval, expiresIn }),
+    ),
+  /**
+   *  退出登录：删除凭据、清空会话缓存、切回离线账户。
+   *
+   *  只清掉微软资料，**离线档案列表必须保留**，否则用户建过的档案会全部丢失。
+   */
+  logoutAccount: () =>
+    typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("logout_account")),
+  /**  设置离线用户名（切回离线账户）；同名档案存在时直接切换过去。 */
+  setOfflineAccount: (name: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("set_offline_account", { name }),
+    ),
+  /**  新建离线档案并切换过去。 */
+  addOfflineAccount: (name: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("add_offline_account", { name }),
+    ),
+  /**
+   *  列出已保存的离线档案。
+   *
+   *  老配置没有档案列表时，会用当前 `profile.name` 派生一个，
+   *  保证升级后至少有一个可用档案。
+   */
+  listOfflineAccounts: () =>
+    typedError<OfflineProfile[], LauncherError>(__TAURI_INVOKE("list_offline_accounts")),
+  /**  切换到某个离线档案。 */
+  switchOfflineAccount: (id: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("switch_offline_account", { id }),
+    ),
+  /**  删除离线档案（至少保留一个）。 */
+  removeOfflineAccount: (id: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("remove_offline_account", { id }),
+    ),
+  /**  切换回已登录过的微软账户（令牌仍在系统密钥库）。 */
+  activateMicrosoftAccount: () =>
+    typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("activate_microsoft_account")),
+  /**
+   *  诊断用：当前是否配置了微软客户端 ID。
+   *
+   *  单独给前端一个命令而不是塞进设置，避免把 Azure 配置混进用户可见设置项。
+   */
+  getMicrosoftConfig: () =>
+    typedError<MicrosoftConfig, LauncherError>(__TAURI_INVOKE("get_microsoft_config")),
+  /**
+   *  启动时预热：如果当前是微软账户，提前刷新令牌。
+   *
+   *  让「点启动」这一步不用再等三次网络往返；失败不阻塞启动，下一次启动会重试。
+   */
+  warmAccountSession: () => typedError<null, LauncherError>(__TAURI_INVOKE("warm_account_session")),
+  /**
+   *  第三方登录（authlib-injective / Yggdrasil）。
+   *
+   *  用户提供 Yggdrasil 服务器地址与账号密码，命令用它们换取访问令牌。
+   *
+   *  **密码只在这一次请求里出现**：不落盘、不进日志、不进诊断包。
+   *  换来的令牌只进系统密钥库，设置文件里只留公开资料。
+   */
+  authlibLogin: (apiRoot: string, username: string, password: string, serverName: string | null) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("authlib_login", { apiRoot, username, password, serverName }),
+    ),
+  /**  切换到指定的第三方档案。 */
+  switchAuthlibAccount: (id: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("switch_authlib_account", { id }),
+    ),
+  /**  退出第三方登录：删掉凭据并移除档案。 */
+  logoutAuthlibAccount: (id: string) =>
+    typedError<AccountState_Serialize, LauncherError>(
+      __TAURI_INVOKE("logout_authlib_account", { id }),
+    ),
+  /**  列出已登录的第三方档案。 */
+  listAuthlibAccounts: () =>
+    typedError<AuthlibProfile_Serialize[], LauncherError>(__TAURI_INVOKE("list_authlib_accounts")),
+  /**
+   *  打开微软设备码授权页。
+   *
+   *  地址来自微软接口返回值，但仍做域名白名单校验：
+   *  前端永远不能借这个命令打开任意链接。
+   */
+  openMicrosoftLogin: (url: string) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("open_microsoft_login", { url })),
+  /**  取消正在进行的设备码轮询（关闭登录弹窗时调用）。 */
+  cancelMicrosoftLogin: () =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("cancel_microsoft_login")),
+  /**  运行一次健康检查：启动预检 + Mod 依赖图 + 最近崩溃诊断。 */
+  checkInstanceHealth: (instanceId: string) =>
+    typedError<HealthReport_Serialize, LauncherError>(
+      __TAURI_INVOKE("check_instance_health", { instanceId }),
+    ),
+  /**
+   *  统计实例 / 缓存 / 日志的磁盘占用。
+   *
+   *  目录遍历是阻塞 IO，放到阻塞线程里跑，避免卡住 IPC 运行时。
+   */
+  getStorageUsage: () =>
+    typedError<StorageUsage, LauncherError>(__TAURI_INVOKE("get_storage_usage")),
+  /**  清空元数据缓存；实例、存档与日志不受影响。 */
+  clearStorageCache: () => typedError<null, LauncherError>(__TAURI_INVOKE("clear_storage_cache")),
+  /**
+   *  检查是否有新版本（用户手动触发）。
+   *
+   *  结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
+   *  只在检查那一刻提示一次的话，错过就没了；
+   *  记下来才能在用户下次打开设置页时仍然看得到「有新版本」。
+   */
+  checkAppUpdate: () =>
+    typedError<AppUpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
+  /**
+   *  下载更新、验签并安装。
+   *
+   *  **Windows 上插件会在安装器启动后自动退出应用**，因此这个命令
+   *  大概率不会正常返回到前端——这是预期行为，不是错误。
+   *
+   *  进度通过 `UpdateProgress` 事件广播（而不是 Channel）：
+   *  安装完成后进程可能立刻退出，Channel 的发送端会随命令一起被 drop，
+   *  最后一个进度事件可能来不及送达。事件是广播式的，不受此影响。
+   */
+  installAppUpdate: () => typedError<null, LauncherError>(__TAURI_INVOKE("install_app_update")),
+  /**
+   *  重启应用（安装完成后调用）。
+   *
+   *  用的是 Tauri 核心的 `request_restart()`——
+   *  它会在退出时把「需要重启」标记置上，由运行循环在退出后重新拉起进程。
+   */
+  relaunchApp: () => typedError<null, LauncherError>(__TAURI_INVOKE("relaunch_app")),
+  /**
+   *  读取更新页的状态。
+   *
+   *  **不发起网络请求**——只是把设置里的记录读出来。
+   *  页面据此显示「上次检查于……」与已知的最新版本。
+   */
+  getUpdateStatus: () =>
+    typedError<UpdateStatus_Serialize, LauncherError>(__TAURI_INVOKE("get_update_status")),
+  /**
+   *  设置「启动时自动检查更新」。
+   *
+   *  关闭后启动器不再自动发起检查请求，用户只能手动检查。
+   */
+  setUpdateAutoCheck: (autoCheck: boolean) =>
+    typedError<null, LauncherError>(__TAURI_INVOKE("set_update_auto_check", { autoCheck })),
 };
 
 /** Events */
 export const events = {
-	appReady: makeEvent<AppReady, AppReady>("app-ready"),
-	gameExited: makeEvent<GameExited_Serialize, GameExited_Deserialize>("game-exited"),
-	updateAvailable: makeEvent<UpdateAvailable, UpdateAvailable>("update-available"),
-	updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
+  appReady: makeEvent<AppReady, AppReady>("app-ready"),
+  gameExited: makeEvent<GameExited_Serialize, GameExited_Deserialize>("game-exited"),
+  updateAvailable: makeEvent<UpdateAvailable, UpdateAvailable>("update-available"),
+  updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
 };
 
 /* Types */
 /**
  *  当前账户设置。
- * 
+ *
  *  只保存**公开资料**（游戏 ID、UUID）与账户类型；
  *  微软的 Refresh Token 在系统密钥库里，两者故意分开。
  */
@@ -384,52 +644,52 @@ export type AccountSettings = AccountSettings_Serialize | AccountSettings_Deseri
 
 /**
  *  当前账户设置。
- * 
+ *
  *  只保存**公开资料**（游戏 ID、UUID）与账户类型；
  *  微软的 Refresh Token 在系统密钥库里，两者故意分开。
  */
 export type AccountSettings_Deserialize = {
-	/**  `offline` / `microsoft` / `authlib`。 */
-	kind?: string,
-	/**  微软资料；离线账户为 null。 */
-	microsoft?: MicrosoftProfile | null,
-	/**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
-	offlineAccounts?: OfflineProfile[],
-	/**  当前选中的离线档案 ID。 */
-	activeOfflineId?: string | null,
-	/**
-	 *  已登录过的第三方（Yggdrasil）档案。
-	 * 
-	 *  这里只存公开资料；访问令牌在系统密钥库里。
-	 */
-	authlibAccounts?: AuthlibProfile_Deserialize[],
-	/**  当前选中的第三方档案 ID。 */
-	activeAuthlibId?: string | null,
+  /**  `offline` / `microsoft` / `authlib`。 */
+  kind?: string;
+  /**  微软资料；离线账户为 null。 */
+  microsoft?: MicrosoftProfile | null;
+  /**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
+  offlineAccounts?: OfflineProfile[];
+  /**  当前选中的离线档案 ID。 */
+  activeOfflineId?: string | null;
+  /**
+   *  已登录过的第三方（Yggdrasil）档案。
+   *
+   *  这里只存公开资料；访问令牌在系统密钥库里。
+   */
+  authlibAccounts?: AuthlibProfile_Deserialize[];
+  /**  当前选中的第三方档案 ID。 */
+  activeAuthlibId?: string | null;
 };
 
 /**
  *  当前账户设置。
- * 
+ *
  *  只保存**公开资料**（游戏 ID、UUID）与账户类型；
  *  微软的 Refresh Token 在系统密钥库里，两者故意分开。
  */
 export type AccountSettings_Serialize = {
-	/**  `offline` / `microsoft` / `authlib`。 */
-	kind: string,
-	/**  微软资料；离线账户为 null。 */
-	microsoft: MicrosoftProfile | null,
-	/**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
-	offlineAccounts: OfflineProfile[],
-	/**  当前选中的离线档案 ID。 */
-	activeOfflineId: string | null,
-	/**
-	 *  已登录过的第三方（Yggdrasil）档案。
-	 * 
-	 *  这里只存公开资料；访问令牌在系统密钥库里。
-	 */
-	authlibAccounts: AuthlibProfile_Serialize[],
-	/**  当前选中的第三方档案 ID。 */
-	activeAuthlibId: string | null,
+  /**  `offline` / `microsoft` / `authlib`。 */
+  kind: string;
+  /**  微软资料；离线账户为 null。 */
+  microsoft: MicrosoftProfile | null;
+  /**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
+  offlineAccounts: OfflineProfile[];
+  /**  当前选中的离线档案 ID。 */
+  activeOfflineId: string | null;
+  /**
+   *  已登录过的第三方（Yggdrasil）档案。
+   *
+   *  这里只存公开资料；访问令牌在系统密钥库里。
+   */
+  authlibAccounts: AuthlibProfile_Serialize[];
+  /**  当前选中的第三方档案 ID。 */
+  activeAuthlibId: string | null;
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
@@ -437,106 +697,120 @@ export type AccountState = AccountState_Serialize | AccountState_Deserialize;
 
 /**  当前登录态，前端据此渲染账户卡片。 */
 export type AccountState_Deserialize = {
-	/**  `offline` / `microsoft` / `authlib`。 */
-	kind: string,
-	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
-	name: string,
-	/**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
-	uuid?: string | null,
-	/**  微软登录是否可用（客户端 ID 是否已配置）。 */
-	microsoftAvailable: boolean,
-	/**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
-	credentialStoreEphemeral: boolean,
-	/**  已保存的离线档案。 */
-	offlineAccounts: OfflineProfile[],
-	/**  当前选中的离线档案 ID。 */
-	activeOfflineId?: string | null,
-	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
-	microsoftProfile?: MicrosoftProfile | null,
-	/**  已登录过的第三方档案。 */
-	authlibProfiles: AuthlibProfile_Deserialize[],
-	/**  当前选中的第三方档案 ID。 */
-	activeAuthlibId?: string | null,
-	/**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
-	authlibApiRoot?: string | null,
+  /**  `offline` / `microsoft` / `authlib`。 */
+  kind: string;
+  /**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
+  name: string;
+  /**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
+  uuid?: string | null;
+  /**  微软登录是否可用（客户端 ID 是否已配置）。 */
+  microsoftAvailable: boolean;
+  /**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
+  credentialStoreEphemeral: boolean;
+  /**  已保存的离线档案。 */
+  offlineAccounts: OfflineProfile[];
+  /**  当前选中的离线档案 ID。 */
+  activeOfflineId?: string | null;
+  /**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
+  microsoftProfile?: MicrosoftProfile | null;
+  /**  已登录过的第三方档案。 */
+  authlibProfiles: AuthlibProfile_Deserialize[];
+  /**  当前选中的第三方档案 ID。 */
+  activeAuthlibId?: string | null;
+  /**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
+  authlibApiRoot?: string | null;
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
 export type AccountState_Serialize = {
-	/**  `offline` / `microsoft` / `authlib`。 */
-	kind: string,
-	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
-	name: string,
-	/**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
-	uuid: string | null,
-	/**  微软登录是否可用（客户端 ID 是否已配置）。 */
-	microsoftAvailable: boolean,
-	/**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
-	credentialStoreEphemeral: boolean,
-	/**  已保存的离线档案。 */
-	offlineAccounts: OfflineProfile[],
-	/**  当前选中的离线档案 ID。 */
-	activeOfflineId: string | null,
-	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
-	microsoftProfile: MicrosoftProfile | null,
-	/**  已登录过的第三方档案。 */
-	authlibProfiles: AuthlibProfile_Serialize[],
-	/**  当前选中的第三方档案 ID。 */
-	activeAuthlibId: string | null,
-	/**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
-	authlibApiRoot: string | null,
+  /**  `offline` / `microsoft` / `authlib`。 */
+  kind: string;
+  /**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
+  name: string;
+  /**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
+  uuid: string | null;
+  /**  微软登录是否可用（客户端 ID 是否已配置）。 */
+  microsoftAvailable: boolean;
+  /**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
+  credentialStoreEphemeral: boolean;
+  /**  已保存的离线档案。 */
+  offlineAccounts: OfflineProfile[];
+  /**  当前选中的离线档案 ID。 */
+  activeOfflineId: string | null;
+  /**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
+  microsoftProfile: MicrosoftProfile | null;
+  /**  已登录过的第三方档案。 */
+  authlibProfiles: AuthlibProfile_Serialize[];
+  /**  当前选中的第三方档案 ID。 */
+  activeAuthlibId: string | null;
+  /**  当前第三方档案的服务器地址（启动时拼 `-javaagent` 用）。 */
+  authlibApiRoot: string | null;
 };
 
 export type AppInfo = {
-	version: string,
-	stateDir: string,
-	logsDir: string,
-	arch: string,
-	os: string,
+  version: string;
+  stateDir: string;
+  logsDir: string;
+  arch: string;
+  os: string;
 };
 
 /**  应用就绪事件：主窗口已经显示、启动画面已关闭。 */
 export type AppReady = {
-	/**  启动器版本。 */
-	version: string,
-	/**  状态根目录（已脱敏）。 */
-	stateDir: string,
+  /**  启动器版本。 */
+  version: string;
+  /**  状态根目录（已脱敏）。 */
+  stateDir: string;
 };
 
 export type AppSettings = AppSettings_Serialize | AppSettings_Deserialize;
 
 export type AppSettings_Deserialize = {
-	schemaVersion?: number,
-	window?: WindowState_Deserialize,
-	java?: JavaSettings_Deserialize,
-	/**  离线账户信息（微软登录接入前，先用它填启动参数）。 */
-	profile?: ProfileSettings_Deserialize,
-	/**  当前账户（离线 / 微软）。 */
-	account?: AccountSettings_Deserialize,
-	download?: DownloadSettings_Deserialize,
-	/**  启动器自身的更新设置。 */
-	update?: UpdateSettings_Deserialize,
-	logging?: LoggingSettings_Deserialize,
-	http?: HttpSettings_Deserialize,
-	theme?: string,
-	instancesRoot?: string | null,
+  schemaVersion?: number;
+  window?: WindowState_Deserialize;
+  java?: JavaSettings_Deserialize;
+  /**  离线账户信息（微软登录接入前，先用它填启动参数）。 */
+  profile?: ProfileSettings_Deserialize;
+  /**  当前账户（离线 / 微软）。 */
+  account?: AccountSettings_Deserialize;
+  download?: DownloadSettings_Deserialize;
+  /**  启动器自身的更新设置。 */
+  update?: UpdateSettings_Deserialize;
+  logging?: LoggingSettings_Deserialize;
+  http?: HttpSettings_Deserialize;
+  theme?: string;
+  /**
+   *  崩溃（非零退出码）时自动重启游戏。
+   *
+   *  默认关闭：部分整合包就是要求「崩了以后改配置再开」；
+   *  前端实现带次数上限（单实例单会话最多 3 次），防止无限崩溃循环。
+   */
+  autoRestartOnCrash?: boolean;
+  instancesRoot?: string | null;
 };
 
 export type AppSettings_Serialize = {
-	schemaVersion: number,
-	window: WindowState_Serialize,
-	java: JavaSettings_Serialize,
-	/**  离线账户信息（微软登录接入前，先用它填启动参数）。 */
-	profile: ProfileSettings_Serialize,
-	/**  当前账户（离线 / 微软）。 */
-	account: AccountSettings_Serialize,
-	download: DownloadSettings_Serialize,
-	/**  启动器自身的更新设置。 */
-	update: UpdateSettings_Serialize,
-	logging: LoggingSettings_Serialize,
-	http: HttpSettings_Serialize,
-	theme: string,
-	instancesRoot: string | null,
+  schemaVersion: number;
+  window: WindowState_Serialize;
+  java: JavaSettings_Serialize;
+  /**  离线账户信息（微软登录接入前，先用它填启动参数）。 */
+  profile: ProfileSettings_Serialize;
+  /**  当前账户（离线 / 微软）。 */
+  account: AccountSettings_Serialize;
+  download: DownloadSettings_Serialize;
+  /**  启动器自身的更新设置。 */
+  update: UpdateSettings_Serialize;
+  logging: LoggingSettings_Serialize;
+  http: HttpSettings_Serialize;
+  theme: string;
+  /**
+   *  崩溃（非零退出码）时自动重启游戏。
+   *
+   *  默认关闭：部分整合包就是要求「崩了以后改配置再开」；
+   *  前端实现带次数上限（单实例单会话最多 3 次），防止无限崩溃循环。
+   */
+  autoRestartOnCrash: boolean;
+  instancesRoot: string | null;
 };
 
 /**  检查更新的结果。 */
@@ -544,91 +818,91 @@ export type AppUpdateInfo = AppUpdateInfo_Serialize | AppUpdateInfo_Deserialize;
 
 /**  检查更新的结果。 */
 export type AppUpdateInfo_Deserialize = {
-	/**  是否有新版本。 */
-	available: boolean,
-	/**  最新版本号（无更新时等于当前版本）。 */
-	latestVersion: string,
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  更新说明（可能为空）。 */
-	notes: string,
-	/**  发布日期（RFC 3339，可能为空）。 */
-	pubDate?: string | null,
+  /**  是否有新版本。 */
+  available: boolean;
+  /**  最新版本号（无更新时等于当前版本）。 */
+  latestVersion: string;
+  /**  当前版本号。 */
+  currentVersion: string;
+  /**  更新说明（可能为空）。 */
+  notes: string;
+  /**  发布日期（RFC 3339，可能为空）。 */
+  pubDate?: string | null;
 };
 
 /**  检查更新的结果。 */
 export type AppUpdateInfo_Serialize = {
-	/**  是否有新版本。 */
-	available: boolean,
-	/**  最新版本号（无更新时等于当前版本）。 */
-	latestVersion: string,
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  更新说明（可能为空）。 */
-	notes: string,
-	/**  发布日期（RFC 3339，可能为空）。 */
-	pubDate: string | null,
+  /**  是否有新版本。 */
+  available: boolean;
+  /**  最新版本号（无更新时等于当前版本）。 */
+  latestVersion: string;
+  /**  当前版本号。 */
+  currentVersion: string;
+  /**  更新说明（可能为空）。 */
+  notes: string;
+  /**  发布日期（RFC 3339，可能为空）。 */
+  pubDate: string | null;
 };
 
 export type AssetIndex = AssetIndex_Serialize | AssetIndex_Deserialize;
 
 export type AssetIndex_Deserialize = {
-	id: string,
-	sha1?: string,
-	size?: number,
-	totalSize?: number,
-	url: string,
+  id: string;
+  sha1?: string;
+  size?: number;
+  totalSize?: number;
+  url: string;
 };
 
 export type AssetIndex_Serialize = {
-	id: string,
-	sha1: string,
-	size: number,
-	totalSize: number,
-	url: string,
+  id: string;
+  sha1: string;
+  size: number;
+  totalSize: number;
+  url: string;
 };
 
 /**
  *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
- * 
+ *
  *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
  */
 export type AuthlibProfile = AuthlibProfile_Serialize | AuthlibProfile_Deserialize;
 
 /**
  *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
- * 
+ *
  *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
  */
 export type AuthlibProfile_Deserialize = {
-	/**  稳定 ID（服务器 + 用户名的散列）。 */
-	id: string,
-	/**  游戏内显示名。 */
-	name: string,
-	/**  带连字符的 UUID。 */
-	uuid: string,
-	/**  Yggdrasil 服务器的 API Root。 */
-	apiRoot: string,
-	/**  服务器显示名（用户自定义，如「LittleSkin」）。 */
-	serverName?: string,
+  /**  稳定 ID（服务器 + 用户名的散列）。 */
+  id: string;
+  /**  游戏内显示名。 */
+  name: string;
+  /**  带连字符的 UUID。 */
+  uuid: string;
+  /**  Yggdrasil 服务器的 API Root。 */
+  apiRoot: string;
+  /**  服务器显示名（用户自定义，如「LittleSkin」）。 */
+  serverName?: string;
 };
 
 /**
  *  第三方 Yggdrasil 档案（公开信息，可写进 `settings.json`）。
- * 
+ *
  *  **访问令牌不在这里**：它只进系统密钥库，见 `account::secure_store`。
  */
 export type AuthlibProfile_Serialize = {
-	/**  稳定 ID（服务器 + 用户名的散列）。 */
-	id: string,
-	/**  游戏内显示名。 */
-	name: string,
-	/**  带连字符的 UUID。 */
-	uuid: string,
-	/**  Yggdrasil 服务器的 API Root。 */
-	apiRoot: string,
-	/**  服务器显示名（用户自定义，如「LittleSkin」）。 */
-	serverName: string,
+  /**  稳定 ID（服务器 + 用户名的散列）。 */
+  id: string;
+  /**  游戏内显示名。 */
+  name: string;
+  /**  带连字符的 UUID。 */
+  uuid: string;
+  /**  Yggdrasil 服务器的 API Root。 */
+  apiRoot: string;
+  /**  服务器显示名（用户自定义，如「LittleSkin」）。 */
+  serverName: string;
 };
 
 /**  CurseForge 文件依赖：relationType = 3 表示必须安装。 */
@@ -636,99 +910,99 @@ export type CfDependency = CfDependency_Serialize | CfDependency_Deserialize;
 
 /**  CurseForge 文件依赖：relationType = 3 表示必须安装。 */
 export type CfDependency_Deserialize = {
-	modId: number,
-	relationType?: number,
+  modId: number;
+  relationType?: number;
 };
 
 /**  CurseForge 文件依赖：relationType = 3 表示必须安装。 */
 export type CfDependency_Serialize = {
-	modId: number,
-	relationType: number,
+  modId: number;
+  relationType: number;
 };
 
 export type CfFile = CfFile_Serialize | CfFile_Deserialize;
 
 export type CfFile_Deserialize = {
-	id: number,
-	displayName: string,
-	fileName: string,
-	downloadUrl?: string | null,
-	downloadCount?: number,
-	/**  同时包含游戏版本与加载器标签，如 `["1.21.1", "NeoForge"]`。 */
-	gameVersions?: string[],
-	/**  1 = 正式版，2 = 测试版，3 = 早期测试版。 */
-	releaseType?: number,
-	fileDate?: string | null,
-	/**  文件依赖：relationType = 3 表示必须安装。 */
-	dependencies?: CfDependency_Deserialize[],
-	/**
-	 *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
-	 * 
-	 *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
-	 */
-	hashes?: CfHash[],
-	/**  文件字节数，用于下载进度统计。 */
-	fileLength?: number,
-	/**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
-	modules?: CfModule[],
+  id: number;
+  displayName: string;
+  fileName: string;
+  downloadUrl?: string | null;
+  downloadCount?: number;
+  /**  同时包含游戏版本与加载器标签，如 `["1.21.1", "NeoForge"]`。 */
+  gameVersions?: string[];
+  /**  1 = 正式版，2 = 测试版，3 = 早期测试版。 */
+  releaseType?: number;
+  fileDate?: string | null;
+  /**  文件依赖：relationType = 3 表示必须安装。 */
+  dependencies?: CfDependency_Deserialize[];
+  /**
+   *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
+   *
+   *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
+   */
+  hashes?: CfHash[];
+  /**  文件字节数，用于下载进度统计。 */
+  fileLength?: number;
+  /**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
+  modules?: CfModule[];
 };
 
 export type CfFile_Serialize = {
-	id: number,
-	displayName: string,
-	fileName: string,
-	downloadUrl: string | null,
-	downloadCount: number,
-	/**  同时包含游戏版本与加载器标签，如 `["1.21.1", "NeoForge"]`。 */
-	gameVersions: string[],
-	/**  1 = 正式版，2 = 测试版，3 = 早期测试版。 */
-	releaseType: number,
-	fileDate: string | null,
-	/**  文件依赖：relationType = 3 表示必须安装。 */
-	dependencies: CfDependency_Serialize[],
-	/**
-	 *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
-	 * 
-	 *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
-	 */
-	hashes: CfHash[],
-	/**  文件字节数，用于下载进度统计。 */
-	fileLength: number,
-	/**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
-	modules: CfModule[],
+  id: number;
+  displayName: string;
+  fileName: string;
+  downloadUrl: string | null;
+  downloadCount: number;
+  /**  同时包含游戏版本与加载器标签，如 `["1.21.1", "NeoForge"]`。 */
+  gameVersions: string[];
+  /**  1 = 正式版，2 = 测试版，3 = 早期测试版。 */
+  releaseType: number;
+  fileDate: string | null;
+  /**  文件依赖：relationType = 3 表示必须安装。 */
+  dependencies: CfDependency_Serialize[];
+  /**
+   *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
+   *
+   *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
+   */
+  hashes: CfHash[];
+  /**  文件字节数，用于下载进度统计。 */
+  fileLength: number;
+  /**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
+  modules: CfModule[];
 };
 
 /**  CurseForge 的哈希条目。 */
 export type CfHash = {
-	value: string,
-	/**  1 = SHA-1，2 = MD5。 */
-	algo: number,
+  value: string;
+  /**  1 = SHA-1，2 = MD5。 */
+  algo: number;
 };
 
 /**  CurseForge 文件内的模块条目。 */
 export type CfModule = {
-	name: string,
+  name: string;
 };
 
 /**
  *  一次内容快照（`mods` / `config` / `resourcepacks` / `shaderpacks`）。
- * 
+ *
  *  与 [`WorldBackup`] 的区别：世界备份保的是玩家的**存档**，内容快照保的是
  *  玩家的**模组与配置**。两者触发时机、体积、保留策略完全不同，不能合并。
  */
 export type ContentSnapshot = {
-	/**  快照 ID（目录名），恢复 / 删除时原样传回。 */
-	id: string,
-	/**  触发原因：`manual` / `before-mod-change` / `before-loader-change`。 */
-	reason: string,
-	/**  Unix 时间戳（秒）。 */
-	createdAt: number,
-	/**  压缩包大小（字节）。 */
-	sizeBytes: number,
-	/**  快照内的文件数。 */
-	fileCount: number,
-	/**  手动标记为「保留」，不参与自动淘汰。 */
-	pinned: boolean,
+  /**  快照 ID（目录名），恢复 / 删除时原样传回。 */
+  id: string;
+  /**  触发原因：`manual` / `before-mod-change` / `before-loader-change`。 */
+  reason: string;
+  /**  Unix 时间戳（秒）。 */
+  createdAt: number;
+  /**  压缩包大小（字节）。 */
+  sizeBytes: number;
+  /**  快照内的文件数。 */
+  fileCount: number;
+  /**  手动标记为「保留」，不参与自动淘汰。 */
+  pinned: boolean;
 };
 
 /**  日志诊断结果。 */
@@ -736,18 +1010,18 @@ export type CrashAnalysis = CrashAnalysis_Serialize | CrashAnalysis_Deserialize;
 
 /**  日志诊断结果。 */
 export type CrashAnalysis_Deserialize = {
-	/**  命中的诊断结论（按严重程度与出现顺序排列）。 */
-	findings: CrashFinding_Deserialize[],
-	/**  从日志里摘出的关键报错行，方便用户一眼看到原始证据。 */
-	excerpt: string[],
+  /**  命中的诊断结论（按严重程度与出现顺序排列）。 */
+  findings: CrashFinding_Deserialize[];
+  /**  从日志里摘出的关键报错行，方便用户一眼看到原始证据。 */
+  excerpt: string[];
 };
 
 /**  日志诊断结果。 */
 export type CrashAnalysis_Serialize = {
-	/**  命中的诊断结论（按严重程度与出现顺序排列）。 */
-	findings: CrashFinding_Serialize[],
-	/**  从日志里摘出的关键报错行，方便用户一眼看到原始证据。 */
-	excerpt: string[],
+  /**  命中的诊断结论（按严重程度与出现顺序排列）。 */
+  findings: CrashFinding_Serialize[];
+  /**  从日志里摘出的关键报错行，方便用户一眼看到原始证据。 */
+  excerpt: string[];
 };
 
 /**  一条崩溃诊断结论。 */
@@ -755,148 +1029,153 @@ export type CrashFinding = CrashFinding_Serialize | CrashFinding_Deserialize;
 
 /**  一条崩溃诊断结论。 */
 export type CrashFinding_Deserialize = {
-	/**  结论标题（一句话说清「哪里坏了」）。 */
-	title: string,
-	/**  解释：为什么会这样。 */
-	detail: string,
-	/**  建议：用户下一步该做什么。 */
-	suggestion: string,
-	/**  `error` / `warning`。 */
-	severity: string,
-	/**
-	 *  判断的确定程度：`high` / `medium`。
-	 *  低置信度的结论不提供一键修复，只作为参考建议。
-	 */
-	confidence?: string,
-	/**  可直接执行的修复入口：`open-settings` / `open-mods` / `repair`。 */
-	actionKind?: string | null,
-	/**  修复按钮文案。 */
-	actionLabel?: string | null,
+  /**  结论标题（一句话说清「哪里坏了」）。 */
+  title: string;
+  /**  解释：为什么会这样。 */
+  detail: string;
+  /**  建议：用户下一步该做什么。 */
+  suggestion: string;
+  /**  `error` / `warning`。 */
+  severity: string;
+  /**
+   *  判断的确定程度：`high` / `medium`。
+   *  低置信度的结论不提供一键修复，只作为参考建议。
+   */
+  confidence?: string;
+  /**  可直接执行的修复入口：`open-settings` / `open-mods` / `repair`。 */
+  actionKind?: string | null;
+  /**  修复按钮文案。 */
+  actionLabel?: string | null;
 };
 
 /**  一条崩溃诊断结论。 */
 export type CrashFinding_Serialize = {
-	/**  结论标题（一句话说清「哪里坏了」）。 */
-	title: string,
-	/**  解释：为什么会这样。 */
-	detail: string,
-	/**  建议：用户下一步该做什么。 */
-	suggestion: string,
-	/**  `error` / `warning`。 */
-	severity: string,
-	/**
-	 *  判断的确定程度：`high` / `medium`。
-	 *  低置信度的结论不提供一键修复，只作为参考建议。
-	 */
-	confidence: string,
-	/**  可直接执行的修复入口：`open-settings` / `open-mods` / `repair`。 */
-	actionKind: string | null,
-	/**  修复按钮文案。 */
-	actionLabel: string | null,
+  /**  结论标题（一句话说清「哪里坏了」）。 */
+  title: string;
+  /**  解释：为什么会这样。 */
+  detail: string;
+  /**  建议：用户下一步该做什么。 */
+  suggestion: string;
+  /**  `error` / `warning`。 */
+  severity: string;
+  /**
+   *  判断的确定程度：`high` / `medium`。
+   *  低置信度的结论不提供一键修复，只作为参考建议。
+   */
+  confidence: string;
+  /**  可直接执行的修复入口：`open-settings` / `open-mods` / `repair`。 */
+  actionKind: string | null;
+  /**  修复按钮文案。 */
+  actionLabel: string | null;
 };
 
 /**  探测结果：端口 + 世界信息（给 UI 确认用）。 */
 export type DetectedWorld = {
-	/**  世界监听端口。 */
-	port: number,
-	/**  MOTD（通常是世界名）。 */
-	motd: string,
-	/**  游戏版本。 */
-	version: string,
+  /**  世界监听端口。 */
+  port: number;
+  /**  MOTD（通常是世界名）。 */
+  motd: string;
+  /**  游戏版本。 */
+  version: string;
 };
 
 /**  设备码登录的第一步返回。 */
 export type DeviceCodeInfo = {
-	/**  用户在浏览器里输入的短码。 */
-	userCode: string,
-	/**  验证地址（`https://microsoft.com/link`）。 */
-	verificationUri: string,
-	/**  设备码有效期（秒）。用 u32：设备码最多 15 分钟，且避免 BigInt 前端类型。 */
-	expiresIn: number,
-	/**  建议轮询间隔（秒）。 */
-	interval: number,
-	/**  轮询用的设备码，前端原样回传给 `complete_microsoft_login`。 */
-	deviceCode: string,
+  /**  用户在浏览器里输入的短码。 */
+  userCode: string;
+  /**  验证地址（`https://microsoft.com/link`）。 */
+  verificationUri: string;
+  /**  设备码有效期（秒）。用 u32：设备码最多 15 分钟，且避免 BigInt 前端类型。 */
+  expiresIn: number;
+  /**  建议轮询间隔（秒）。 */
+  interval: number;
+  /**  轮询用的设备码，前端原样回传给 `complete_microsoft_login`。 */
+  deviceCode: string;
 };
 
 export type DownloadInfo = DownloadInfo_Serialize | DownloadInfo_Deserialize;
 
 export type DownloadInfo_Deserialize = {
-	url: string,
-	sha1?: string,
-	size?: number,
-	/**  Mojang 声明的库内相对路径（`group/artifact/version/file.jar`）。 */
-	path?: string | null,
+  url: string;
+  sha1?: string;
+  size?: number;
+  /**  Mojang 声明的库内相对路径（`group/artifact/version/file.jar`）。 */
+  path?: string | null;
 };
 
 export type DownloadInfo_Serialize = {
-	url: string,
-	sha1: string,
-	size: number,
-	/**  Mojang 声明的库内相对路径（`group/artifact/version/file.jar`）。 */
-	path: string | null,
+  url: string;
+  sha1: string;
+  size: number;
+  /**  Mojang 声明的库内相对路径（`group/artifact/version/file.jar`）。 */
+  path: string | null;
 };
 
 export type DownloadProgress = DownloadProgress_Serialize | DownloadProgress_Deserialize;
 
-export type DownloadProgress_Deserialize = { kind: "task"; snapshot: DownloadSnapshot } | { kind: "session"; summary: DownloadSessionSummary_Deserialize };
+export type DownloadProgress_Deserialize =
+  | { kind: "task"; snapshot: DownloadSnapshot }
+  | { kind: "session"; summary: DownloadSessionSummary_Deserialize };
 
-export type DownloadProgress_Serialize = { kind: "task"; snapshot: DownloadSnapshot } | { kind: "session"; summary: DownloadSessionSummary_Serialize };
+export type DownloadProgress_Serialize =
+  | { kind: "task"; snapshot: DownloadSnapshot }
+  | { kind: "session"; summary: DownloadSessionSummary_Serialize };
 
-export type DownloadSessionSummary = DownloadSessionSummary_Serialize | DownloadSessionSummary_Deserialize;
+export type DownloadSessionSummary =
+  DownloadSessionSummary_Serialize | DownloadSessionSummary_Deserialize;
 
 export type DownloadSessionSummary_Deserialize = {
-	sessionId: string,
-	purpose: string,
-	/**  当前所处阶段：1 = 基础库, 2 = 资源文件, 3 = 加载器 */
-	stage: number,
-	instanceId?: string | null,
-	totalFiles: number,
-	doneFiles: number,
-	failedFiles: number,
-	totalBytes: number,
-	downloadedBytes: number,
+  sessionId: string;
+  purpose: string;
+  /**  当前所处阶段：1 = 基础库, 2 = 资源文件, 3 = 加载器 */
+  stage: number;
+  instanceId?: string | null;
+  totalFiles: number;
+  doneFiles: number;
+  failedFiles: number;
+  totalBytes: number;
+  downloadedBytes: number;
 };
 
 export type DownloadSessionSummary_Serialize = {
-	sessionId: string,
-	purpose: string,
-	/**  当前所处阶段：1 = 基础库, 2 = 资源文件, 3 = 加载器 */
-	stage: number,
-	instanceId: string | null,
-	totalFiles: number,
-	doneFiles: number,
-	failedFiles: number,
-	totalBytes: number,
-	downloadedBytes: number,
+  sessionId: string;
+  purpose: string;
+  /**  当前所处阶段：1 = 基础库, 2 = 资源文件, 3 = 加载器 */
+  stage: number;
+  instanceId: string | null;
+  totalFiles: number;
+  doneFiles: number;
+  failedFiles: number;
+  totalBytes: number;
+  downloadedBytes: number;
 };
 
 export type DownloadSettings = DownloadSettings_Serialize | DownloadSettings_Deserialize;
 
 export type DownloadSettings_Deserialize = {
-	maxConcurrent?: number,
-	preferMirror?: boolean,
-	retryTimes?: number,
-	/**  全局限速（KB/s）。`None` 或 0 表示不限速。 */
-	speedLimitKbps?: number | null,
+  maxConcurrent?: number;
+  preferMirror?: boolean;
+  retryTimes?: number;
+  /**  全局限速（KB/s）。`None` 或 0 表示不限速。 */
+  speedLimitKbps?: number | null;
 };
 
 export type DownloadSettings_Serialize = {
-	maxConcurrent: number,
-	preferMirror: boolean,
-	retryTimes: number,
-	/**  全局限速（KB/s）。`None` 或 0 表示不限速。 */
-	speedLimitKbps: number | null,
+  maxConcurrent: number;
+  preferMirror: boolean;
+  retryTimes: number;
+  /**  全局限速（KB/s）。`None` 或 0 表示不限速。 */
+  speedLimitKbps: number | null;
 };
 
 export type DownloadSnapshot = {
-	sessionId: string,
-	taskId: string,
-	fileName: string,
-	downloaded: number,
-	total: number,
-	speedBps: number,
-	state: DownloadState,
+  sessionId: string;
+  taskId: string;
+  fileName: string;
+  downloaded: number;
+  total: number;
+  speedBps: number;
+  state: DownloadState;
 };
 
 export type DownloadState = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -904,31 +1183,31 @@ export type DownloadState = "queued" | "running" | "done" | "failed" | "cancelle
 export type Downloads = Downloads_Serialize | Downloads_Deserialize;
 
 export type Downloads_Deserialize = {
-	client: DownloadInfo_Deserialize,
-	server?: DownloadInfo_Deserialize | null,
-	/**  Mojang 的字段名是 `client_mappings`（snake_case），不能跟着 camelCase 走。 */
-	client_mappings?: DownloadInfo_Deserialize | null,
-	server_mappings?: DownloadInfo_Deserialize | null,
+  client: DownloadInfo_Deserialize;
+  server?: DownloadInfo_Deserialize | null;
+  /**  Mojang 的字段名是 `client_mappings`（snake_case），不能跟着 camelCase 走。 */
+  client_mappings?: DownloadInfo_Deserialize | null;
+  server_mappings?: DownloadInfo_Deserialize | null;
 };
 
 export type Downloads_Serialize = {
-	client: DownloadInfo_Serialize,
-	server: DownloadInfo_Serialize | null,
-	/**  Mojang 的字段名是 `client_mappings`（snake_case），不能跟着 camelCase 走。 */
-	client_mappings: DownloadInfo_Serialize | null,
-	server_mappings: DownloadInfo_Serialize | null,
+  client: DownloadInfo_Serialize;
+  server: DownloadInfo_Serialize | null;
+  /**  Mojang 的字段名是 `client_mappings`（snake_case），不能跟着 camelCase 走。 */
+  client_mappings: DownloadInfo_Serialize | null;
+  server_mappings: DownloadInfo_Serialize | null;
 };
 
 export type Extract = Extract_Serialize | Extract_Deserialize;
 
 export type Extract_Deserialize = {
-	exclude?: string[] | null,
-	include?: string[] | null,
+  exclude?: string[] | null;
+  include?: string[] | null;
 };
 
 export type Extract_Serialize = {
-	exclude: string[] | null,
-	include: string[] | null,
+  exclude: string[] | null;
+  include: string[] | null;
 };
 
 /**  游戏进程退出：前端据此刷新实例列表与运行状态。 */
@@ -936,21 +1215,21 @@ export type GameExited = GameExited_Serialize | GameExited_Deserialize;
 
 /**  游戏进程退出：前端据此刷新实例列表与运行状态。 */
 export type GameExited_Deserialize = {
-	instanceId: string,
-	exitCode?: number | null,
+  instanceId: string;
+  exitCode?: number | null;
 };
 
 /**  游戏进程退出：前端据此刷新实例列表与运行状态。 */
 export type GameExited_Serialize = {
-	instanceId: string,
-	exitCode: number | null,
+  instanceId: string;
+  exitCode: number | null;
 };
 
 /**  一键修复入口。 */
 export type HealthAction = {
-	/**  `repair` / `open-settings` / `open-mods` / `open-logs`。 */
-	kind: string,
-	label: string,
+  /**  `repair` / `open-settings` / `open-mods` / `open-logs`。 */
+  kind: string;
+  label: string;
 };
 
 /**  一条预检结论。 */
@@ -958,26 +1237,26 @@ export type HealthCheck = HealthCheck_Serialize | HealthCheck_Deserialize;
 
 /**  一条预检结论。 */
 export type HealthCheck_Deserialize = {
-	/**  稳定的检查 ID：`instance` / `java` / `memory` / `disk` / `mods` / `crash` / `running`。 */
-	id: string,
-	title: string,
-	/**  `ok` / `warn` / `error`。 */
-	status: string,
-	detail: string,
-	/**  可直接执行的一键修复入口；前端按 `kind` 分发。 */
-	action?: HealthAction | null,
+  /**  稳定的检查 ID：`instance` / `java` / `memory` / `disk` / `mods` / `crash` / `running`。 */
+  id: string;
+  title: string;
+  /**  `ok` / `warn` / `error`。 */
+  status: string;
+  detail: string;
+  /**  可直接执行的一键修复入口；前端按 `kind` 分发。 */
+  action?: HealthAction | null;
 };
 
 /**  一条预检结论。 */
 export type HealthCheck_Serialize = {
-	/**  稳定的检查 ID：`instance` / `java` / `memory` / `disk` / `mods` / `crash` / `running`。 */
-	id: string,
-	title: string,
-	/**  `ok` / `warn` / `error`。 */
-	status: string,
-	detail: string,
-	/**  可直接执行的一键修复入口；前端按 `kind` 分发。 */
-	action: HealthAction | null,
+  /**  稳定的检查 ID：`instance` / `java` / `memory` / `disk` / `mods` / `crash` / `running`。 */
+  id: string;
+  title: string;
+  /**  `ok` / `warn` / `error`。 */
+  status: string;
+  detail: string;
+  /**  可直接执行的一键修复入口；前端按 `kind` 分发。 */
+  action: HealthAction | null;
 };
 
 /**  实例健康检查报告：启动前预检 + Mod 依赖图 + 最近崩溃诊断。 */
@@ -985,46 +1264,46 @@ export type HealthReport = HealthReport_Serialize | HealthReport_Deserialize;
 
 /**  实例健康检查报告：启动前预检 + Mod 依赖图 + 最近崩溃诊断。 */
 export type HealthReport_Deserialize = {
-	instanceId: string,
-	/**  预检项（Java / 内存 / 磁盘 / 文件完整性 / Mod / 崩溃）。 */
-	checks: HealthCheck_Deserialize[],
-	/**  Mod 依赖图检查结果。 */
-	mods: ModHealth_Deserialize,
-	/**  最近一次崩溃（或最新日志）的自动诊断。 */
-	crash: CrashAnalysis_Deserialize,
-	/**  检查时间（Unix 秒）。 */
-	checkedAt: string,
+  instanceId: string;
+  /**  预检项（Java / 内存 / 磁盘 / 文件完整性 / Mod / 崩溃）。 */
+  checks: HealthCheck_Deserialize[];
+  /**  Mod 依赖图检查结果。 */
+  mods: ModHealth_Deserialize;
+  /**  最近一次崩溃（或最新日志）的自动诊断。 */
+  crash: CrashAnalysis_Deserialize;
+  /**  检查时间（Unix 秒）。 */
+  checkedAt: string;
 };
 
 /**  实例健康检查报告：启动前预检 + Mod 依赖图 + 最近崩溃诊断。 */
 export type HealthReport_Serialize = {
-	instanceId: string,
-	/**  预检项（Java / 内存 / 磁盘 / 文件完整性 / Mod / 崩溃）。 */
-	checks: HealthCheck_Serialize[],
-	/**  Mod 依赖图检查结果。 */
-	mods: ModHealth_Serialize,
-	/**  最近一次崩溃（或最新日志）的自动诊断。 */
-	crash: CrashAnalysis_Serialize,
-	/**  检查时间（Unix 秒）。 */
-	checkedAt: string,
+  instanceId: string;
+  /**  预检项（Java / 内存 / 磁盘 / 文件完整性 / Mod / 崩溃）。 */
+  checks: HealthCheck_Serialize[];
+  /**  Mod 依赖图检查结果。 */
+  mods: ModHealth_Serialize;
+  /**  最近一次崩溃（或最新日志）的自动诊断。 */
+  crash: CrashAnalysis_Serialize;
+  /**  检查时间（Unix 秒）。 */
+  checkedAt: string;
 };
 
 export type HttpSettings = HttpSettings_Serialize | HttpSettings_Deserialize;
 
 export type HttpSettings_Deserialize = {
-	connectTimeoutSecs?: number,
-	requestTimeoutSecs?: number,
-	readTimeoutSecs?: number,
-	maxRedirects?: number,
-	proxy?: string | null,
+  connectTimeoutSecs?: number;
+  requestTimeoutSecs?: number;
+  readTimeoutSecs?: number;
+  maxRedirects?: number;
+  proxy?: string | null;
 };
 
 export type HttpSettings_Serialize = {
-	connectTimeoutSecs: number,
-	requestTimeoutSecs: number,
-	readTimeoutSecs: number,
-	maxRedirects: number,
-	proxy: string | null,
+  connectTimeoutSecs: number;
+  requestTimeoutSecs: number;
+  readTimeoutSecs: number;
+  maxRedirects: number;
+  proxy: string | null;
 };
 
 /**  一个可导入的候选实例。 */
@@ -1032,74 +1311,74 @@ export type ImportCandidate = ImportCandidate_Serialize | ImportCandidate_Deseri
 
 /**  一个可导入的候选实例。 */
 export type ImportCandidate_Deserialize = {
-	/**  展示名（来自目录名或版本 ID）。 */
-	label: string,
-	/**  Minecraft 版本。 */
-	gameVersion: string,
-	/**  加载器信息。 */
-	loader: LoaderInfo_Deserialize,
-	/**  游戏目录（`--gameDir` 对应的那一层）。 */
-	gameDir: string,
-	/**  目录布局类型。 */
-	layout: ImportLayout,
-	/**  `mods/` 里的文件数。 */
-	modCount: number,
-	/**  `saves/` 里的世界数。 */
-	saveCount: number,
+  /**  展示名（来自目录名或版本 ID）。 */
+  label: string;
+  /**  Minecraft 版本。 */
+  gameVersion: string;
+  /**  加载器信息。 */
+  loader: LoaderInfo_Deserialize;
+  /**  游戏目录（`--gameDir` 对应的那一层）。 */
+  gameDir: string;
+  /**  目录布局类型。 */
+  layout: ImportLayout;
+  /**  `mods/` 里的文件数。 */
+  modCount: number;
+  /**  `saves/` 里的世界数。 */
+  saveCount: number;
 };
 
 /**  一个可导入的候选实例。 */
 export type ImportCandidate_Serialize = {
-	/**  展示名（来自目录名或版本 ID）。 */
-	label: string,
-	/**  Minecraft 版本。 */
-	gameVersion: string,
-	/**  加载器信息。 */
-	loader: LoaderInfo_Serialize,
-	/**  游戏目录（`--gameDir` 对应的那一层）。 */
-	gameDir: string,
-	/**  目录布局类型。 */
-	layout: ImportLayout,
-	/**  `mods/` 里的文件数。 */
-	modCount: number,
-	/**  `saves/` 里的世界数。 */
-	saveCount: number,
+  /**  展示名（来自目录名或版本 ID）。 */
+  label: string;
+  /**  Minecraft 版本。 */
+  gameVersion: string;
+  /**  加载器信息。 */
+  loader: LoaderInfo_Serialize;
+  /**  游戏目录（`--gameDir` 对应的那一层）。 */
+  gameDir: string;
+  /**  目录布局类型。 */
+  layout: ImportLayout;
+  /**  `mods/` 里的文件数。 */
+  modCount: number;
+  /**  `saves/` 里的世界数。 */
+  saveCount: number;
 };
 
 /**  扫描到的外部布局类型。 */
-export type ImportLayout = 
-/**  官方启动器 / PCL / HMCL：有 `versions/` 目录。 */
-"flat" | 
-/**  MultiMC / Prism：游戏目录在 `.minecraft/` 子目录里。 */
-"nested" | 
-/**  裸游戏目录：只有 `mods/` / `saves/` 等，没有版本信息。 */
-"gameDirOnly";
+export type ImportLayout =
+  /**  官方启动器 / PCL / HMCL：有 `versions/` 目录。 */
+  | "flat"
+  /**  MultiMC / Prism：游戏目录在 `.minecraft/` 子目录里。 */
+  | "nested"
+  /**  裸游戏目录：只有 `mods/` / `saves/` 等，没有版本信息。 */
+  | "gameDirOnly";
 
 /**  一次扫描的结果。 */
 export type ImportScan = ImportScan_Serialize | ImportScan_Deserialize;
 
 /**  一次扫描的结果。 */
 export type ImportScan_Deserialize = {
-	/**  扫描的根目录。 */
-	source: string,
-	/**  识别出的布局。 */
-	layout: ImportLayout,
-	/**  游戏目录。 */
-	gameDir: string,
-	/**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
-	candidates: ImportCandidate_Deserialize[],
+  /**  扫描的根目录。 */
+  source: string;
+  /**  识别出的布局。 */
+  layout: ImportLayout;
+  /**  游戏目录。 */
+  gameDir: string;
+  /**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
+  candidates: ImportCandidate_Deserialize[];
 };
 
 /**  一次扫描的结果。 */
 export type ImportScan_Serialize = {
-	/**  扫描的根目录。 */
-	source: string,
-	/**  识别出的布局。 */
-	layout: ImportLayout,
-	/**  游戏目录。 */
-	gameDir: string,
-	/**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
-	candidates: ImportCandidate_Serialize[],
+  /**  扫描的根目录。 */
+  source: string;
+  /**  识别出的布局。 */
+  layout: ImportLayout;
+  /**  游戏目录。 */
+  gameDir: string;
+  /**  候选版本列表（按「有加载器优先、版本号新优先」排序）。 */
+  candidates: ImportCandidate_Serialize[];
 };
 
 /**  实例的日志快照：最新日志 + 最近的崩溃报告 + 诊断结论。 */
@@ -1107,18 +1386,18 @@ export type InstanceLogs = InstanceLogs_Serialize | InstanceLogs_Deserialize;
 
 /**  实例的日志快照：最新日志 + 最近的崩溃报告 + 诊断结论。 */
 export type InstanceLogs_Deserialize = {
-	latestLog?: string | null,
-	crashes: LogFile[],
-	/**  自动诊断：对最新崩溃报告（没有则对 latest.log）做规则匹配。 */
-	analysis: CrashAnalysis_Deserialize,
+  latestLog?: string | null;
+  crashes: LogFile[];
+  /**  自动诊断：对最新崩溃报告（没有则对 latest.log）做规则匹配。 */
+  analysis: CrashAnalysis_Deserialize;
 };
 
 /**  实例的日志快照：最新日志 + 最近的崩溃报告 + 诊断结论。 */
 export type InstanceLogs_Serialize = {
-	latestLog: string | null,
-	crashes: LogFile[],
-	/**  自动诊断：对最新崩溃报告（没有则对 latest.log）做规则匹配。 */
-	analysis: CrashAnalysis_Serialize,
+  latestLog: string | null;
+  crashes: LogFile[];
+  /**  自动诊断：对最新崩溃报告（没有则对 latest.log）做规则匹配。 */
+  analysis: CrashAnalysis_Serialize;
 };
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
@@ -1126,210 +1405,233 @@ export type InstanceMetadata = InstanceMetadata_Serialize | InstanceMetadata_Des
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
 export type InstanceMetadata_Deserialize = {
-	/**
-	 *  schema 版本。
-	 * 
-	 *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
-	 *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
-	 *  迁移根本没机会跑。default 返回 1（初始 schema）。
-	 */
-	schemaVersion?: number,
-	/**  稳定 ID（目录名）。 */
-	id: string,
-	/**  显示名称。 */
-	displayName: string,
-	/**  Minecraft 版本号，如 `1.21.1`。 */
-	gameVersion: string,
-	/**  加载器信息。 */
-	loader: LoaderInfo_Deserialize,
-	/**  状态：`created` / `installing` / `ready`。 */
-	status: string,
-	/**  创建时间（Unix 时间戳字符串）。 */
-	createdAt: string,
-	/**  最后游玩时间。 */
-	lastPlayedAt?: string | null,
-	/**  游玩时长（秒）。用 u32 足够，避免 specta 的 u64(BigInt) 限制。 */
-	playtimeSecs?: number,
-	/**  实例专用 Java 路径；为空时回落到全局设置。 */
-	javaPath?: string | null,
-	/**  实例专用最大堆内存（MB）；为空时回落到全局设置。 */
-	memoryMb?: number | null,
-	/**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
-	jvmArgs?: string[],
-	/**
-	 *  是否被用户「收藏」：列表里置顶显示。
-	 * 
-	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
-	 */
-	favorite?: boolean,
-	/**
-	 *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
-	 * 
-	 *  老实例同样靠 `default` 兼容。
-	 */
-	group?: string | null,
+  /**
+   *  schema 版本。
+   *
+   *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
+   *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
+   *  迁移根本没机会跑。default 返回 1（初始 schema）。
+   */
+  schemaVersion?: number;
+  /**  稳定 ID（目录名）。 */
+  id: string;
+  /**  显示名称。 */
+  displayName: string;
+  /**  Minecraft 版本号，如 `1.21.1`。 */
+  gameVersion: string;
+  /**  加载器信息。 */
+  loader: LoaderInfo_Deserialize;
+  /**  状态：`created` / `installing` / `ready`。 */
+  status: string;
+  /**  创建时间（Unix 时间戳字符串）。 */
+  createdAt: string;
+  /**  最后游玩时间。 */
+  lastPlayedAt?: string | null;
+  /**  游玩时长（秒）。用 u32 足够，避免 specta 的 u64(BigInt) 限制。 */
+  playtimeSecs?: number;
+  /**  实例专用 Java 路径；为空时回落到全局设置。 */
+  javaPath?: string | null;
+  /**  实例专用最大堆内存（MB）；为空时回落到全局设置。 */
+  memoryMb?: number | null;
+  /**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
+  jvmArgs?: string[];
+  /**
+   *  是否被用户「收藏」：列表里置顶显示。
+   *
+   *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
+   */
+  favorite?: boolean;
+  /**
+   *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
+   *
+   *  老实例同样靠 `default` 兼容。
+   */
+  group?: string | null;
 };
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
 export type InstanceMetadata_Serialize = {
-	/**
-	 *  schema 版本。
-	 * 
-	 *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
-	 *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
-	 *  迁移根本没机会跑。default 返回 1（初始 schema）。
-	 */
-	schemaVersion: number,
-	/**  稳定 ID（目录名）。 */
-	id: string,
-	/**  显示名称。 */
-	displayName: string,
-	/**  Minecraft 版本号，如 `1.21.1`。 */
-	gameVersion: string,
-	/**  加载器信息。 */
-	loader: LoaderInfo_Serialize,
-	/**  状态：`created` / `installing` / `ready`。 */
-	status: string,
-	/**  创建时间（Unix 时间戳字符串）。 */
-	createdAt: string,
-	/**  最后游玩时间。 */
-	lastPlayedAt: string | null,
-	/**  游玩时长（秒）。用 u32 足够，避免 specta 的 u64(BigInt) 限制。 */
-	playtimeSecs: number,
-	/**  实例专用 Java 路径；为空时回落到全局设置。 */
-	javaPath: string | null,
-	/**  实例专用最大堆内存（MB）；为空时回落到全局设置。 */
-	memoryMb: number | null,
-	/**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
-	jvmArgs: string[],
-	/**
-	 *  是否被用户「收藏」：列表里置顶显示。
-	 * 
-	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
-	 */
-	favorite: boolean,
-	/**
-	 *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
-	 * 
-	 *  老实例同样靠 `default` 兼容。
-	 */
-	group: string | null,
+  /**
+   *  schema 版本。
+   *
+   *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
+   *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
+   *  迁移根本没机会跑。default 返回 1（初始 schema）。
+   */
+  schemaVersion: number;
+  /**  稳定 ID（目录名）。 */
+  id: string;
+  /**  显示名称。 */
+  displayName: string;
+  /**  Minecraft 版本号，如 `1.21.1`。 */
+  gameVersion: string;
+  /**  加载器信息。 */
+  loader: LoaderInfo_Serialize;
+  /**  状态：`created` / `installing` / `ready`。 */
+  status: string;
+  /**  创建时间（Unix 时间戳字符串）。 */
+  createdAt: string;
+  /**  最后游玩时间。 */
+  lastPlayedAt: string | null;
+  /**  游玩时长（秒）。用 u32 足够，避免 specta 的 u64(BigInt) 限制。 */
+  playtimeSecs: number;
+  /**  实例专用 Java 路径；为空时回落到全局设置。 */
+  javaPath: string | null;
+  /**  实例专用最大堆内存（MB）；为空时回落到全局设置。 */
+  memoryMb: number | null;
+  /**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
+  jvmArgs: string[];
+  /**
+   *  是否被用户「收藏」：列表里置顶显示。
+   *
+   *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
+   */
+  favorite: boolean;
+  /**
+   *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
+   *
+   *  老实例同样靠 `default` 兼容。
+   */
+  group: string | null;
 };
 
 /**  单个实例的磁盘占用。 */
 export type InstanceUsage = {
-	id: string,
-	name: string,
-	bytes: number,
+  id: string;
+  name: string;
+  bytes: number;
 };
 
 /**  检测到的 Java 运行时。 */
 export type JavaCandidate = {
-	/**  Java 可执行文件的绝对路径。 */
-	path: string,
-	/**  主版本号，如 8, 17, 21。解析失败为 0。 */
-	majorVersion: number,
-	/**  完整版本字符串，如 `1.8.0_402` 或 `21.0.4`。 */
-	versionString: string,
-	/**  架构，如 `x64` 或 `x86`。 */
-	arch: string,
-	/**  是否由用户手动指定（未来的字段）。 */
-	isCustom: boolean,
+  /**  Java 可执行文件的绝对路径。 */
+  path: string;
+  /**  主版本号，如 8, 17, 21。解析失败为 0。 */
+  majorVersion: number;
+  /**  完整版本字符串，如 `1.8.0_402` 或 `21.0.4`。 */
+  versionString: string;
+  /**  架构，如 `x64` 或 `x86`。 */
+  arch: string;
+  /**  是否由用户手动指定（未来的字段）。 */
+  isCustom: boolean;
 };
 
 export type JavaSettings = JavaSettings_Serialize | JavaSettings_Deserialize;
 
 export type JavaSettings_Deserialize = {
-	customPath?: string | null,
-	defaultMemoryMb?: number | null,
+  customPath?: string | null;
+  defaultMemoryMb?: number | null;
 };
 
 export type JavaSettings_Serialize = {
-	customPath: string | null,
-	defaultMemoryMb: number | null,
+  customPath: string | null;
+  defaultMemoryMb: number | null;
 };
 
 export type JavaVersion = JavaVersion_Serialize | JavaVersion_Deserialize;
 
 export type JavaVersion_Deserialize = {
-	component?: string,
-	majorVersion: number,
+  component?: string;
+  majorVersion: number;
 };
 
 export type JavaVersion_Serialize = {
-	component: string,
-	majorVersion: number,
+  component: string;
+  majorVersion: number;
 };
 
 export type LatestVersions = {
-	release: string,
-	snapshot: string,
+  release: string;
+  snapshot: string;
 };
 
 /**
  *  启动器的全部失败模式。
- * 
+ *
  *  命名按「用户能做什么」组织，而不是按「哪一层出的问题」组织。
  *  每个变体的 `error` 文案都要包含**用户能执行的下一步**，
  *  而不是只说 `io error`。
- * 
+ *
  *  `rename_all` 作用于**变体名**，`rename_all_fields` 作用于**变体内的字段名**——
  *  两者都要有，前端才能拿到 `requiredMajor` 而不是 `required_major`。
  */
-export type LauncherError = { type: "javaNotFound"; requiredMajor: number } | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string } | { type: "javaDownloadFailed"; message: string } | { type: "versionNotFound"; id: string } | { type: "loaderNotFound"; loader: string; version: string } | { type: "loaderInstallFailed"; message: string } | { type: "downloadFailed"; message: string; url: string } | { type: "checksumMismatch"; path: string; expected: string; actual: string } | { type: "downloadCancelled"; taskId: string } | { type: "allSourcesUnavailable"; message: string } | { type: "instanceNotFound"; id: string } | { type: "instanceBusy"; id: string } | { type: "instanceAlreadyExists"; id: string } | { type: "notAuthenticated" } | { type: "authlibAuthFailed"; message: string } | { type: "credentialStoreUnavailable"; message: string } | { type: "tokenRefreshFailed"; message: string } | 
-/**
- *  CurseForge 官方接口需要 API Key。
- * 
- *  官方接口的每个端点都强制要求鉴权请求头，而镜像（MCIM）不需要。
- *  本项目**不再携带任何 Key**，因此关掉镜像后官方接口必然拒绝请求，
- *  这时要把「开回镜像」这个下一步说清楚，而不是丢一个裸的 HTTP 码。
- */
-{ type: "curseForgeOfficialKeyRequired" } | { type: "resourceNotFound"; projectId: string } | 
-/**
- *  更新通道出错（检查、下载、验签或安装失败）。
- * 
- *  单独成一个变体而不是复用 `Internal`：前端要能区分
- *  「更新失败」与「其它内部错误」，给用户不同的引导
- *  （前者提示「稍后重试或手动下载」，后者提示「查看日志」）。
- */
-{ type: "updateFailed"; message: string } | { type: "io"; message: string } | { type: "parse"; message: string } | { type: "invalidConfig"; key: string; message: string } | { type: "cancelled" } | { type: "internal"; message: string };
+export type LauncherError =
+  | { type: "javaNotFound"; requiredMajor: number }
+  | { type: "javaArchMismatch"; path: string; arch: string; systemArch: string }
+  | { type: "javaDownloadFailed"; message: string }
+  | { type: "versionNotFound"; id: string }
+  | { type: "loaderNotFound"; loader: string; version: string }
+  | { type: "loaderInstallFailed"; message: string }
+  | { type: "downloadFailed"; message: string; url: string }
+  | { type: "checksumMismatch"; path: string; expected: string; actual: string }
+  | { type: "downloadCancelled"; taskId: string }
+  | { type: "allSourcesUnavailable"; message: string }
+  | { type: "instanceNotFound"; id: string }
+  | { type: "instanceBusy"; id: string }
+  | { type: "instanceAlreadyExists"; id: string }
+  | { type: "notAuthenticated" }
+  | { type: "authlibAuthFailed"; message: string }
+  | { type: "credentialStoreUnavailable"; message: string }
+  | { type: "tokenRefreshFailed"; message: string }
+  /**
+   *  CurseForge 官方接口需要 API Key。
+   *
+   *  官方接口的每个端点都强制要求鉴权请求头，而镜像（MCIM）不需要。
+   *  本项目**不再携带任何 Key**，因此关掉镜像后官方接口必然拒绝请求，
+   *  这时要把「开回镜像」这个下一步说清楚，而不是丢一个裸的 HTTP 码。
+   */
+  | { type: "curseForgeOfficialKeyRequired" }
+  | { type: "resourceNotFound"; projectId: string }
+  /**
+   *  更新通道出错（检查、下载、验签或安装失败）。
+   *
+   *  单独成一个变体而不是复用 `Internal`：前端要能区分
+   *  「更新失败」与「其它内部错误」，给用户不同的引导
+   *  （前者提示「稍后重试或手动下载」，后者提示「查看日志」）。
+   */
+  | { type: "updateFailed"; message: string }
+  | { type: "io"; message: string }
+  | { type: "parse"; message: string }
+  | { type: "invalidConfig"; key: string; message: string }
+  | { type: "cancelled" }
+  | { type: "internal"; message: string };
 
 export type Library = Library_Serialize | Library_Deserialize;
 
 export type LibraryDownloads = LibraryDownloads_Serialize | LibraryDownloads_Deserialize;
 
 export type LibraryDownloads_Deserialize = {
-	artifact?: DownloadInfo_Deserialize | null,
-	classifiers?: { [key in string]: DownloadInfo_Deserialize } | null,
+  artifact?: DownloadInfo_Deserialize | null;
+  classifiers?: { [key in string]: DownloadInfo_Deserialize } | null;
 };
 
 export type LibraryDownloads_Serialize = {
-	artifact: DownloadInfo_Serialize | null,
-	classifiers: { [key in string]: DownloadInfo_Serialize } | null,
+  artifact: DownloadInfo_Serialize | null;
+  classifiers: { [key in string]: DownloadInfo_Serialize } | null;
 };
 
 export type Library_Deserialize = {
-	name: string,
-	/**  只声明 Maven 仓库地址、没有 `downloads.artifact` 的库（部分加载器注入的依赖）。 */
-	url?: string | null,
-	downloads?: LibraryDownloads_Deserialize | null,
-	rules?: Rule_Deserialize[],
-	natives?: { [key in string]: string } | null,
-	extract?: Extract_Deserialize | null,
-	client?: boolean | null,
-	server?: boolean | null,
+  name: string;
+  /**  只声明 Maven 仓库地址、没有 `downloads.artifact` 的库（部分加载器注入的依赖）。 */
+  url?: string | null;
+  downloads?: LibraryDownloads_Deserialize | null;
+  rules?: Rule_Deserialize[];
+  natives?: { [key in string]: string } | null;
+  extract?: Extract_Deserialize | null;
+  client?: boolean | null;
+  server?: boolean | null;
 };
 
 export type Library_Serialize = {
-	name: string,
-	/**  只声明 Maven 仓库地址、没有 `downloads.artifact` 的库（部分加载器注入的依赖）。 */
-	url: string | null,
-	downloads: LibraryDownloads_Serialize | null,
-	rules: Rule_Serialize[],
-	natives: { [key in string]: string } | null,
-	extract: Extract_Serialize | null,
-	client: boolean | null,
-	server: boolean | null,
+  name: string;
+  /**  只声明 Maven 仓库地址、没有 `downloads.artifact` 的库（部分加载器注入的依赖）。 */
+  url: string | null;
+  downloads: LibraryDownloads_Serialize | null;
+  rules: Rule_Serialize[];
+  natives: { [key in string]: string } | null;
+  extract: Extract_Serialize | null;
+  client: boolean | null;
+  server: boolean | null;
 };
 
 /**  加载器类型。 */
@@ -1337,30 +1639,30 @@ export type LoaderInfo = LoaderInfo_Serialize | LoaderInfo_Deserialize;
 
 /**  加载器类型。 */
 export type LoaderInfo_Deserialize = {
-	/**  加载器类型：`vanilla` / `fabric` / `forge` / `neoforge` */
-	type: string,
-	/**  加载器版本（原版为 null） */
-	version?: string | null,
+  /**  加载器类型：`vanilla` / `fabric` / `forge` / `neoforge` */
+  type: string;
+  /**  加载器版本（原版为 null） */
+  version?: string | null;
 };
 
 /**  加载器类型。 */
 export type LoaderInfo_Serialize = {
-	/**  加载器类型：`vanilla` / `fabric` / `forge` / `neoforge` */
-	type: string,
-	/**  加载器版本（原版为 null） */
-	version: string | null,
+  /**  加载器类型：`vanilla` / `fabric` / `forge` / `neoforge` */
+  type: string;
+  /**  加载器版本（原版为 null） */
+  version: string | null;
 };
 
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
 
 export type LocalResource = {
-	kind: LocalResourceKind,
-	/**  磁盘上的真实文件名（禁用时带 `.disabled` 后缀）。 */
-	fileName: string,
-	/**  去掉扩展名与 `.disabled` 后的展示名。 */
-	displayName: string,
-	enabled: boolean,
-	size: number,
+  kind: LocalResourceKind;
+  /**  磁盘上的真实文件名（禁用时带 `.disabled` 后缀）。 */
+  fileName: string;
+  /**  去掉扩展名与 `.disabled` 后的展示名。 */
+  displayName: string;
+  enabled: boolean;
+  size: number;
 };
 
 /**  本地资源种类（实例目录里的 mods / resourcepacks / shaderpacks / datapacks）。 */
@@ -1371,20 +1673,20 @@ export type LocalResourceMeta = LocalResourceMeta_Serialize | LocalResourceMeta_
 
 /**  本地文件匹配到的远端项目信息，用于在实例资源列表里显示图标 / 名称 / 介绍。 */
 export type LocalResourceMeta_Deserialize = {
-	fileName: string,
-	title: string,
-	description?: string | null,
-	iconUrl?: string | null,
-	source: ResourceSource,
+  fileName: string;
+  title: string;
+  description?: string | null;
+  iconUrl?: string | null;
+  source: ResourceSource;
 };
 
 /**  本地文件匹配到的远端项目信息，用于在实例资源列表里显示图标 / 名称 / 介绍。 */
 export type LocalResourceMeta_Serialize = {
-	fileName: string,
-	title: string,
-	description: string | null,
-	iconUrl: string | null,
-	source: ResourceSource,
+  fileName: string;
+  title: string;
+  description: string | null;
+  iconUrl: string | null;
+  source: ResourceSource;
 };
 
 /**  一次本地资源扫描：元数据 + 可更新版本。 */
@@ -1392,14 +1694,14 @@ export type LocalResourceScan = LocalResourceScan_Serialize | LocalResourceScan_
 
 /**  一次本地资源扫描：元数据 + 可更新版本。 */
 export type LocalResourceScan_Deserialize = {
-	metadata: LocalResourceMeta_Deserialize[],
-	updates: LocalResourceUpdate_Deserialize[],
+  metadata: LocalResourceMeta_Deserialize[];
+  updates: LocalResourceUpdate_Deserialize[];
 };
 
 /**  一次本地资源扫描：元数据 + 可更新版本。 */
 export type LocalResourceScan_Serialize = {
-	metadata: LocalResourceMeta_Serialize[],
-	updates: LocalResourceUpdate_Serialize[],
+  metadata: LocalResourceMeta_Serialize[];
+  updates: LocalResourceUpdate_Serialize[];
 };
 
 /**  检查更新后返回的可更新版本。前端按文件对应展示。 */
@@ -1407,32 +1709,32 @@ export type LocalResourceUpdate = LocalResourceUpdate_Serialize | LocalResourceU
 
 /**  检查更新后返回的可更新版本。前端按文件对应展示。 */
 export type LocalResourceUpdate_Deserialize = {
-	fileName: string,
-	title: string,
-	iconUrl?: string | null,
-	versionName: string,
-	downloadUrl: string,
-	newFileName: string,
-	sha1?: string | null,
-	source: ResourceSource,
+  fileName: string;
+  title: string;
+  iconUrl?: string | null;
+  versionName: string;
+  downloadUrl: string;
+  newFileName: string;
+  sha1?: string | null;
+  source: ResourceSource;
 };
 
 /**  检查更新后返回的可更新版本。前端按文件对应展示。 */
 export type LocalResourceUpdate_Serialize = {
-	fileName: string,
-	title: string,
-	iconUrl: string | null,
-	versionName: string,
-	downloadUrl: string,
-	newFileName: string,
-	sha1: string | null,
-	source: ResourceSource,
+  fileName: string;
+  title: string;
+  iconUrl: string | null;
+  versionName: string;
+  downloadUrl: string;
+  newFileName: string;
+  sha1: string | null;
+  source: ResourceSource;
 };
 
 /**  一份日志文件（崩溃报告或 latest.log）。 */
 export type LogFile = {
-	name: string,
-	content: string,
+  name: string;
+  content: string;
 };
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
@@ -1442,73 +1744,73 @@ export type Logging = Logging_Serialize | Logging_Deserialize;
 export type LoggingArgument = LoggingArgument_Serialize | LoggingArgument_Deserialize;
 
 export type LoggingArgument_Deserialize = {
-	argument?: string | null,
-	value?: string | null,
-	file?: LoggingFile_Deserialize | null,
+  argument?: string | null;
+  value?: string | null;
+  file?: LoggingFile_Deserialize | null;
 };
 
 export type LoggingArgument_Serialize = {
-	argument: string | null,
-	value: string | null,
-	file: LoggingFile_Serialize | null,
+  argument: string | null;
+  value: string | null;
+  file: LoggingFile_Serialize | null;
 };
 
 export type LoggingFile = LoggingFile_Serialize | LoggingFile_Deserialize;
 
 export type LoggingFile_Deserialize = {
-	id: string,
-	sha1?: string,
-	size?: number,
-	url: string,
+  id: string;
+  sha1?: string;
+  size?: number;
+  url: string;
 };
 
 export type LoggingFile_Serialize = {
-	id: string,
-	sha1: string,
-	size: number,
-	url: string,
+  id: string;
+  sha1: string;
+  size: number;
+  url: string;
 };
 
 export type LoggingSettings = LoggingSettings_Serialize | LoggingSettings_Deserialize;
 
 export type LoggingSettings_Deserialize = {
-	verbose?: boolean,
-	autoLanguageChinese?: boolean,
+  verbose?: boolean;
+  autoLanguageChinese?: boolean;
 };
 
 export type LoggingSettings_Serialize = {
-	verbose: boolean,
-	autoLanguageChinese: boolean,
+  verbose: boolean;
+  autoLanguageChinese: boolean;
 };
 
 export type Logging_Deserialize = {
-	client?: LoggingArgument_Deserialize | null,
-	server?: LoggingArgument_Deserialize | null,
+  client?: LoggingArgument_Deserialize | null;
+  server?: LoggingArgument_Deserialize | null;
 };
 
 export type Logging_Serialize = {
-	client: LoggingArgument_Serialize | null,
-	server: LoggingArgument_Serialize | null,
+  client: LoggingArgument_Serialize | null;
+  server: LoggingArgument_Serialize | null;
 };
 
 /**  微软登录配置（客户端 ID 是否就绪）。 */
 export type MicrosoftConfig = {
-	/**  是否已配置真实客户端 ID。 */
-	configured: boolean,
-	/**  预留的占位值，便于界面上提示「待替换」。 */
-	placeholder: string,
+  /**  是否已配置真实客户端 ID。 */
+  configured: boolean;
+  /**  预留的占位值，便于界面上提示「待替换」。 */
+  placeholder: string;
 };
 
 /**
  *  微软账户资料（公开信息，可写进 `settings.json`）。
- * 
+ *
  *  **Refresh Token 不在这里**：凭据只进系统密钥库，见 `account::secure_store`。
  */
 export type MicrosoftProfile = {
-	/**  游戏内 ID。 */
-	name: string,
-	/**  带连字符的 UUID。 */
-	uuid: string,
+  /**  游戏内 ID。 */
+  name: string;
+  /**  带连字符的 UUID。 */
+  uuid: string;
 };
 
 /**  Modrinth 版本依赖：`required` 才是必须安装的前置。 */
@@ -1519,76 +1821,76 @@ export type ModDependencyIssue = ModDependencyIssue_Serialize | ModDependencyIss
 
 /**  一条依赖问题。 */
 export type ModDependencyIssue_Deserialize = {
-	/**  出问题的前置 mod id。 */
-	modId: string,
-	/**  是哪些 Mod 在要求它。 */
-	requiredBy: string[],
-	/**  要求的版本区间；缺失时为空（表示只要求存在）。 */
-	requirement: string,
-	/**  已安装的版本；缺失前置时为 `None`。 */
-	installedVersion?: string | null,
+  /**  出问题的前置 mod id。 */
+  modId: string;
+  /**  是哪些 Mod 在要求它。 */
+  requiredBy: string[];
+  /**  要求的版本区间；缺失时为空（表示只要求存在）。 */
+  requirement: string;
+  /**  已安装的版本；缺失前置时为 `None`。 */
+  installedVersion?: string | null;
 };
 
 /**  一条依赖问题。 */
 export type ModDependencyIssue_Serialize = {
-	/**  出问题的前置 mod id。 */
-	modId: string,
-	/**  是哪些 Mod 在要求它。 */
-	requiredBy: string[],
-	/**  要求的版本区间；缺失时为空（表示只要求存在）。 */
-	requirement: string,
-	/**  已安装的版本；缺失前置时为 `None`。 */
-	installedVersion: string | null,
+  /**  出问题的前置 mod id。 */
+  modId: string;
+  /**  是哪些 Mod 在要求它。 */
+  requiredBy: string[];
+  /**  要求的版本区间；缺失时为空（表示只要求存在）。 */
+  requirement: string;
+  /**  已安装的版本；缺失前置时为 `None`。 */
+  installedVersion: string | null;
 };
 
 /**  Modrinth 版本依赖：`required` 才是必须安装的前置。 */
 export type ModDependency_Deserialize = {
-	projectId: string,
-	versionId?: string | null,
-	/**  required / optional / incompatible / embedded。 */
-	dependencyType?: string | null,
+  projectId: string;
+  versionId?: string | null;
+  /**  required / optional / incompatible / embedded。 */
+  dependencyType?: string | null;
 };
 
 /**  Modrinth 版本依赖：`required` 才是必须安装的前置。 */
 export type ModDependency_Serialize = {
-	projectId: string,
-	versionId: string | null,
-	/**  required / optional / incompatible / embedded。 */
-	dependencyType: string | null,
+  projectId: string;
+  versionId: string | null;
+  /**  required / optional / incompatible / embedded。 */
+  dependencyType: string | null;
 };
 
 /**  重复安装的 Mod。 */
 export type ModDuplicate = {
-	modId: string,
-	name: string,
-	/**  提供同一个 mod id 的所有文件名。 */
-	files: string[],
+  modId: string;
+  name: string;
+  /**  提供同一个 mod id 的所有文件名。 */
+  files: string[];
 };
 
 export type ModFile = ModFile_Serialize | ModFile_Deserialize;
 
 export type ModFile_Deserialize = {
-	url: string,
-	filename: string,
-	primary: boolean,
-	hashes: ModHashes_Deserialize,
+  url: string;
+  filename: string;
+  primary: boolean;
+  hashes: ModHashes_Deserialize;
 };
 
 export type ModFile_Serialize = {
-	url: string,
-	filename: string,
-	primary: boolean,
-	hashes: ModHashes_Serialize,
+  url: string;
+  filename: string;
+  primary: boolean;
+  hashes: ModHashes_Serialize;
 };
 
 export type ModHashes = ModHashes_Serialize | ModHashes_Deserialize;
 
 export type ModHashes_Deserialize = {
-	sha1?: string | null,
+  sha1?: string | null;
 };
 
 export type ModHashes_Serialize = {
-	sha1: string | null,
+  sha1: string | null;
 };
 
 /**  Mod 依赖图检查结果。 */
@@ -1596,106 +1898,106 @@ export type ModHealth = ModHealth_Serialize | ModHealth_Deserialize;
 
 /**  Mod 依赖图检查结果。 */
 export type ModHealth_Deserialize = {
-	/**  已启用的 Mod 数量。 */
-	enabled: number,
-	/**  被禁用（`.disabled`）的 Mod 数量。 */
-	disabled: number,
-	/**  同一个 mod id 被多个文件提供。 */
-	duplicates: ModDuplicate[],
-	/**  缺失的必需前置。 */
-	missing: ModDependencyIssue_Deserialize[],
-	/**  已安装但不满足版本区间的前置。 */
-	mismatched: ModDependencyIssue_Deserialize[],
+  /**  已启用的 Mod 数量。 */
+  enabled: number;
+  /**  被禁用（`.disabled`）的 Mod 数量。 */
+  disabled: number;
+  /**  同一个 mod id 被多个文件提供。 */
+  duplicates: ModDuplicate[];
+  /**  缺失的必需前置。 */
+  missing: ModDependencyIssue_Deserialize[];
+  /**  已安装但不满足版本区间的前置。 */
+  mismatched: ModDependencyIssue_Deserialize[];
 };
 
 /**  Mod 依赖图检查结果。 */
 export type ModHealth_Serialize = {
-	/**  已启用的 Mod 数量。 */
-	enabled: number,
-	/**  被禁用（`.disabled`）的 Mod 数量。 */
-	disabled: number,
-	/**  同一个 mod id 被多个文件提供。 */
-	duplicates: ModDuplicate[],
-	/**  缺失的必需前置。 */
-	missing: ModDependencyIssue_Serialize[],
-	/**  已安装但不满足版本区间的前置。 */
-	mismatched: ModDependencyIssue_Serialize[],
+  /**  已启用的 Mod 数量。 */
+  enabled: number;
+  /**  被禁用（`.disabled`）的 Mod 数量。 */
+  disabled: number;
+  /**  同一个 mod id 被多个文件提供。 */
+  duplicates: ModDuplicate[];
+  /**  缺失的必需前置。 */
+  missing: ModDependencyIssue_Serialize[];
+  /**  已安装但不满足版本区间的前置。 */
+  mismatched: ModDependencyIssue_Serialize[];
 };
 
 export type ModProject = ModProject_Serialize | ModProject_Deserialize;
 
 export type ModProject_Deserialize = {
-	id: string,
-	slug: string,
-	title: string,
-	description: string,
-	iconUrl?: string | null,
-	downloads: number,
-	follows: number,
-	author: string,
-	source: ResourceSource,
-	/**  ISO 8601 更新时间，按更新时间排序与展示用；缺省表示站点没给。 */
-	updatedAt?: string | null,
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  iconUrl?: string | null;
+  downloads: number;
+  follows: number;
+  author: string;
+  source: ResourceSource;
+  /**  ISO 8601 更新时间，按更新时间排序与展示用；缺省表示站点没给。 */
+  updatedAt?: string | null;
 };
 
 export type ModProject_Serialize = {
-	id: string,
-	slug: string,
-	title: string,
-	description: string,
-	iconUrl: string | null,
-	downloads: number,
-	follows: number,
-	author: string,
-	source: ResourceSource,
-	/**  ISO 8601 更新时间，按更新时间排序与展示用；缺省表示站点没给。 */
-	updatedAt: string | null,
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  iconUrl: string | null;
+  downloads: number;
+  follows: number;
+  author: string;
+  source: ResourceSource;
+  /**  ISO 8601 更新时间，按更新时间排序与展示用；缺省表示站点没给。 */
+  updatedAt: string | null;
 };
 
 export type ModVersion = ModVersion_Serialize | ModVersion_Deserialize;
 
 export type ModVersion_Deserialize = {
-	id: string,
-	name: string,
-	versionNumber: string,
-	gameVersions: string[],
-	loaders: string[],
-	files: ModFile_Deserialize[],
-	downloads?: number,
-	datePublished?: string | null,
-	/**  Modrinth 的 version_type：release / beta / alpha。 */
-	versionType?: string | null,
-	/**  该版本声明的依赖关系（Modrinth 只给 project_id，名称需另行解析）。 */
-	dependencies?: ModDependency_Deserialize[],
+  id: string;
+  name: string;
+  versionNumber: string;
+  gameVersions: string[];
+  loaders: string[];
+  files: ModFile_Deserialize[];
+  downloads?: number;
+  datePublished?: string | null;
+  /**  Modrinth 的 version_type：release / beta / alpha。 */
+  versionType?: string | null;
+  /**  该版本声明的依赖关系（Modrinth 只给 project_id，名称需另行解析）。 */
+  dependencies?: ModDependency_Deserialize[];
 };
 
 export type ModVersion_Serialize = {
-	id: string,
-	name: string,
-	versionNumber: string,
-	gameVersions: string[],
-	loaders: string[],
-	files: ModFile_Serialize[],
-	downloads: number,
-	datePublished: string | null,
-	/**  Modrinth 的 version_type：release / beta / alpha。 */
-	versionType: string | null,
-	/**  该版本声明的依赖关系（Modrinth 只给 project_id，名称需另行解析）。 */
-	dependencies: ModDependency_Serialize[],
+  id: string;
+  name: string;
+  versionNumber: string;
+  gameVersions: string[];
+  loaders: string[];
+  files: ModFile_Serialize[];
+  downloads: number;
+  datePublished: string | null;
+  /**  Modrinth 的 version_type：release / beta / alpha。 */
+  versionType: string | null;
+  /**  该版本声明的依赖关系（Modrinth 只给 project_id，名称需另行解析）。 */
+  dependencies: ModDependency_Serialize[];
 };
 
 /**  整合包概览：安装前展示给用户的关键信息。 */
 export type ModpackInfo = {
-	/**  整合包名称。 */
-	name: string,
-	/**  整合包要求的 Minecraft 版本。 */
-	minecraftVersion: string,
-	/**  加载器类型：`fabric` / `neoforge` / `forge` / `quilt`，空字符串表示原版。 */
-	loader: string,
-	/**  加载器版本号。 */
-	loaderVersion: string,
-	/**  客户端需要额外下载的文件数（不含游戏本体）。 */
-	fileCount: number,
+  /**  整合包名称。 */
+  name: string;
+  /**  整合包要求的 Minecraft 版本。 */
+  minecraftVersion: string;
+  /**  加载器类型：`fabric` / `neoforge` / `forge` / `quilt`，空字符串表示原版。 */
+  loader: string;
+  /**  加载器版本号。 */
+  loaderVersion: string;
+  /**  客户端需要额外下载的文件数（不含游戏本体）。 */
+  fileCount: number;
 };
 
 /**  联机状态快照（供 UI）。 */
@@ -1703,133 +2005,134 @@ export type MultiplayerStatus = MultiplayerStatus_Serialize | MultiplayerStatus_
 
 /**  联机状态快照（供 UI）。 */
 export type MultiplayerStatus_Deserialize = {
-	/**  当前角色；无会话时为空。 */
-	role?: Role | null,
-	/**  当前阶段。 */
-	phase: Phase,
-	/**  房间码（规范格式）。 */
-	roomCode?: string | null,
-	/**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
-	localAddr?: string | null,
-	/**  MC 端口（房主为局域网端口，房客为对端端口）。 */
-	mcPort: number,
-	/**  世界 MOTD（已连接时）。 */
-	motd: string,
-	/**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
-	detail: string,
-	/**  内核最近日志（排障用，最多 8 行）。 */
-	lastLog: string[],
+  /**  当前角色；无会话时为空。 */
+  role?: Role | null;
+  /**  当前阶段。 */
+  phase: Phase;
+  /**  房间码（规范格式）。 */
+  roomCode?: string | null;
+  /**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
+  localAddr?: string | null;
+  /**  MC 端口（房主为局域网端口，房客为对端端口）。 */
+  mcPort: number;
+  /**  世界 MOTD（已连接时）。 */
+  motd: string;
+  /**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
+  detail: string;
+  /**  内核最近日志（排障用，最多 8 行）。 */
+  lastLog: string[];
 };
 
 /**  联机状态快照（供 UI）。 */
 export type MultiplayerStatus_Serialize = {
-	/**  当前角色；无会话时为空。 */
-	role: Role | null,
-	/**  当前阶段。 */
-	phase: Phase,
-	/**  房间码（规范格式）。 */
-	roomCode: string | null,
-	/**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
-	localAddr: string | null,
-	/**  MC 端口（房主为局域网端口，房客为对端端口）。 */
-	mcPort: number,
-	/**  世界 MOTD（已连接时）。 */
-	motd: string,
-	/**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
-	detail: string,
-	/**  内核最近日志（排障用，最多 8 行）。 */
-	lastLog: string[],
+  /**  当前角色；无会话时为空。 */
+  role: Role | null;
+  /**  当前阶段。 */
+  phase: Phase;
+  /**  房间码（规范格式）。 */
+  roomCode: string | null;
+  /**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
+  localAddr: string | null;
+  /**  MC 端口（房主为局域网端口，房客为对端端口）。 */
+  mcPort: number;
+  /**  世界 MOTD（已连接时）。 */
+  motd: string;
+  /**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
+  detail: string;
+  /**  内核最近日志（排障用，最多 8 行）。 */
+  lastLog: string[];
 };
 
 /**
  *  离线档案。
- * 
+ *
  *  UUID 在创建时固化，**不随用户名变化**：Minecraft 用它区分玩家数据，
  *  同一个世界里的物品、进度都挂在 UUID 上。换名字如果重新派生 UUID，
  *  就等于换了一个玩家，这也是「切账号后背包空了」的根源。
  */
 export type OfflineProfile = {
-	/**  稳定 ID（创建时生成，切换/删除都用它）。 */
-	id: string,
-	/**  游戏内显示名。 */
-	name: string,
-	/**  启动时传给游戏的 UUID。 */
-	uuid: string,
+  /**  稳定 ID（创建时生成，切换/删除都用它）。 */
+  id: string;
+  /**  游戏内显示名。 */
+  name: string;
+  /**  启动时传给游戏的 UUID。 */
+  uuid: string;
 };
 
 export type OsSpec = OsSpec_Serialize | OsSpec_Deserialize;
 
 export type OsSpec_Deserialize = {
-	name?: string | null,
-	version?: string | null,
-	arch?: string | null,
+  name?: string | null;
+  version?: string | null;
+  arch?: string | null;
 };
 
 export type OsSpec_Serialize = {
-	name: string | null,
-	version: string | null,
-	arch: string | null,
+  name: string | null;
+  version: string | null;
+  arch: string | null;
 };
 
 /**  会话阶段。 */
-export type Phase = 
-/**  内核启动中（下载 / 拉起进程 / 等待组网）。 */
-"starting" | 
-/**  内核已运行，等待游戏世界开放（房主）或房主加入（房客）。 */
-"waitingPeer" | 
-/**  世界可达（MC 状态探测通过）。 */
-"connected" | 
-/**  出错（进程退出 / 授权被拒 / 世界不可达）。 */
-"error" | 
-/**  用户主动停止。 */
-"stopped";
+export type Phase =
+  /**  内核启动中（下载 / 拉起进程 / 等待组网）。 */
+  | "starting"
+  /**  内核已运行，等待游戏世界开放（房主）或房主加入（房客）。 */
+  | "waitingPeer"
+  /**  世界可达（MC 状态探测通过）。 */
+  | "connected"
+  /**  出错（进程退出 / 授权被拒 / 世界不可达）。 */
+  | "error"
+  /**  用户主动停止。 */
+  | "stopped";
 
 /**  离线账户设置。 */
 export type ProfileSettings = ProfileSettings_Serialize | ProfileSettings_Deserialize;
 
 /**  离线账户设置。 */
 export type ProfileSettings_Deserialize = {
-	/**  游戏内显示的用户名（3–16 位字母/数字/下划线）。 */
-	name?: string,
+  /**  游戏内显示的用户名（3–16 位字母/数字/下划线）。 */
+  name?: string;
 };
 
 /**  离线账户设置。 */
 export type ProfileSettings_Serialize = {
-	/**  游戏内显示的用户名（3–16 位字母/数字/下划线）。 */
-	name: string,
+  /**  游戏内显示的用户名（3–16 位字母/数字/下划线）。 */
+  name: string;
 };
 
 /**  解析后的依赖项目：前端直接展示名称、图标与介绍。 */
-export type ResourceDependencyInfo = ResourceDependencyInfo_Serialize | ResourceDependencyInfo_Deserialize;
+export type ResourceDependencyInfo =
+  ResourceDependencyInfo_Serialize | ResourceDependencyInfo_Deserialize;
 
 /**  解析后的依赖项目：前端直接展示名称、图标与介绍。 */
 export type ResourceDependencyInfo_Deserialize = {
-	id: string,
-	name: string,
-	iconUrl?: string | null,
-	/**  一句话介绍。 */
-	description?: string | null,
-	/**  下载量。 */
-	downloads: number,
-	/**  最后更新时间。 */
-	updatedAt?: string | null,
-	/**  来源平台。 */
-	source: ResourceSource,
+  id: string;
+  name: string;
+  iconUrl?: string | null;
+  /**  一句话介绍。 */
+  description?: string | null;
+  /**  下载量。 */
+  downloads: number;
+  /**  最后更新时间。 */
+  updatedAt?: string | null;
+  /**  来源平台。 */
+  source: ResourceSource;
 };
 
 /**  解析后的依赖项目：前端直接展示名称、图标与介绍。 */
 export type ResourceDependencyInfo_Serialize = {
-	id: string,
-	name: string,
-	iconUrl: string | null,
-	/**  一句话介绍。 */
-	description: string | null,
-	/**  下载量。 */
-	downloads: number,
-	/**  最后更新时间。 */
-	updatedAt: string | null,
-	/**  来源平台。 */
-	source: ResourceSource,
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  /**  一句话介绍。 */
+  description: string | null;
+  /**  下载量。 */
+  downloads: number;
+  /**  最后更新时间。 */
+  updatedAt: string | null;
+  /**  来源平台。 */
+  source: ResourceSource;
 };
 
 /**  资源种类。 */
@@ -1840,28 +2143,28 @@ export type ResourceSearchPage = ResourceSearchPage_Serialize | ResourceSearchPa
 
 /**  一页搜索结果。 */
 export type ResourceSearchPage_Deserialize = {
-	items: ModProject_Deserialize[],
-	total: number,
-	/**  按当前每页条数算出的总页数，至少为 1，前端据此做页码跳转。 */
-	pageCount: number,
-	page: number,
-	pageSize: number,
-	hasMore: boolean,
-	/**  聚合时某个源失败/未配置的提示，前端直接用一条弱化文案展示。 */
-	warnings?: string[],
+  items: ModProject_Deserialize[];
+  total: number;
+  /**  按当前每页条数算出的总页数，至少为 1，前端据此做页码跳转。 */
+  pageCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  /**  聚合时某个源失败/未配置的提示，前端直接用一条弱化文案展示。 */
+  warnings?: string[];
 };
 
 /**  一页搜索结果。 */
 export type ResourceSearchPage_Serialize = {
-	items: ModProject_Serialize[],
-	total: number,
-	/**  按当前每页条数算出的总页数，至少为 1，前端据此做页码跳转。 */
-	pageCount: number,
-	page: number,
-	pageSize: number,
-	hasMore: boolean,
-	/**  聚合时某个源失败/未配置的提示，前端直接用一条弱化文案展示。 */
-	warnings: string[],
+  items: ModProject_Serialize[];
+  total: number;
+  /**  按当前每页条数算出的总页数，至少为 1，前端据此做页码跳转。 */
+  pageCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  /**  聚合时某个源失败/未配置的提示，前端直接用一条弱化文案展示。 */
+  warnings: string[];
 };
 
 /**  一次资源搜索请求。`page` 从 1 开始，`mc_version` / `loader` 为空表示不筛选。 */
@@ -1869,26 +2172,26 @@ export type ResourceSearchQuery = ResourceSearchQuery_Serialize | ResourceSearch
 
 /**  一次资源搜索请求。`page` 从 1 开始，`mc_version` / `loader` 为空表示不筛选。 */
 export type ResourceSearchQuery_Deserialize = {
-	query?: string,
-	source: ResourceSource,
-	kind: ResourceKind,
-	mcVersion?: string,
-	loader?: string,
-	sort: ResourceSort,
-	page: number,
-	pageSize: number,
+  query?: string;
+  source: ResourceSource;
+  kind: ResourceKind;
+  mcVersion?: string;
+  loader?: string;
+  sort: ResourceSort;
+  page: number;
+  pageSize: number;
 };
 
 /**  一次资源搜索请求。`page` 从 1 开始，`mc_version` / `loader` 为空表示不筛选。 */
 export type ResourceSearchQuery_Serialize = {
-	query: string,
-	source: ResourceSource,
-	kind: ResourceKind,
-	mcVersion: string,
-	loader: string,
-	sort: ResourceSort,
-	page: number,
-	pageSize: number,
+  query: string;
+  source: ResourceSource;
+  kind: ResourceKind;
+  mcVersion: string;
+  loader: string;
+  sort: ResourceSort;
+  page: number;
+  pageSize: number;
 };
 
 /**  排序方式：两个站点都只支持「下载量」与「更新时间」的原生排序。 */
@@ -1898,28 +2201,28 @@ export type ResourceSort = "downloads" | "updated";
 export type ResourceSource = "aggregate" | "modrinth" | "curseforge";
 
 /**  联机角色。 */
-export type Role = 
-/**  房主。 */
-"host" | 
-/**  房客。 */
-"guest";
+export type Role =
+  /**  房主。 */
+  | "host"
+  /**  房客。 */
+  | "guest";
 
 export type Rule = Rule_Serialize | Rule_Deserialize;
 
 export type RuleAction = "allow" | "disallow";
 
 export type Rule_Deserialize = {
-	action: RuleAction,
-	os?: OsSpec_Deserialize | null,
-	/**  官方启动器用来控制 demo、快速进入世界、自定义分辨率等参数。 */
-	features?: { [key in string]: boolean } | null,
+  action: RuleAction;
+  os?: OsSpec_Deserialize | null;
+  /**  官方启动器用来控制 demo、快速进入世界、自定义分辨率等参数。 */
+  features?: { [key in string]: boolean } | null;
 };
 
 export type Rule_Serialize = {
-	action: RuleAction,
-	os: OsSpec_Serialize | null,
-	/**  官方启动器用来控制 demo、快速进入世界、自定义分辨率等参数。 */
-	features: { [key in string]: boolean } | null,
+  action: RuleAction;
+  os: OsSpec_Serialize | null;
+  /**  官方启动器用来控制 demo、快速进入世界、自定义分辨率等参数。 */
+  features: { [key in string]: boolean } | null;
 };
 
 /**  单个存档的摘要信息。 */
@@ -1927,85 +2230,85 @@ export type SaveSummary = SaveSummary_Serialize | SaveSummary_Deserialize;
 
 /**  单个存档的摘要信息。 */
 export type SaveSummary_Deserialize = {
-	/**
-	 *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
-	 *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
-	 */
-	name: string,
-	/**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
-	iconDataUrl?: string | null,
-	/**
-	 *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
-	 *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
-	 */
-	lastPlayedSecs: string,
-	/**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
-	sizeBytes: string,
+  /**
+   *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
+   *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
+   */
+  name: string;
+  /**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
+  iconDataUrl?: string | null;
+  /**
+   *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
+   *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
+   */
+  lastPlayedSecs: string;
+  /**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
+  sizeBytes: string;
 };
 
 /**  单个存档的摘要信息。 */
 export type SaveSummary_Serialize = {
-	/**
-	 *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
-	 *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
-	 */
-	name: string,
-	/**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
-	iconDataUrl: string | null,
-	/**
-	 *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
-	 *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
-	 */
-	lastPlayedSecs: string,
-	/**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
-	sizeBytes: string,
+  /**
+   *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
+   *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
+   */
+  name: string;
+  /**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
+  iconDataUrl: string | null;
+  /**
+   *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
+   *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
+   */
+  lastPlayedSecs: string;
+  /**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
+  sizeBytes: string;
 };
 
 /**  启动器的磁盘占用概览。 */
 export type StorageUsage = {
-	/**  按体积从大到小排列的实例列表。 */
-	instances: InstanceUsage[],
-	instanceBytes: number,
-	/**  元数据缓存（搜索页、版本列表、哈希缓存）。 */
-	cacheBytes: number,
-	/**  启动器日志。 */
-	logBytes: number,
+  /**  按体积从大到小排列的实例列表。 */
+  instances: InstanceUsage[];
+  instanceBytes: number;
+  /**  元数据缓存（搜索页、版本列表、哈希缓存）。 */
+  cacheBytes: number;
+  /**  启动器日志。 */
+  logBytes: number;
 };
 
 /**
  *  检查到新版本：前端据此弹出全局更新卡片。
- * 
+ *
  *  在**启动画面阶段**由后台任务发出——检测不等结果，
  *  界面照常显示，结果回来再提示。
  */
 export type UpdateAvailable = {
-	/**  新版本号。 */
-	latestVersion: string,
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  更新说明（可能为空）。 */
-	notes: string,
+  /**  新版本号。 */
+  latestVersion: string;
+  /**  当前版本号。 */
+  currentVersion: string;
+  /**  更新说明（可能为空）。 */
+  notes: string;
 };
 
 /**
  *  更新下载进度：前端据此画进度条。
- * 
+ *
  *  **用事件而不是 Channel**：Windows 上安装器启动后进程会立刻退出，
  *  Channel 的发送端随命令一起被 drop，最后一个进度事件可能送不到。
  *  事件是广播式的，不受影响。
  */
 export type UpdateProgress = {
-	/**
-	 *  已下载字节数。
-	 * 
-	 *  映射成 JS `number`（而不是 BigInt）：下载进度只用于画进度条，
-	 *  字节数超过 2^53 的场景不存在（PB 级）。
-	 */
-	downloaded: number,
-	/**  总字节数（服务端未提供时为 0）。 */
-	total: number,
-	/**  0–100 的百分比（总量未知时为 0）。 */
-	percent: number,
+  /**
+   *  已下载字节数。
+   *
+   *  映射成 JS `number`（而不是 BigInt）：下载进度只用于画进度条，
+   *  字节数超过 2^53 的场景不存在（PB 级）。
+   */
+  downloaded: number;
+  /**  总字节数（服务端未提供时为 0）。 */
+  total: number;
+  /**  0–100 的百分比（总量未知时为 0）。 */
+  percent: number;
 };
 
 /**  启动器自身的更新设置。 */
@@ -2013,50 +2316,50 @@ export type UpdateSettings = UpdateSettings_Serialize | UpdateSettings_Deseriali
 
 /**  启动器自身的更新设置。 */
 export type UpdateSettings_Deserialize = {
-	/**
-	 *  是否在启动时自动检查更新。
-	 * 
-	 *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
-	 *  不影响启动速度。关闭后只能手动检查。
-	 */
-	autoCheck?: boolean,
-	/**
-	 *  上次检查到的新版本号；为空表示已是最新或还没查过。
-	 * 
-	 *  记下来是为了在用户下次打开时仍能提示「有新版本」——
-	 *  只在检查那一刻弹一次 Toast 的话，错过就没了。
-	 */
-	latestVersion?: string | null,
-	/**
-	 *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
-	 * 
-	 *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
-	 */
-	lastCheckedAt?: number,
+  /**
+   *  是否在启动时自动检查更新。
+   *
+   *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
+   *  不影响启动速度。关闭后只能手动检查。
+   */
+  autoCheck?: boolean;
+  /**
+   *  上次检查到的新版本号；为空表示已是最新或还没查过。
+   *
+   *  记下来是为了在用户下次打开时仍能提示「有新版本」——
+   *  只在检查那一刻弹一次 Toast 的话，错过就没了。
+   */
+  latestVersion?: string | null;
+  /**
+   *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
+   *
+   *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
+   */
+  lastCheckedAt?: number;
 };
 
 /**  启动器自身的更新设置。 */
 export type UpdateSettings_Serialize = {
-	/**
-	 *  是否在启动时自动检查更新。
-	 * 
-	 *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
-	 *  不影响启动速度。关闭后只能手动检查。
-	 */
-	autoCheck: boolean,
-	/**
-	 *  上次检查到的新版本号；为空表示已是最新或还没查过。
-	 * 
-	 *  记下来是为了在用户下次打开时仍能提示「有新版本」——
-	 *  只在检查那一刻弹一次 Toast 的话，错过就没了。
-	 */
-	latestVersion: string | null,
-	/**
-	 *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
-	 * 
-	 *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
-	 */
-	lastCheckedAt: number,
+  /**
+   *  是否在启动时自动检查更新。
+   *
+   *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
+   *  不影响启动速度。关闭后只能手动检查。
+   */
+  autoCheck: boolean;
+  /**
+   *  上次检查到的新版本号；为空表示已是最新或还没查过。
+   *
+   *  记下来是为了在用户下次打开时仍能提示「有新版本」——
+   *  只在检查那一刻弹一次 Toast 的话，错过就没了。
+   */
+  latestVersion: string | null;
+  /**
+   *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
+   *
+   *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
+   */
+  lastCheckedAt: number;
 };
 
 /**  更新页需要的完整状态。 */
@@ -2064,122 +2367,122 @@ export type UpdateStatus = UpdateStatus_Serialize | UpdateStatus_Deserialize;
 
 /**  更新页需要的完整状态。 */
 export type UpdateStatus_Deserialize = {
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  是否在启动时自动检查。 */
-	autoCheck: boolean,
-	/**  上次检查到的新版本号（没有则为空）。 */
-	latestVersion?: string | null,
-	/**  上次检查时间戳（秒）。 */
-	lastCheckedAt?: number,
+  /**  当前版本号。 */
+  currentVersion: string;
+  /**  是否在启动时自动检查。 */
+  autoCheck: boolean;
+  /**  上次检查到的新版本号（没有则为空）。 */
+  latestVersion?: string | null;
+  /**  上次检查时间戳（秒）。 */
+  lastCheckedAt?: number;
 };
 
 /**  更新页需要的完整状态。 */
 export type UpdateStatus_Serialize = {
-	/**  当前版本号。 */
-	currentVersion: string,
-	/**  是否在启动时自动检查。 */
-	autoCheck: boolean,
-	/**  上次检查到的新版本号（没有则为空）。 */
-	latestVersion: string | null,
-	/**  上次检查时间戳（秒）。 */
-	lastCheckedAt: number,
+  /**  当前版本号。 */
+  currentVersion: string;
+  /**  是否在启动时自动检查。 */
+  autoCheck: boolean;
+  /**  上次检查到的新版本号（没有则为空）。 */
+  latestVersion: string | null;
+  /**  上次检查时间戳（秒）。 */
+  lastCheckedAt: number;
 };
 
 export type VersionDetail = VersionDetail_Serialize | VersionDetail_Deserialize;
 
 export type VersionDetail_Deserialize = {
-	id: string,
-	type?: VersionType,
-	mainClass?: string | null,
-	minimumLauncherVersion?: number | null,
-	releaseTime?: string | null,
-	time?: string | null,
-	assets?: string | null,
-	assetIndex?: AssetIndex_Deserialize | null,
-	downloads?: Downloads_Deserialize | null,
-	libraries?: Library_Deserialize[],
-	logging?: Logging_Deserialize | null,
-	javaVersion?: JavaVersion_Deserialize | null,
-	inheritsFrom?: string | null,
-	/**
-	 *  新版启动参数 (1.13+)。
-	 *  因为内部包含复杂的动态类型，前端根本不需要，用 String 欺骗 Specta 规避导出报错。
-	 */
-	arguments?: string,
-	/**  旧版启动参数 (1.12 及以前) */
-	minecraftArguments?: string | null,
-	/**
-	 *  该版本应使用的客户端 jar 版本号。
-	 * 
-	 *  加载器版本（Fabric/Forge）自己不带客户端 jar，必须沿用父版本的 jar。
-	 *  合并继承链时会把父版本的 id 写进这里，启动器据此拼 classpath。
-	 */
-	jar?: string | null,
+  id: string;
+  type?: VersionType;
+  mainClass?: string | null;
+  minimumLauncherVersion?: number | null;
+  releaseTime?: string | null;
+  time?: string | null;
+  assets?: string | null;
+  assetIndex?: AssetIndex_Deserialize | null;
+  downloads?: Downloads_Deserialize | null;
+  libraries?: Library_Deserialize[];
+  logging?: Logging_Deserialize | null;
+  javaVersion?: JavaVersion_Deserialize | null;
+  inheritsFrom?: string | null;
+  /**
+   *  新版启动参数 (1.13+)。
+   *  因为内部包含复杂的动态类型，前端根本不需要，用 String 欺骗 Specta 规避导出报错。
+   */
+  arguments?: string;
+  /**  旧版启动参数 (1.12 及以前) */
+  minecraftArguments?: string | null;
+  /**
+   *  该版本应使用的客户端 jar 版本号。
+   *
+   *  加载器版本（Fabric/Forge）自己不带客户端 jar，必须沿用父版本的 jar。
+   *  合并继承链时会把父版本的 id 写进这里，启动器据此拼 classpath。
+   */
+  jar?: string | null;
 };
 
 export type VersionDetail_Serialize = {
-	id: string,
-	type: VersionType,
-	mainClass: string | null,
-	minimumLauncherVersion: number | null,
-	releaseTime: string | null,
-	time: string | null,
-	assets: string | null,
-	assetIndex: AssetIndex_Serialize | null,
-	downloads: Downloads_Serialize | null,
-	libraries: Library_Serialize[],
-	logging: Logging_Serialize | null,
-	javaVersion: JavaVersion_Serialize | null,
-	inheritsFrom: string | null,
-	/**
-	 *  新版启动参数 (1.13+)。
-	 *  因为内部包含复杂的动态类型，前端根本不需要，用 String 欺骗 Specta 规避导出报错。
-	 */
-	arguments: string,
-	/**  旧版启动参数 (1.12 及以前) */
-	minecraftArguments: string | null,
-	/**
-	 *  该版本应使用的客户端 jar 版本号。
-	 * 
-	 *  加载器版本（Fabric/Forge）自己不带客户端 jar，必须沿用父版本的 jar。
-	 *  合并继承链时会把父版本的 id 写进这里，启动器据此拼 classpath。
-	 */
-	jar: string | null,
+  id: string;
+  type: VersionType;
+  mainClass: string | null;
+  minimumLauncherVersion: number | null;
+  releaseTime: string | null;
+  time: string | null;
+  assets: string | null;
+  assetIndex: AssetIndex_Serialize | null;
+  downloads: Downloads_Serialize | null;
+  libraries: Library_Serialize[];
+  logging: Logging_Serialize | null;
+  javaVersion: JavaVersion_Serialize | null;
+  inheritsFrom: string | null;
+  /**
+   *  新版启动参数 (1.13+)。
+   *  因为内部包含复杂的动态类型，前端根本不需要，用 String 欺骗 Specta 规避导出报错。
+   */
+  arguments: string;
+  /**  旧版启动参数 (1.12 及以前) */
+  minecraftArguments: string | null;
+  /**
+   *  该版本应使用的客户端 jar 版本号。
+   *
+   *  加载器版本（Fabric/Forge）自己不带客户端 jar，必须沿用父版本的 jar。
+   *  合并继承链时会把父版本的 id 写进这里，启动器据此拼 classpath。
+   */
+  jar: string | null;
 };
 
 export type VersionManifest = VersionManifest_Serialize | VersionManifest_Deserialize;
 
 export type VersionManifest_Deserialize = {
-	latest: LatestVersions,
-	versions: VersionSummary_Deserialize[],
+  latest: LatestVersions;
+  versions: VersionSummary_Deserialize[];
 };
 
 export type VersionManifest_Serialize = {
-	latest: LatestVersions,
-	versions: VersionSummary_Serialize[],
+  latest: LatestVersions;
+  versions: VersionSummary_Serialize[];
 };
 
 export type VersionSummary = VersionSummary_Serialize | VersionSummary_Deserialize;
 
 export type VersionSummary_Deserialize = {
-	id: string,
-	type: VersionType,
-	url: string,
-	time?: string,
-	releaseTime?: string,
-	sha1?: string,
-	complianceLevel?: number,
+  id: string;
+  type: VersionType;
+  url: string;
+  time?: string;
+  releaseTime?: string;
+  sha1?: string;
+  complianceLevel?: number;
 };
 
 export type VersionSummary_Serialize = {
-	id: string,
-	type: VersionType,
-	url: string,
-	time: string,
-	releaseTime: string,
-	sha1: string,
-	complianceLevel: number,
+  id: string;
+  type: VersionType;
+  url: string;
+  time: string;
+  releaseTime: string;
+  sha1: string;
+  complianceLevel: number;
 };
 
 export type VersionType = "release" | "snapshot" | "old_beta" | "old_alpha" | "unknown";
@@ -2187,60 +2490,75 @@ export type VersionType = "release" | "snapshot" | "old_beta" | "old_alpha" | "u
 export type WindowState = WindowState_Serialize | WindowState_Deserialize;
 
 export type WindowState_Deserialize = {
-	width?: number | null,
-	height?: number | null,
-	x?: number | null,
-	y?: number | null,
+  width?: number | null;
+  height?: number | null;
+  x?: number | null;
+  y?: number | null;
 };
 
 export type WindowState_Serialize = {
-	width: number | null,
-	height: number | null,
-	x: number | null,
-	y: number | null,
+  width: number | null;
+  height: number | null;
+  x: number | null;
+  y: number | null;
 };
 
 /**  一次世界（存档）备份。 */
 export type WorldBackup = {
-	/**  备份文件名，恢复时原样传回。 */
-	name: string,
-	size: number,
-	/**  Unix 时间戳（秒）。 */
-	createdAt: number,
+  /**  备份文件名，恢复时原样传回。 */
+  name: string;
+  size: number;
+  /**  Unix 时间戳（秒）。 */
+  createdAt: number;
 };
 
 /* Tauri Specta runtime */
-async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
-    try {
-        return { status: "ok", data: await result };
-    } catch (e) {
-        if (e instanceof Error) throw e;
-        return { status: "error", error: e as any };
-    }
+async function typedError<T, E>(
+  result: Promise<T>,
+): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
+  try {
+    return { status: "ok", data: await result };
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    return { status: "error", error: e as any };
+  }
 }
 
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
 
-type EventEmitTo<T> = [T] extends [null] ? (target: __TAURI_EVENT.EventTarget | string) => Promise<void> : (target: __TAURI_EVENT.EventTarget | string, payload: T) => Promise<void>;
+type EventEmitTo<T> = [T] extends [null]
+  ? (target: __TAURI_EVENT.EventTarget | string) => Promise<void>
+  : (target: __TAURI_EVENT.EventTarget | string, payload: T) => Promise<void>;
 
-function makeEvent<TListen, TEmit = TListen>(name: string, serialize?: (payload: TEmit) => unknown, deserialize?: (payload: any) => TListen) {
-    const mapEvent = (cb: __TAURI_EVENT.EventCallback<TListen>) => (event: __TAURI_EVENT.Event<any>) => cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
-    const mapPayload = (payload: TEmit) => serialize ? serialize(payload) : payload;
+function makeEvent<TListen, TEmit = TListen>(
+  name: string,
+  serialize?: (payload: TEmit) => unknown,
+  deserialize?: (payload: any) => TListen,
+) {
+  const mapEvent =
+    (cb: __TAURI_EVENT.EventCallback<TListen>) => (event: __TAURI_EVENT.Event<any>) =>
+      cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
+  const mapPayload = (payload: TEmit) => (serialize ? serialize(payload) : payload);
 
-    const base = {
-        listen: (cb: __TAURI_EVENT.EventCallback<TListen>) => __TAURI_EVENT.listen(name, mapEvent(cb)),
-        once: (cb: __TAURI_EVENT.EventCallback<TListen>) => __TAURI_EVENT.once(name, mapEvent(cb)),
-        emit: ((payload: TEmit) => __TAURI_EVENT.emit(name, mapPayload(payload)) as unknown) as EventEmit<TEmit>,
-        emitTo: ((to: __TAURI_EVENT.EventTarget | string, payload: TEmit) => __TAURI_EVENT.emitTo(to, name, mapPayload(payload)) as unknown) as EventEmitTo<TEmit>
-    };
+  const base = {
+    listen: (cb: __TAURI_EVENT.EventCallback<TListen>) => __TAURI_EVENT.listen(name, mapEvent(cb)),
+    once: (cb: __TAURI_EVENT.EventCallback<TListen>) => __TAURI_EVENT.once(name, mapEvent(cb)),
+    emit: ((payload: TEmit) =>
+      __TAURI_EVENT.emit(name, mapPayload(payload)) as unknown) as EventEmit<TEmit>,
+    emitTo: ((to: __TAURI_EVENT.EventTarget | string, payload: TEmit) =>
+      __TAURI_EVENT.emitTo(to, name, mapPayload(payload)) as unknown) as EventEmitTo<TEmit>,
+  };
 
-    const fn = (target: import("@tauri-apps/api/webview").Webview | import("@tauri-apps/api/window").Window) => ({
-        listen: (cb: __TAURI_EVENT.EventCallback<TListen>) => target.listen(name, mapEvent(cb)),
-        once: (cb: __TAURI_EVENT.EventCallback<TListen>) => target.once(name, mapEvent(cb)),
-        emit: ((payload: TEmit) => target.emit(name, mapPayload(payload)) as unknown) as EventEmit<TEmit>,
-        emitTo: ((to: __TAURI_EVENT.EventTarget | string, payload: TEmit) => target.emitTo(to, name, mapPayload(payload)) as unknown) as EventEmitTo<TEmit>
-    });
+  const fn = (
+    target: import("@tauri-apps/api/webview").Webview | import("@tauri-apps/api/window").Window,
+  ) => ({
+    listen: (cb: __TAURI_EVENT.EventCallback<TListen>) => target.listen(name, mapEvent(cb)),
+    once: (cb: __TAURI_EVENT.EventCallback<TListen>) => target.once(name, mapEvent(cb)),
+    emit: ((payload: TEmit) =>
+      target.emit(name, mapPayload(payload)) as unknown) as EventEmit<TEmit>,
+    emitTo: ((to: __TAURI_EVENT.EventTarget | string, payload: TEmit) =>
+      target.emitTo(to, name, mapPayload(payload)) as unknown) as EventEmitTo<TEmit>,
+  });
 
-    return Object.assign(fn, base);
+  return Object.assign(fn, base);
 }
-

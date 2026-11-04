@@ -10,6 +10,7 @@ import AppEmptyState from "@/components/common/AppEmptyState.vue";
 import AppSkeleton from "@/components/common/AppSkeleton.vue";
 import PageShell from "@/components/layout/PageShell.vue";
 import { getRunningInstances, listInstances, onGameExited } from "@/api/instance";
+import { resetRestartCount } from "@/composables/autoRestart";
 import { launchGame } from "@/api/launch";
 import { getJavaCandidates } from "@/api/java";
 import { getAccountState } from "@/api/account";
@@ -158,6 +159,8 @@ async function handleLaunch(inst: InstanceMetadata): Promise<void> {
   errorMessage.value = "";
   try {
     await launchGame(inst.id);
+    // 手动启动 = 用户介入了，重置该实例的自动重启计数
+    resetRestartCount(inst.id);
     // 记录启动时刻：1 秒内崩溃（秒退）时用户只会看到按钮变回「启动」，
     // 必须主动弹警告，否则用户完全意识不到游戏已经崩了
     launchStartedAt.set(inst.id, Date.now());

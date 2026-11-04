@@ -15,6 +15,7 @@ import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { clearDroppedFiles, droppedPaths, useFileDrop } from "@/composables/useFileDrop";
 import { useUpdateCheck } from "@/composables/useUpdateCheck";
 import { useUpdateStore } from "@/stores/update";
+import { registerAutoRestart } from "@/composables/autoRestart";
 
 const updateStore = useUpdateStore();
 
@@ -23,6 +24,10 @@ useKeyboardShortcuts();
 
 // 全局拖放：把 .jar / .zip 从桌面拖进窗口即可导入实例
 useFileDrop();
+
+// 崩溃自动重启（设置里可开关，单实例最多 3 次）——必须在应用级监听，
+// 游戏退出事件在任何页面都可能到达
+registerAutoRestart();
 
 /**
  * 更新提示接线。

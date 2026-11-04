@@ -40,6 +40,13 @@ pub struct AppSettings {
     #[serde(default = "default_theme")]
     pub theme: String,
 
+    /// 崩溃（非零退出码）时自动重启游戏。
+    ///
+    /// 默认关闭：部分整合包就是要求「崩了以后改配置再开」；
+    /// 前端实现带次数上限（单实例单会话最多 3 次），防止无限崩溃循环。
+    #[serde(default)]
+    pub auto_restart_on_crash: bool,
+
     #[serde(default)]
     pub instances_root: Option<String>,
 }
@@ -57,6 +64,7 @@ impl Default for AppSettings {
             logging: LoggingSettings::default(),
             http: HttpSettings::default(),
             theme: default_theme(),
+            auto_restart_on_crash: false,
             instances_root: None,
         }
     }

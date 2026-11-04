@@ -1233,10 +1233,7 @@ watch(activePrefix, (prefix) => {
 
           <div v-if="expandedKeys.has(group.key)" class="border-t border-line/40">
             <!-- 前置资源：与 PCL 一致，展开后先看到需要一起装的前置 MOD -->
-            <div
-              v-if="groupDependencies(group).length"
-              class="border-b border-line/30 px-4 py-2.5"
-            >
+            <div v-if="groupDependencies(group).length" class="border-b border-line/30 px-4 py-2.5">
               <div class="mb-1.5 text-micro font-medium text-ink-muted">前置资源</div>
               <div class="flex flex-col gap-2">
                 <div

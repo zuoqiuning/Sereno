@@ -5,13 +5,7 @@
  * 备份与恢复在 WorldBackupModal（入口在实例菜单），这里只管「看与删」。
  */
 import { computed, ref, watch } from "vue";
-import {
-  FolderOpen,
-  Trash2,
-  Globe,
-  AlertTriangle,
-  Loader2,
-} from "@lucide/vue";
+import { FolderOpen, Trash2, Globe, AlertTriangle, Loader2 } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppModal from "@/components/common/AppModal.vue";
@@ -80,9 +74,7 @@ async function onDelete(save: SaveSummary): Promise<void> {
   deletingName.value = save.name;
   try {
     await deleteInstanceSave(props.instance.id, save.name);
-    saves.value = saves.value.filter(
-      (item: SaveSummary) => item.name !== save.name,
-    );
+    saves.value = saves.value.filter((item: SaveSummary) => item.name !== save.name);
     confirmingDelete.value = null;
   } catch (error) {
     errorMessage.value = toMessage(error);
@@ -121,7 +113,10 @@ async function onOpenFolder(save: SaveSummary): Promise<void> {
         {{ errorMessage }}
       </p>
 
-      <div v-if="loading" class="flex h-40 items-center justify-center gap-2 text-caption text-ink-muted">
+      <div
+        v-if="loading"
+        class="flex h-40 items-center justify-center gap-2 text-caption text-ink-muted"
+      >
         <Loader2 :size="16" class="animate-spin" />
         正在扫描存档目录…
       </div>
@@ -135,11 +130,7 @@ async function onOpenFolder(save: SaveSummary): Promise<void> {
       </div>
 
       <div v-else class="flex flex-col divide-y divide-line/40">
-        <div
-          v-for="save in sortedSaves"
-          :key="save.name"
-          class="flex items-center gap-3 py-3"
-        >
+        <div v-for="save in sortedSaves" :key="save.name" class="flex items-center gap-3 py-3">
           <!-- 图标：游戏内截图，无图标用占位 -->
           <img
             v-if="save.iconDataUrl"
@@ -179,20 +170,12 @@ async function onOpenFolder(save: SaveSummary): Promise<void> {
               >
                 删除
               </AppButton>
-              <AppButton
-                variant="ghost"
-                size="sm"
-                @click="confirmingDelete = null"
-              >
+              <AppButton variant="ghost" size="sm" @click="confirmingDelete = null">
                 取消
               </AppButton>
             </template>
             <template v-else>
-              <AppButton
-                variant="ghost"
-                size="sm"
-                @click="onOpenFolder(save)"
-              >
+              <AppButton variant="ghost" size="sm" @click="onOpenFolder(save)">
                 <FolderOpen :size="14" />
                 打开目录
               </AppButton>

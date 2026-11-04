@@ -421,6 +421,22 @@ onMounted(() => {
                 </SettingsRow>
 
                 <SettingsRow
+                  title="崩溃自动重启"
+                  description="游戏异常退出时倒计时 5 秒自动重启，单实例最多连续 3 次，防止崩溃循环。"
+                >
+                  <AppSwitch
+                    :model-value="settings.autoRestartOnCrash"
+                    label="崩溃自动重启"
+                    @update:model-value="
+                      (value) => {
+                        settings!.autoRestartOnCrash = value;
+                        saveSettings();
+                      }
+                    "
+                  />
+                </SettingsRow>
+
+                <SettingsRow
                   title="网络代理"
                   description="支持 http:// 与 socks5://，留空表示直连。修改后下一次请求生效。"
                   orientation="stack"
