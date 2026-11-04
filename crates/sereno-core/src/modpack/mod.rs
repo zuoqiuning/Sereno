@@ -10,6 +10,7 @@
 //! 由启动器自己下载并校验 SHA-1。
 
 pub mod curseforge;
+pub mod export;
 pub mod install;
 
 use std::io::Read;

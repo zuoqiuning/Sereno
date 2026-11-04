@@ -211,3 +211,58 @@ pub async fn install_cf_modpack(
 
     result
 }
+
+/// 导出实例为 Modrinth 整合包（`.mrpack`）。
+///
+/// 追溯得到 Modrinth 来源的 Mod 写进索引条目（只含哈希与下载地址），
+/// 其余内容与配置打进 `overrides/`。
+/// **存档、日志与崩溃报告不导出**——它们是个人数据，不是实例内容。
+#[tauri::command]
+#[specta::specta]
+pub async fn export_instance_modpack(
+    instance_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String> {
+    if state.is_running(&instance_id) {
+        return Err(sereno_core::LauncherError::InstanceBusy {
+            id: instance_id.clone(),
+        });
+    }
+
+    let settings = state.snapshot_settings()?;
+    let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
+    let metadata = read_metadata(&inst_dir)?;
+
+    let client = sereno_core::utils::http::build_client(&settings)?;
+    let export = sereno_core::modpack::export::build(&settings, &client, &metadata).await?;
+
+    // 文件名带 Unix 时间戳：同一实例多次导出不会互相覆盖，
+    // 也不用为了「本地时间」再引一个日期库。
+    let stem = sereno_core::utils::fs::sanitize_file_name(&metadata.display_name);
+    let stamp = unix_timestamp();
+    let dest = sereno_core::utils::paths::state_dir()?
+        .join("downloads")
+        .join("modpacks")
+        .join(format!("{stem}-{stamp}.mrpack"));
+
+    sereno_core::modpack::export::write_mrpack(&export, &dest)?;
+
+    tracing::info!(
+        instance = %instance_id,
+        linked = export.linked_mods,
+        embedded = export.embedded_mods,
+        overrides = export.overrides.len(),
+        "实例已导出为整合包"
+    );
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// 当前 Unix 时间戳（秒）。
+fn unix_timestamp() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
+}

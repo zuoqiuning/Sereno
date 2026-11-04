@@ -47,6 +47,7 @@ import {
 } from "@/api/instance";
 import { launchGame } from "@/api/launch";
 import { installGame, repairInstance } from "@/api/install";
+import { exportInstanceModpack } from "@/api/modpack";
 import { getLoaderVersions, installLoader, type LoaderType } from "@/api/loader";
 import { commands } from "@/bindings";
 import { callCommand, isApiError } from "@/api/invoke";
@@ -69,6 +70,7 @@ const launchingId = ref<string | null>(null);
 const installingId = ref<string | null>(null);
 const repairingId = ref<string | null>(null);
 const exportingId = ref<string | null>(null);
+const exportingModpackId = ref<string | null>(null);
 const resourceModal = useModalState<InstanceMetadata>();
 const backupModal = useModalState<InstanceMetadata>();
 const logModal = useModalState<InstanceMetadata>();
@@ -485,6 +487,35 @@ async function handleExportDiagnostic(inst: InstanceMetadata): Promise<void> {
   }
 }
 
+/**
+ * 导出实例为整合包（`.mrpack`）。
+ *
+ * 追溯得到 Modrinth 来源的 Mod 只写哈希与下载地址（不打包本体），
+ * 其余内容与配置打进 `overrides/`。存档不导出。
+ */
+async function handleExportModpack(inst: InstanceMetadata): Promise<void> {
+  if (exportingModpackId.value) return;
+  exportingModpackId.value = inst.id;
+  try {
+    const path = await exportInstanceModpack(inst.id);
+    toast.success("整合包已导出", path);
+    void log.info(`实例已导出为整合包: ${path}`, {
+      component: "InstancesView",
+      instanceId: inst.id,
+      action: "export-modpack",
+    });
+  } catch (error) {
+    notifyError("导出整合包失败", error);
+    void log.error(`导出整合包失败: ${String(error)}`, {
+      component: "InstancesView",
+      instanceId: inst.id,
+      action: "export-modpack",
+    });
+  } finally {
+    exportingModpackId.value = null;
+  }
+}
+
 async function handleDelete(instanceId: string, displayName: string): Promise<void> {
   if (isRunning(instanceId)) return;
   const confirmed = await askConfirm({
@@ -557,6 +588,12 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       disabled: exportingId.value !== null,
     },
     {
+      id: "export-modpack",
+      label: "导出为整合包",
+      icon: Package,
+      disabled: !ready || destructiveBlocked,
+    },
+    {
       id: "repair",
       label: "校验并修复文件",
       icon: Wrench,
@@ -607,6 +644,9 @@ function runAction(id: string, inst: InstanceMetadata): void {
       break;
     case "diagnostics":
       void handleExportDiagnostic(inst);
+      break;
+    case "export-modpack":
+      void handleExportModpack(inst);
       break;
     case "repair":
       void handleRepair(inst);

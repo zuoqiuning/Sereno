@@ -194,6 +194,14 @@ export const commands = {
 	 *  必须先回查 CurseForge API 解析 `fileID`，否则整个整合包装不上。
 	 */
 	installCfModpack: (instanceId: string, projectId: number, fileId: number, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_cf_modpack", { instanceId, projectId, fileId, channel })),
+	/**
+	 *  导出实例为 Modrinth 整合包（`.mrpack`）。
+	 * 
+	 *  追溯得到 Modrinth 来源的 Mod 写进索引条目（只含哈希与下载地址），
+	 *  其余内容与配置打进 `overrides/`。
+	 *  **存档、日志与崩溃报告不导出**——它们是个人数据，不是实例内容。
+	 */
+	exportInstanceModpack: (instanceId: string) => typedError<string, LauncherError>(__TAURI_INVOKE("export_instance_modpack", { instanceId })),
 	launchGame: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_game", { instanceId })),
 	/**  当前登录态。 */
 	getAccountState: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),

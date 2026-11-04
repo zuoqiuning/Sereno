@@ -57,3 +57,13 @@ export async function installCfModpack(
 
   await callCommand(() => commands.installCfModpack(instanceId, projectId, fileId, channel));
 }
+
+/**
+ * 导出实例为 Modrinth 整合包（`.mrpack`），返回导出路径。
+ *
+ * 能追溯到 Modrinth 来源的 Mod 写进索引条目（只含哈希与下载地址），
+ * 其余内容与配置打进 `overrides/`。存档、日志与崩溃报告不导出。
+ */
+export function exportInstanceModpack(instanceId: string): Promise<string> {
+  return callCommand(() => commands.exportInstanceModpack(instanceId));
+}
