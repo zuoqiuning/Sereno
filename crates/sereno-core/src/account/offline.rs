@@ -213,4 +213,64 @@ mod tests {
         let id = settings.account.offline_accounts[0].id.clone();
         assert!(remove(&mut settings, &id).is_err());
     }
+
+    #[test]
+    fn multiple_profiles_can_coexist_and_switch() {
+        let mut settings = settings_with("Player");
+        ensure(&mut settings);
+
+        let alice = add(&mut settings, "Alice").unwrap();
+        let bob = add(&mut settings, "Bob").unwrap();
+
+        // 三个档案并存，各自的 UUID 不同
+        assert_eq!(profiles(&settings).len(), 3);
+        assert_ne!(alice.uuid, bob.uuid);
+
+        // 新建后自动切到新档案
+        assert_eq!(active(&settings).name, "Bob");
+
+        // 切回之前的档案，玩家数据也跟着切回去
+        switch(&mut settings, &alice.id).unwrap();
+        assert_eq!(active(&settings).name, "Alice");
+        assert_eq!(active(&settings).uuid, alice.uuid);
+        assert_eq!(settings.profile.name, "Alice");
+    }
+
+    #[test]
+    fn duplicate_name_is_rejected() {
+        let mut settings = settings_with("Player");
+        ensure(&mut settings);
+        add(&mut settings, "Alice").unwrap();
+        // 同名档案会指向同一个 UUID，重复建没有意义
+        assert!(add(&mut settings, "alice").is_err());
+    }
+
+    #[test]
+    fn removing_active_profile_falls_back_to_another() {
+        let mut settings = settings_with("Player");
+        ensure(&mut settings);
+        let alice = add(&mut settings, "Alice").unwrap();
+
+        // 删掉正在使用的档案，不该让账户变成「没有当前档案」
+        remove(&mut settings, &alice.id).unwrap();
+        assert_eq!(profiles(&settings).len(), 1);
+        assert_eq!(active(&settings).name, "Player");
+        assert_eq!(
+            settings.account.active_offline_id.as_deref(),
+            Some(settings.account.offline_accounts[0].id.as_str())
+        );
+    }
+
+    #[test]
+    fn removing_other_profile_keeps_active_one() {
+        let mut settings = settings_with("Player");
+        ensure(&mut settings);
+        let alice = add(&mut settings, "Alice").unwrap();
+        let bob = add(&mut settings, "Bob").unwrap();
+
+        // 删掉非当前档案，当前档案必须原样不动
+        remove(&mut settings, &alice.id).unwrap();
+        assert_eq!(active(&settings).name, "Bob");
+        assert_eq!(active(&settings).id, bob.id);
+    }
 }

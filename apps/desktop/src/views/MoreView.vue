@@ -16,7 +16,7 @@ import AppEmptyState from "@/components/common/AppEmptyState.vue";
 import PageShell from "@/components/layout/PageShell.vue";
 import SideNav from "@/components/layout/SideNav.vue";
 import type { SideNavItem } from "@/components/layout/SideNav.vue";
-import { APP_NAME, APP_VERSION } from "@/constants/app";
+import { APP_AUTHOR, APP_NAME, APP_VERSION } from "@/constants/app";
 import { log } from "@/api/settings";
 import { openProjectIssues, openProjectRepo, openSupporterPage, type SupporterTarget } from "@/api/supporters";
 
@@ -142,7 +142,23 @@ function openIssues(): void {
               </div>
 
               <h2 class="mt-5 font-display text-display font-semibold text-ink">{{ APP_NAME }}</h2>
-              <p class="mt-1.5 max-w-sm text-caption leading-6 text-ink-muted">
+
+              <!--
+                版本号与作者名紧跟名称下面，而不是塞在页面最底部的等宽小字里。
+                版本号是用户唯一会主动去看的「关于」信息——
+                报 bug 时第一句就是「我用的 0.1.0」，
+                放在底部一行灰字里等于藏起来了。
+              -->
+              <div class="mt-2.5 flex items-center gap-2.5">
+                <span
+                  class="rounded-full bg-brand-soft px-2.5 py-1 font-mono text-caption font-semibold tabular-nums text-brand-600"
+                >
+                  v{{ APP_VERSION }}
+                </span>
+                <span class="text-caption text-ink-muted">by {{ APP_AUTHOR }}</span>
+              </div>
+
+              <p class="mt-3 max-w-sm text-caption leading-6 text-ink-muted">
                 一个专注「装得对、跑得稳、坏得少」的 Minecraft 启动器。
               </p>
 
@@ -162,24 +178,11 @@ function openIssues(): void {
               </div>
 
               <!--
-                版本 / 许可证 / 技术栈收成底部一行等宽小字。
-                三列并排的「信息卡」看着像内部测试版的草稿，
-                一行带分隔线的等宽字才是正式开源项目的样子。
-              -->
-              <!--
                 授权声明：用大白话把「红线」画出来。
                 协议本身在 LICENSE / README，这里负责让每个用户都知道
                 「免费、无广告、不联机」是承诺，也是边界。
               -->
               <div class="mt-8 flex flex-col items-center gap-3 border-t border-line/60 pt-5">
-                <div class="flex flex-wrap items-center justify-center gap-2 font-mono text-micro text-ink-muted">
-                  <span>v{{ APP_VERSION }}</span>
-                  <span class="h-3 w-px bg-line" />
-                  <span>PolyForm Noncommercial 1.0.0</span>
-                  <span class="h-3 w-px bg-line" />
-                  <span>Built with Tauri 2 &amp; Vue 3</span>
-                </div>
-
                 <div
                   class="flex max-w-xl flex-col gap-1.5 text-center text-micro leading-5 text-ink-muted"
                 >

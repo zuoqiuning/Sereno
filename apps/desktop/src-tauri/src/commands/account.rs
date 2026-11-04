@@ -3,7 +3,7 @@
 use sereno_core::Result;
 use sereno_core::account::{authlib, microsoft, offline, secure_store};
 use sereno_core::models::account::{
-    AccountState, AuthlibProfile, DeviceCodeInfo, MicrosoftConfig, kind,
+    AccountState, AuthlibProfile, DeviceCodeInfo, MicrosoftConfig, OfflineProfile, kind,
 };
 
 use crate::state::AppState;
@@ -49,7 +49,7 @@ pub async fn complete_microsoft_login(
     let mut next = settings;
     next.account.kind = kind::MICROSOFT.to_string();
     next.account.microsoft = Some(profile);
-    state.update_settings(next)?;
+    state.update_account_settings(next)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -68,7 +68,7 @@ pub async fn logout_account(state: tauri::State<'_, AppState>) -> Result<Account
     settings.account.microsoft = None;
     settings.account.kind = kind::OFFLINE.to_string();
     offline::ensure(&mut settings);
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -101,9 +101,20 @@ pub fn set_offline_account(
         }
     }
 
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
+}
+
+/// 列出已保存的离线档案。
+///
+/// 老配置没有档案列表时，会用当前 `profile.name` 派生一个，
+/// 保证升级后至少有一个可用档案。
+#[tauri::command]
+#[specta::specta]
+pub fn list_offline_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<OfflineProfile>> {
+    let settings = state.snapshot_settings()?;
+    Ok(offline::profiles(&settings))
 }
 
 /// 新建离线档案并切换过去。
@@ -115,7 +126,7 @@ pub fn add_offline_account(
 ) -> Result<AccountState> {
     let mut settings = state.snapshot_settings()?;
     offline::add(&mut settings, &name)?;
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -130,7 +141,7 @@ pub fn switch_offline_account(
 ) -> Result<AccountState> {
     let mut settings = state.snapshot_settings()?;
     offline::switch(&mut settings, &id)?;
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -145,7 +156,7 @@ pub fn remove_offline_account(
 ) -> Result<AccountState> {
     let mut settings = state.snapshot_settings()?;
     offline::remove(&mut settings, &id)?;
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -169,7 +180,7 @@ pub async fn activate_microsoft_account(state: tauri::State<'_, AppState>) -> Re
 
     let mut next = settings;
     next.account.kind = kind::MICROSOFT.to_string();
-    state.update_settings(next)?;
+    state.update_account_settings(next)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -265,7 +276,7 @@ pub async fn authlib_login(
     // 公开资料进设置，并切到该档案
     let mut next = settings;
     authlib::save_profile(&mut next, &session, server_name.as_deref().unwrap_or(""));
-    state.update_settings(next)?;
+    state.update_account_settings(next)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -280,7 +291,7 @@ pub fn switch_authlib_account(
 ) -> Result<AccountState> {
     let mut settings = state.snapshot_settings()?;
     authlib::switch(&mut settings, &id)?;
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
@@ -311,7 +322,7 @@ pub async fn logout_authlib_account(
     }
 
     authlib::remove(&mut settings, &id)?;
-    state.update_settings(settings)?;
+    state.update_account_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))

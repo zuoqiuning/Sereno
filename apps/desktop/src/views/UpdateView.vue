@@ -293,20 +293,6 @@ void (async () => {
         </div>
       </AppCard>
 
-      <!-- 说明 -->
-      <AppCard title="关于更新" padding="lg">
-        <div class="flex flex-col gap-2 text-caption leading-6 text-ink-muted">
-          <p>
-            更新包从官方渠道下载，并用内置的 minisign
-            公钥验签——签名不匹配的更新包不会被安装。
-          </p>
-          <p>
-            下载优先走腾讯云 COS，失败时自动回落到 GitHub Release；
-            两个端点都不可用时会明确报错，不会静默失败。
-          </p>
-        </div>
-      </AppCard>
-
       <p v-if="error" class="text-caption text-danger">{{ error }}</p>
     </div>
   </PageShell>

@@ -27,6 +27,7 @@ import { callCommand } from "@/api/invoke";
 import { installJavaRuntime } from "@/api/java";
 import { clearStorageCache, getStorageUsage } from "@/api/storage";
 import { checkAppUpdate, setUpdateAutoCheck } from "@/api/update";
+import { setOfflineAccount } from "@/api/account";
 import { isApiError } from "@/api/invoke";
 import { useToastStore } from "@/stores/toast";
 import { formatBytes } from "@/utils/format";
@@ -71,6 +72,34 @@ const storage = ref<StorageUsage | null>(null);
 const clearingCache = ref(false);
 /** 手动检查更新的进行态。 */
 const checkingUpdate = ref(false);
+/** 离线用户名的输入框内容（与设置里的 profile.name 分开，避免每次输入都写盘）。 */
+const offlineName = ref("");
+/** 切换离线档案的进行态。 */
+const switchingOffline = ref(false);
+const offlineNameValid = computed(() => /^[A-Za-z0-9_]{3,16}$/.test(offlineName.value.trim()));
+
+/**
+ * 应用离线用户名。
+ *
+ * 走 `setOfflineAccount` 而不是直接改 `profile.name`：
+ * 同名会切到已有档案，新名则新建一个——两条路径统一到
+ * 账户中心的档案列表，不会出现「设置里改了名、账户列表里还是旧的」。
+ */
+async function applyOfflineName(): Promise<void> {
+  const name = offlineName.value.trim();
+  if (!offlineNameValid.value || switchingOffline.value) return;
+  switchingOffline.value = true;
+  try {
+    const account = await setOfflineAccount(name);
+    if (settings.value) settings.value.profile.name = account.name;
+    offlineName.value = account.name;
+    toast.success(account.name === name ? "已切换离线档案" : "已创建离线档案", account.name);
+  } catch (e) {
+    toast.error("切换失败", toMessage(e));
+  } finally {
+    switchingOffline.value = false;
+  }
+}
 
 /** 切换「启动时自动检查更新」。 */
 async function onToggleAutoCheck(value: boolean): Promise<void> {
@@ -171,6 +200,8 @@ async function loadSettings(): Promise<void> {
   try {
     settings.value = await callCommand(() => commands.getSettings());
     applyTheme(settings.value.theme);
+    // 离线用户名的输入框初值取当前档案名
+    offlineName.value = settings.value.profile.name;
     settingsError.value = "";
   } catch (e) {
     settingsError.value = "设置读取失败，请稍后重试。";
@@ -494,12 +525,21 @@ onMounted(() => {
               >
                 <div class="flex items-center gap-2">
                   <AppInput
-                    v-model="settings!.profile.name"
+                    v-model="offlineName"
                     placeholder="Player"
                     class="w-40"
-                    @submit="saveSettings"
+                    :invalid="offlineName.length > 0 && !offlineNameValid"
+                    @submit="applyOfflineName"
                   />
-                  <AppButton variant="secondary" size="sm" @click="saveSettings">保存</AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    :disabled="!offlineNameValid || !!switchingOffline"
+                    :loading="switchingOffline"
+                    @click="applyOfflineName"
+                  >
+                    应用
+                  </AppButton>
                 </div>
               </SettingsRow>
 

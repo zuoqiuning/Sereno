@@ -223,6 +223,13 @@ export const commands = {
 	setOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("set_offline_account", { name })),
 	/**  新建离线档案并切换过去。 */
 	addOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("add_offline_account", { name })),
+	/**
+	 *  列出已保存的离线档案。
+	 * 
+	 *  老配置没有档案列表时，会用当前 `profile.name` 派生一个，
+	 *  保证升级后至少有一个可用档案。
+	 */
+	listOfflineAccounts: () => typedError<OfflineProfile[], LauncherError>(__TAURI_INVOKE("list_offline_accounts")),
 	/**  切换到某个离线档案。 */
 	switchOfflineAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("switch_offline_account", { id })),
 	/**  删除离线档案（至少保留一个）。 */

@@ -619,6 +619,42 @@ if (existsSync(distDir)) {
   );
 }
 
+check("数据", "账户命令用 update_account_settings 写盘", () => {
+  // `update_settings` 会把 account 覆盖回当前值——这是有意的：
+  // 设置页拿的是旧快照，整体覆盖会把用户做过的登录/切号回滚。
+  //
+  // 但账户命令必须能写 account，否则新建的离线档案、刚登上的微软账户
+  // 会在写盘那一刻被顶掉（离线档案列表会永远是空的）。
+  const account = readText("apps/desktop/src-tauri/src/commands/account.rs");
+
+  const calls = [...account.matchAll(/state\.update_(\w+)\(/g)].map((m) => m[1]);
+  if (calls.length === 0) {
+    return { ok: false, detail: "account.rs 里没有找到写设置的方法调用" };
+  }
+  const wrong = calls.filter((name) => name !== "account_settings");
+  if (wrong.length > 0) {
+    return {
+      ok: false,
+      detail:
+        `account.rs 里有 ${wrong.length} 处用了 update_${wrong[0]}——` +
+        "它会覆盖账户状态，导致离线档案与登录状态保存不下来",
+    };
+  }
+  return true;
+});
+
+check("数据", "更新检查不会覆盖账户状态", () => {
+  // 更新检查要写设置（记录上次检查结果），但绝不能顺手改掉账户。
+  const update = readText("apps/desktop/src-tauri/src/commands/update.rs");
+  if (/state\.update_account_settings\(/.test(update)) {
+    return {
+      ok: false,
+      detail: "update.rs 用了 update_account_settings——更新检查没有理由改账户",
+    };
+  }
+  return true;
+});
+
 // ---------------------------------------------------------------- 输出
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code, text) => (useColor ? `\u001b[${code}m${text}\u001b[0m` : text);
@@ -642,3 +678,4 @@ console.log(
 );
 
 process.exit(failed === 0 ? 0 : 1);
+

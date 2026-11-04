@@ -180,18 +180,37 @@ impl AppState {
             })
     }
 
+    /// 写入设置，但**保留当前账户状态**。
+    ///
+    /// 账户状态由账户命令独占维护（登录、切换离线档案、退出登录），
+    /// 设置页从不编辑它。前端持有的设置快照可能是几分钟前读出来的，
+    /// 如果这里整体覆盖，用户在「设置」页停留期间做过的登录 / 切号
+    /// 就会被静默回滚——现象是「明明切了账号，一保存设置又变回去了」。
+    /// 其余字段（主题、内存、限速、实例根目录）照常以传入值为准。
+    ///
+    /// **注意**：账户命令要用 `update_account_settings`——
+    /// 这个方法会把 account 覆盖回旧值，连账户命令自己刚做的
+    /// 修改（新建离线档案、切换档案）也一起顶掉。
     pub fn update_settings(&self, settings: AppSettings) -> Result<()> {
         let mut settings = settings.normalized();
 
-        // **账户状态由账户命令独占维护**（登录、切换离线档案、退出登录），
-        // 设置页从不编辑它。前端持有的设置快照可能是几分钟前读出来的，
-        // 如果这里整体覆盖，用户在「设置」页停留期间做过的登录 / 切号
-        // 就会被静默回滚——现象是「明明切了账号，一保存设置又变回去了」。
-        // 其余字段（主题、内存、限速、实例根目录、离线用户名）照常以传入值为准。
         if let Ok(current) = self.snapshot_settings() {
             settings.account = current.account;
         }
 
+        self.persist(settings)
+    }
+
+    /// 写入设置，**包括账户状态**。
+    ///
+    /// 只有账户命令该用它。其它地方（设置页、更新检查）一律用
+    /// `update_settings`，免得拿一份旧快照把账户状态覆盖回去。
+    pub fn update_account_settings(&self, settings: AppSettings) -> Result<()> {
+        self.persist(settings.normalized())
+    }
+
+    /// 落盘并更新内存快照。
+    fn persist(&self, settings: AppSettings) -> Result<()> {
         sereno_core::storage::settings::save(&settings)?;
         // 保存后立刻生效，不需要重启下载任务
         sereno_core::download::ratelimit::set_limit_kbps(

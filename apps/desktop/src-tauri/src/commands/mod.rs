@@ -82,6 +82,7 @@ macro_rules! all_commands {
             crate::commands::account::logout_account,
             crate::commands::account::set_offline_account,
             crate::commands::account::add_offline_account,
+            crate::commands::account::list_offline_accounts,
             crate::commands::account::switch_offline_account,
             crate::commands::account::remove_offline_account,
             crate::commands::account::activate_microsoft_account,
