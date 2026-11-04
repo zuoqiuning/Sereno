@@ -147,6 +147,13 @@ export const commands = {
 	removeLocalResources: (instanceId: string, kind: LocalResourceKind, fileNames: string[]) => typedError<number, LauncherError>(__TAURI_INVOKE("remove_local_resources", { instanceId, kind, fileNames })),
 	openLocalResourceFolder: (instanceId: string, kind: LocalResourceKind) => typedError<null, LauncherError>(__TAURI_INVOKE("open_local_resource_folder", { instanceId, kind })),
 	importLocalResources: (instanceId: string, kind: LocalResourceKind) => typedError<number, LauncherError>(__TAURI_INVOKE("import_local_resources", { instanceId, kind })),
+	/**
+	 *  从**绝对路径**导入本地资源（拖拽导入用）。
+	 * 
+	 *  `import_local_resources` 走系统文件选择框，由用户在对话框里挑文件；
+	 *  拖拽导入时路径已经知道了，这里直接收路径，省掉一次「再选一遍」。
+	 */
+	importLocalResourcesFromPaths: (instanceId: string, kind: LocalResourceKind, paths: string[]) => typedError<number, LauncherError>(__TAURI_INVOKE("import_local_resources_from_paths", { instanceId, kind, paths })),
 	checkLocalResourceUpdates: (instanceId: string, kind: LocalResourceKind) => typedError<LocalResourceScan_Serialize, LauncherError>(__TAURI_INVOKE("check_local_resource_updates", { instanceId, kind })),
 	/**  整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。 */
 	getModpackInfo: (projectId: string, versionId: string) => typedError<ModpackInfo, LauncherError>(__TAURI_INVOKE("get_modpack_info", { projectId, versionId })),

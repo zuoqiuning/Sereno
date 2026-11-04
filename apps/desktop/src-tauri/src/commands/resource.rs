@@ -654,6 +654,32 @@ pub async fn import_local_resources(
     Ok(imported as u32)
 }
 
+/// 从**绝对路径**导入本地资源（拖拽导入用）。
+///
+/// `import_local_resources` 走系统文件选择框，由用户在对话框里挑文件；
+/// 拖拽导入时路径已经知道了，这里直接收路径，省掉一次「再选一遍」。
+#[tauri::command]
+#[specta::specta]
+pub fn import_local_resources_from_paths(
+    instance_id: String,
+    kind: LocalResourceKind,
+    paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<u32> {
+    if state.is_running(&instance_id) {
+        return Err(sereno_core::LauncherError::InstanceBusy {
+            id: instance_id.clone(),
+        });
+    }
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    let settings = state.snapshot_settings()?;
+    let sources: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let count = sereno_core::resource::local::import(&settings, &instance_id, kind, &sources)?;
+    Ok(count as u32)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn check_local_resource_updates(

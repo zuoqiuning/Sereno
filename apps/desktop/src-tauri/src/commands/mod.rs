@@ -65,6 +65,7 @@ macro_rules! all_commands {
             crate::commands::resource::remove_local_resources,
             crate::commands::resource::open_local_resource_folder,
             crate::commands::resource::import_local_resources,
+            crate::commands::resource::import_local_resources_from_paths,
             crate::commands::resource::check_local_resource_updates,
             crate::commands::modpack::get_modpack_info,
             crate::commands::modpack::install_modpack,

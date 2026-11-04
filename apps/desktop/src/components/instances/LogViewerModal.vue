@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { AlertTriangle, Info, RefreshCw, ScrollText } from "@lucide/vue";
+import { AlertTriangle, Info, Play, RefreshCw, ScrollText } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import AppSelect from "@/components/common/AppSelect.vue";
 import { getInstanceLogs } from "@/api/instance";
+import { launchGame } from "@/api/launch";
 import { log } from "@/api/settings";
+import { useToastStore } from "@/stores/toast";
 import type { InstanceLogs, InstanceMetadata } from "@/types";
 
 const props = withDefaults(
@@ -20,6 +22,28 @@ const logs = ref<InstanceLogs | null>(null);
 const loading = ref(true);
 const error = ref("");
 const activeCrash = ref("");
+const restarting = ref(false);
+const toast = useToastStore();
+
+/**
+ * 崩溃后一键重启。
+ *
+ * 崩溃分析弹窗是用户看完诊断后的第一个动作现场——在这里给「重启」，
+ * 比让用户关掉弹窗、回到列表再点一次启动顺手得多。
+ */
+async function restart(): Promise<void> {
+  if (restarting.value) return;
+  restarting.value = true;
+  try {
+    await launchGame(props.instance.id);
+    toast.success("已重新启动游戏", props.instance.displayName);
+    emit("close");
+  } catch (err) {
+    toast.error("重启失败", err instanceof Error ? err.message : String(err));
+  } finally {
+    restarting.value = false;
+  }
+}
 
 const content = computed(() => {
   if (!logs.value) return "";
@@ -72,6 +96,16 @@ onMounted(() => {
           {{ running ? "游戏运行中，日志会继续写入" : "读取最近一次运行" }}
         </p>
       </div>
+      <AppButton
+        v-if="!running"
+        variant="soft"
+        size="sm"
+        :loading="restarting"
+        @click="restart"
+      >
+        <Play v-if="!restarting" :size="14" />
+        重启游戏
+      </AppButton>
       <AppButton variant="secondary" size="sm" :loading="loading" @click="load">
         <RefreshCw v-if="!loading" :size="14" />
         刷新

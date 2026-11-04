@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { RouterView } from "vue-router";
 
 import ResizeHandles from "@/components/layout/ResizeHandles.vue";
 import TitleBar from "@/components/layout/TitleBar.vue";
 import ConfirmHost from "@/components/common/ConfirmHost.vue";
 import CommandPalette from "@/components/layout/CommandPalette.vue";
+import DropOverlay from "@/components/common/DropOverlay.vue";
+import DropImportModal from "@/components/instances/DropImportModal.vue";
 import ToastStack from "@/components/common/ToastStack.vue";
 import { transitionName } from "@/composables/useNavDirection";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
+import { clearDroppedFiles, droppedPaths, useFileDrop } from "@/composables/useFileDrop";
 
 // 全局快捷键：Ctrl/Cmd+1~6 切页面、Ctrl/Cmd+K 命令面板、Ctrl/Cmd+, 打开设置
 useKeyboardShortcuts();
+
+// 全局拖放：把 .jar / .zip 从桌面拖进窗口即可导入实例
+useFileDrop();
+
+/** 有待处理的文件时自动打开导入对话框。 */
+const dropModalOpen = computed(() => droppedPaths.value.length > 0);
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -58,5 +67,9 @@ function resetScroll(): void {
 
     <!-- 命令面板：Ctrl/Cmd+K 唤出，一条路径覆盖切页面与跳设置项 -->
     <CommandPalette />
+
+    <!-- 拖放导入：悬停时给提示，落下后问装到哪个实例 -->
+    <DropOverlay />
+    <DropImportModal :open="dropModalOpen" :paths="droppedPaths" @close="clearDroppedFiles" />
   </div>
 </template>

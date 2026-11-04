@@ -57,6 +57,15 @@ export function importLocalResources(instanceId: string, kind: LocalResourceKind
   return callCommand(() => commands.importLocalResources(instanceId, kind));
 }
 
+/** 按绝对路径导入本地资源（拖拽导入用），返回导入数量。 */
+export function importLocalResourcesFromPaths(
+  instanceId: string,
+  kind: LocalResourceKind,
+  paths: string[],
+): Promise<number> {
+  return callCommand(() => commands.importLocalResourcesFromPaths(instanceId, kind, paths));
+}
+
 export function checkLocalResourceUpdates(
   instanceId: string,
   kind: LocalResourceKind,
