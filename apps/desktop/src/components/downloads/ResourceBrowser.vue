@@ -381,14 +381,14 @@ onMounted(() => {
   <div class="flex min-h-0 flex-1 flex-col gap-3">
     <div class="shrink-0 rounded-lg border border-line/70 bg-surface p-3 shadow-sm">
       <div class="flex flex-wrap items-center gap-2">
-        <div v-if="kind !== 'modpack'" class="w-[168px]">
+        <div v-if="kind !== 'modpack'" class="w-42">
           <AppSelect
             v-model="instanceId"
             :options="instanceOptions"
             @change="onInstanceChange"
           />
         </div>
-        <div class="w-[132px]">
+        <div class="w-33">
           <AppSelect
             :model-value="mcVersion"
             :options="mcVersionOptions"
@@ -400,7 +400,7 @@ onMounted(() => {
             "
           />
         </div>
-        <div class="w-[128px]">
+        <div class="w-32">
           <AppSelect
             :model-value="source"
             :options="sourceOptions"
@@ -412,7 +412,7 @@ onMounted(() => {
             "
           />
         </div>
-        <div class="min-w-[180px] flex-1">
+        <div class="min-w-45 flex-1">
           <AppInput
             v-model="keyword"
             clearable
@@ -437,7 +437,7 @@ onMounted(() => {
         v-if="filtersOpen"
         class="mt-2 flex flex-wrap items-center gap-2 border-t border-line/30 pt-2"
       >
-        <div class="w-[128px]">
+        <div class="w-32">
           <AppSelect
             :model-value="sort"
             :options="sortOptions"
@@ -450,7 +450,7 @@ onMounted(() => {
             "
           />
         </div>
-        <div v-if="kind === 'mod'" class="w-[128px]">
+        <div v-if="kind === 'mod'" class="w-32">
           <AppSelect
             :model-value="loader"
             :options="loaderOptions"
@@ -463,7 +463,7 @@ onMounted(() => {
             "
           />
         </div>
-        <div class="w-[112px]">
+        <div class="w-28">
           <AppSelect
             :model-value="pageSize"
             :options="pageSizeOptions"

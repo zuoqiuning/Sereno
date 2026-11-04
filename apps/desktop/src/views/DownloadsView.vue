@@ -534,7 +534,7 @@ onMounted(() => {
                     class="group flex items-center gap-3 px-4 py-3 transition-fast hover:bg-surface-muted"
                   >
                     <!-- 行首不再放图标块：版本号本身就是这一行的主体 -->
-                    <span class="w-[140px] shrink-0 truncate font-mono text-h2 font-semibold text-ink tabular">
+                    <span class="w-35 shrink-0 truncate font-mono text-h2 font-semibold text-ink tabular">
                       {{ getAprilFoolsInfo(version.id)?.displayId ?? version.id }}
                     </span>
 
@@ -566,7 +566,7 @@ onMounted(() => {
                     <AppButton
                       :variant="isInstalled(version.id) ? 'ghost' : 'link'"
                       size="sm"
-                      class="w-[76px] shrink-0"
+                      class="w-19 shrink-0"
                       @click="openDownloadModal(version)"
                     >
                       {{ isInstalled(version.id) ? "再装一个" : "下载" }}

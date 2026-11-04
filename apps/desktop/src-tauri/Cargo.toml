@@ -58,3 +58,9 @@ dotenvy = "0.15.7"
 custom-protocol = ["tauri/custom-protocol"]
 
 # profile 一律定义在 workspace 根 Cargo.toml，子包内定义会被忽略
+[dev-dependencies]
+# 只用于测试：模拟 tauri-plugin-updater 用 `log` crate 打的日志。
+# `tracing-log` 提供 `LogTracer`——生产环境里由 Tauri 安装，
+# 测试里要自己装，否则 `log` 的事件会被静默丢弃。
+log = "0.4"
+tracing-log = "0.2"

@@ -421,7 +421,7 @@ onMounted(() => {
     </template>
 
     <div class="flex flex-wrap items-center gap-2">
-      <div class="min-w-[220px] flex-1">
+      <div class="min-w-55 flex-1">
         <AppInput v-model="keyword" placeholder="搜索已安装资源..." />
       </div>
       <AppButton variant="secondary" size="sm" :loading="checking" @click="scanResources(true)">

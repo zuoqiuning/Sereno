@@ -25,6 +25,8 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 use sereno_core::utils::redact::redact_line;
 
+pub mod noise;
+
 /// 单个日志文件的上限；超过就切到 `sereno.<日期>.<序号>.log`。
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 /// 保留最近 7 天（含今天）。
@@ -335,17 +337,26 @@ pub fn init() {
     let file_writer = build_file_writer();
 
     // ---- 终端 sink：人类可读 ----
+    //
+    // `event_format(SkipNoise::new(..))` 让 formatter 在写之前先看一遍事件内容：
+    // 更新端点 404 这类预期内的 ERROR 会被整个吞掉（详见 `logging/noise.rs`）。
     let console_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
         .with_ansi(true)
-        .with_writer(std::io::stdout);
+        .with_writer(std::io::stdout)
+        .event_format(noise::SkipNoise::new(
+            tracing_subscriber::fmt::format::Format::default(),
+        ));
 
     let file_layer = tracing_subscriber::fmt::layer()
         .json()
         .flatten_event(true)
         .with_current_span(true)
         .with_ansi(false)
-        .with_writer(file_writer);
+        .with_writer(file_writer)
+        .event_format(noise::SkipNoise::new(
+            tracing_subscriber::fmt::format::Format::default(),
+        ));
 
     tracing_subscriber::registry()
         .with(filter)

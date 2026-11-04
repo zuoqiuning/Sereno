@@ -78,7 +78,7 @@ onMounted(() => {
       -->
       <button
         type="button"
-        class="sereno-ease group flex h-8 items-center gap-2 rounded-md border border-transparent bg-transparent px-2 transition-all hover:border-line hover:bg-ink/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30 min-[1100px]:max-w-[160px]"
+        class="sereno-ease group flex h-8 items-center gap-2 rounded-md border border-transparent bg-transparent px-2 transition-all hover:border-line hover:bg-ink/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30 min-[1100px]:max-w-40"
         :title="account ? `账户：${account.name}` : '账户'"
         @click="openAccount"
       >
@@ -98,7 +98,7 @@ onMounted(() => {
           否则会压到账户入口上。
         -->
         <span class="hidden min-w-0 flex-col items-start leading-[1.15] min-[1100px]:flex">
-          <span class="max-w-[84px] truncate text-caption font-semibold text-ink-soft">
+          <span class="max-w-21 truncate text-caption font-semibold text-ink-soft">
             {{ account?.name ?? "未登录" }}
           </span>
           <span

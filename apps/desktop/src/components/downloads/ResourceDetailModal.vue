@@ -1160,7 +1160,7 @@ watch(activePrefix, (prefix) => {
         </button>
 
         <div class="ml-auto flex items-center gap-2">
-          <div v-if="loaderOptions.length > 2" class="w-[124px]">
+          <div v-if="loaderOptions.length > 2" class="w-31">
             <AppSelect v-model="activeLoader" :options="loaderOptions" size="sm" />
           </div>
           <span v-if="completing" class="flex items-center gap-1 text-micro text-ink-muted">
@@ -1215,7 +1215,7 @@ watch(activePrefix, (prefix) => {
         >
           <button
             type="button"
-            class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-ink/[0.03]"
+            class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-ink/3"
             @click="toggleGroup(group)"
           >
             <span class="text-body font-semibold text-ink">{{ group.title }}</span>
@@ -1233,7 +1233,7 @@ watch(activePrefix, (prefix) => {
             <!-- 前置资源：与 PCL 一致，展开后先看到需要一起装的前置 MOD -->
             <div
               v-if="groupDependencies(group).length"
-              class="border-b border-line/30 bg-ink/[0.02] px-4 py-2.5"
+              class="border-b border-line/30 bg-ink/2 px-4 py-2.5"
             >
               <div class="mb-1.5 text-micro font-medium text-ink-muted">前置资源</div>
               <div class="flex flex-col gap-2">
@@ -1413,7 +1413,7 @@ watch(activePrefix, (prefix) => {
           <label
             v-for="dep in dependencyDialog.deps"
             :key="dep.id"
-            class="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-ink/[0.04]"
+            class="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-ink/4"
           >
             <input
               type="checkbox"

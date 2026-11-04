@@ -3403,6 +3403,7 @@ name = "sereno-desktop"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
+ "log",
  "opener",
  "regex",
  "serde",
@@ -3419,6 +3420,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
 ]
 

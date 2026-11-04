@@ -95,7 +95,14 @@ pub async fn check_app_update(
         Ok(update) => update,
         // 端点上没有可用版本（仓库还没发过 Release）——
         // 这是正常状态，不是故障。
-        Err(e) if is_no_release(&e) => None,
+        //
+        // 插件内部会为这次 404 打一条 ERROR，日志层已经把它吞掉了
+        // （见 `logging/noise.rs`）。这里补一条 DEBUG 留个线索：
+        // 排查「为什么检查不到更新」时能看到端点确实没东西。
+        Err(e) if is_no_release(&e) => {
+            tracing::debug!("更新端点尚无发布版本（尚未发过 Release，属正常状态）");
+            None
+        }
         Err(e) => return Err(update_error("检查更新失败", e)),
     };
 

@@ -126,7 +126,7 @@ onMounted(() => {
         >
           最新日志
         </button>
-        <div v-if="logs?.crashes.length" class="w-[200px]">
+        <div v-if="logs?.crashes.length" class="w-50">
           <AppSelect v-model="activeCrash" :options="crashOptions" size="sm" />
         </div>
         <span v-if="logs?.crashes.length" class="text-micro text-ink-muted">

@@ -211,7 +211,7 @@ onBeforeUnmount(() => {
     </template>
 
     <!-- 舞台：最近玩过的实例。不再叠径向渐变与水印，层次交给卡片 + 描边 -->
-    <AppCard padding="lg" class="min-h-[260px] flex-1">
+    <AppCard padding="lg" class="min-h-65 flex-1">
       <div v-if="loading" class="flex flex-1 items-center gap-6">
         <AppSkeleton width="h-16 w-16" rounded="rounded-lg" />
         <div class="flex flex-col gap-3">

@@ -41,12 +41,12 @@ function bubbleClass(tone: ToastTone): string {
             <component :is="iconFor(toast.tone)" :size="14" />
           </span>
           <div class="min-w-0 flex-1 pt-px">
-            <div class="break-words text-caption font-semibold leading-[1.45] text-ink">
+            <div class="wrap-break-word text-caption font-semibold leading-[1.45] text-ink">
               {{ toast.title }}
             </div>
             <div
               v-if="toast.message"
-              class="mt-0.5 break-words text-caption leading-[1.55] text-ink-muted"
+              class="mt-0.5 wrap-break-word text-caption leading-[1.55] text-ink-muted"
             >
               {{ toast.message }}
             </div>

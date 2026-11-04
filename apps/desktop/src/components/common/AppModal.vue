@@ -50,10 +50,10 @@ const emit = defineEmits<{
 }>();
 
 const widthClass: Record<ModalWidth, string> = {
-  sm: "max-w-[480px]",
-  md: "max-w-[680px]",
-  lg: "max-w-[900px]",
-  xl: "max-w-[1080px]",
+  sm: "max-w-120",
+  md: "max-w-170",
+  lg: "max-w-225",
+  xl: "max-w-270",
 };
 
 const panelRef = ref<HTMLElement | null>(null);
@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
 
 const panelClass = computed(() => [
   widthClass[props.width],
-  props.height === "fixed" ? "h-[82vh] max-h-[720px]" : "max-h-[86vh]",
+  props.height === "fixed" ? "h-[82vh] max-h-180" : "max-h-[86vh]",
 ]);
 </script>
 

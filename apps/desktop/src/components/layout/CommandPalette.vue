@@ -205,7 +205,7 @@ onBeforeUnmount(() => window.removeEventListener(PALETTE_EVENT, openPalette));
       />
     </template>
 
-    <div class="max-h-[320px] overflow-y-auto p-1">
+    <div class="max-h-80 overflow-y-auto p-1">
       <button
         v-for="(command, index) in filtered"
         :key="command.id"
