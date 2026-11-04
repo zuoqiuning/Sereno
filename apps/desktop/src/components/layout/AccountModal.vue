@@ -1,55 +1,101 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Check, Copy, ExternalLink, LogOut, ShieldCheck, User } from "@lucide/vue";
+import {
+  BadgeCheck,
+  Check,
+  Copy,
+  ExternalLink,
+  LogOut,
+  Plus,
+  Trash2,
+  UserRound,
+} from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import {
+  activateMicrosoftAccount,
+  addOfflineAccount,
   cancelMicrosoftLogin,
   completeMicrosoftLogin,
   getAccountState,
   getMicrosoftConfig,
   logoutAccount,
   openMicrosoftLogin,
-  setOfflineAccount,
+  removeOfflineAccount,
   startMicrosoftLogin,
+  switchOfflineAccount,
 } from "@/api/account";
 import { isApiError } from "@/api/invoke";
 import { log } from "@/api/settings";
+import { useToastStore } from "@/stores/toast";
+import { askConfirm } from "@/composables/useConfirm";
 import type { AccountState, MicrosoftConfig } from "@/types";
 
 /**
- * 账户弹窗：微软正版登录 + 离线用户名。
+ * 账户面板：离线档案列表 + 微软正版登录。
  *
- * 微软登录用设备码流程：显示短码 → 用户在任意浏览器授权 →
- * 这里同时轮询结果，成功后直接切到正版账户。
- *
- * 客户端 ID 未配置时，登录按钮保持可见但给出明确提示，
- * 避免用户点了之后只看到一个 invalid_client 报错。
+ * 离线档案创建时固化 UUID（`md5("OfflinePlayer:<name>")`）。
+ * Minecraft 的玩家数据按 UUID 归属，切换档案就等于换了一个玩家；
+ * 想保留同一个存档里的物品，请切回创建它的那个档案。
  */
 const props = withDefaults(defineProps<{ open?: boolean }>(), { open: true });
 const emit = defineEmits<{ (e: "close"): void }>();
 
+const toast = useToastStore();
 const state = ref<AccountState | null>(null);
 const config = ref<MicrosoftConfig | null>(null);
-const offlineName = ref("");
+const newName = ref("");
 
 const loading = ref(true);
-const busy = ref(false);
+const busy = ref("");
 const error = ref("");
 
 const deviceCode = ref("");
 const verificationUri = ref("");
 const copied = ref(false);
+const autoCopied = ref(false);
 
 const isMicrosoft = computed(() => state.value?.kind === "microsoft");
 const canLogin = computed(() => Boolean(config.value?.configured));
-/** 系统凭据管理器不可用时，令牌只能留在内存里。 */
 const ephemeral = computed(() => state.value?.credentialStoreEphemeral ?? false);
-/** Mojang 审核期间 API 会拒绝正版令牌，提示改用离线模式。 */
 const apiPending = computed(() => error.value.includes("审批中"));
+const offlineAccounts = computed(() => state.value?.offlineAccounts ?? []);
+const microsoftProfile = computed(() => state.value?.microsoftProfile ?? null);
+
+const nameValid = computed(() => /^[A-Za-z0-9_]{3,16}$/.test(newName.value.trim()));
+
+/**
+ * 账户中心的两个分区。
+ *
+ * 之前两类账户纵向堆在同一页：微软正版、当前档案、其它档案、新建表单、登录区从上到下排开，
+ * 弹窗被拉得很长，而且右侧还压着一个突兀的浅蓝色圆斑。
+ * 改成顶部**分段控制器**后，每个分区只展示自己那一类内容，弹窗高度回到一屏之内。
+ */
+type AccountTab = "offline" | "microsoft";
+const activeTab = ref<AccountTab>("offline");
+const tabs: { id: AccountTab; label: string }[] = [
+  { id: "offline", label: "离线档案" },
+  { id: "microsoft", label: "微软正版" },
+];
+
+/** 当前正在使用的离线档案（微软账户占用时为空）。 */
+const currentOffline = computed(() => {
+  if (isMicrosoft.value) return null;
+  const id = state.value?.activeOfflineId;
+  return offlineAccounts.value.find((profile) => profile.id === id) ?? null;
+});
+
+/** 除当前使用中之外的离线档案。 */
+const otherAccounts = computed(() => {
+  if (!isMicrosoft.value) {
+    const id = state.value?.activeOfflineId;
+    return offlineAccounts.value.filter((profile) => profile.id !== id);
+  }
+  return offlineAccounts.value;
+});
 
 function toMessage(value: unknown): string {
   if (isApiError(value)) return value.message;
@@ -64,7 +110,7 @@ async function load(): Promise<void> {
     const [account, microsoft] = await Promise.all([getAccountState(), getMicrosoftConfig()]);
     state.value = account;
     config.value = microsoft;
-    offlineName.value = account.kind === "offline" ? account.name : "";
+    newName.value = "";
   } catch (err) {
     error.value = `读取账户失败：${toMessage(err)}`;
   } finally {
@@ -79,36 +125,111 @@ watch(
   },
 );
 
+/*
+ * 账户类型变化时自动切到对应分区。
+ * 只监听 kind 本身，因此用户手动切 tab 之后不会被立刻弹回去。
+ */
+watch(
+  () => state.value?.kind,
+  (kind) => {
+    if (kind === "microsoft") activeTab.value = "microsoft";
+    else if (kind === "offline") activeTab.value = "offline";
+  },
+);
+
+/** 离线用户名只允许 ASCII：输入时直接过滤，避免中文名进游戏后无法登录。 */
+function onNameInput(value: string): void {
+  newName.value = value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 16);
+}
+
+async function run(key: string, action: () => Promise<AccountState>): Promise<void> {
+  busy.value = key;
+  error.value = "";
+  try {
+    state.value = await action();
+  } catch (err) {
+    error.value = toMessage(err);
+    void log.error(`账户操作失败: ${error.value}`, { component: "AccountModal", action: key });
+  } finally {
+    busy.value = "";
+  }
+}
+
+function createOffline(): void {
+  if (!nameValid.value) {
+    error.value = "离线用户名需为 3–16 位字母、数字或下划线";
+    return;
+  }
+  void run("add", () => addOfflineAccount(newName.value.trim())).then(() => {
+    if (!error.value) {
+      toast.success("离线档案已创建", newName.value.trim());
+      newName.value = "";
+    }
+  });
+}
+
+function switchOffline(id: string): void {
+  if (!isMicrosoft.value && state.value?.activeOfflineId === id) return;
+  void run(`switch-${id}`, () => switchOfflineAccount(id)).then(() => {
+    if (!error.value) toast.success("已切换离线档案", state.value?.name ?? "");
+  });
+}
+
+function removeOffline(id: string, name: string): void {
+  void askConfirm({
+    title: `删除离线档案「${name}」？`,
+    message: "只删除这个档案条目，存档里的玩家数据不会被删除。",
+    confirmText: "删除",
+    danger: true,
+  }).then((confirmed) => {
+    if (!confirmed) return;
+    void run(`remove-${id}`, () => removeOfflineAccount(id));
+  });
+}
+
+function switchMicrosoft(): void {
+  void run("activate", () => activateMicrosoftAccount()).then(() => {
+    if (!error.value) toast.success("已切换到微软正版", state.value?.name ?? "");
+  });
+}
+
 async function login(): Promise<void> {
   if (busy.value || !canLogin.value || !config.value) return;
-  busy.value = true;
+  busy.value = "login";
   error.value = "";
   deviceCode.value = "";
   verificationUri.value = "";
   copied.value = false;
+  autoCopied.value = false;
 
   try {
     const info = await startMicrosoftLogin();
     deviceCode.value = info.userCode;
     verificationUri.value = info.verificationUri;
-    // 直接拉起浏览器，省掉「复制链接再粘贴」这一步；失败时短码仍然可见
+
+    // 拉起浏览器前先把短码放进剪贴板，用户直接粘贴即可
+    try {
+      await navigator.clipboard.writeText(info.userCode);
+      autoCopied.value = true;
+    } catch {
+      // 剪贴板不可用时短码仍然可见，可手动复制
+    }
     void openMicrosoftLogin(info.verificationUri).catch(() => {});
 
-    // 立刻开始轮询：用户看到短码的同时，后端已经在等授权结果
     state.value = await completeMicrosoftLogin(
       info.deviceCode,
       info.interval,
       info.expiresIn,
     );
-    offlineName.value = "";
+    toast.success("微软登录成功", state.value.name);
+    newName.value = "";
   } catch (err) {
-    // 关弹窗触发的取消不是错误，不应弹红字
     if (isApiError(err) && err.type === "cancelled") return;
     const message = toMessage(err);
     error.value = message;
     void log.error(`微软登录失败: ${message}`, { component: "AccountModal" });
   } finally {
-    busy.value = false;
+    busy.value = "";
     deviceCode.value = "";
     verificationUri.value = "";
   }
@@ -124,8 +245,7 @@ async function openBrowser(): Promise<void> {
 }
 
 function handleClose(): void {
-  // 正在轮询时先让后端停止，否则关掉弹窗后它还会继续等授权
-  if (busy.value) void cancelMicrosoftLogin().catch(() => {});
+  if (busy.value === "login") void cancelMicrosoftLogin().catch(() => {});
   emit("close");
 }
 
@@ -136,37 +256,20 @@ async function copyCode(): Promise<void> {
     copied.value = true;
     window.setTimeout(() => (copied.value = false), 1600);
   } catch {
-    // 剪贴板不可用时用户仍可手动抄写短码
+    // 剪贴板不可用时可手动抄写
   }
 }
 
 async function logout(): Promise<void> {
-  busy.value = true;
+  busy.value = "logout";
   error.value = "";
   try {
     state.value = await logoutAccount();
-    offlineName.value = "";
+    toast.success("已退出微软账户", "已切回离线档案");
   } catch (err) {
     error.value = `退出登录失败：${toMessage(err)}`;
   } finally {
-    busy.value = false;
-  }
-}
-
-async function useOffline(): Promise<void> {
-  const name = offlineName.value.trim();
-  if (!name) {
-    error.value = "离线用户名不能为空";
-    return;
-  }
-  busy.value = true;
-  error.value = "";
-  try {
-    state.value = await setOfflineAccount(name);
-  } catch (err) {
-    error.value = `切换离线账户失败：${toMessage(err)}`;
-  } finally {
-    busy.value = false;
+    busy.value = "";
   }
 }
 </script>
@@ -174,94 +277,210 @@ async function useOffline(): Promise<void> {
 <template>
   <AppModal width="sm" :open="open" @close="handleClose">
     <template #header>
-      <div
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500"
-      >
-        <User :size="18" />
-      </div>
-      <div class="min-w-0 flex-1">
-        <h2 class="text-[16px] font-semibold leading-5 text-ink">账户</h2>
-        <p class="truncate text-[11px] text-ink-muted">
-          {{ isMicrosoft ? "已登录微软正版账户" : "当前使用离线账户" }}
-        </p>
+      <div class="flex min-w-0 flex-1 items-center gap-3">
+        <div
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
+        >
+          <BadgeCheck v-if="isMicrosoft" :size="18" />
+          <UserRound v-else :size="18" />
+        </div>
+        <div class="min-w-0">
+          <h2 class="text-h2 font-semibold leading-5 text-ink">账户中心</h2>
+          <p class="truncate text-micro text-ink-muted">
+            {{ isMicrosoft ? "微软正版账户" : "离线档案" }} · {{ state?.name ?? "读取中" }}
+          </p>
+        </div>
       </div>
     </template>
 
-    <div v-if="loading" class="flex h-40 items-center justify-center">
+    <div v-if="loading" class="flex h-48 items-center justify-center">
       <AppLoading :size="56" label="正在读取账户…" />
     </div>
 
-    <div v-else class="flex flex-col gap-5">
-      <!-- 当前账户 -->
-      <div class="flex items-center gap-3 rounded-lg border border-line/60 bg-surface/60 px-3 py-2.5">
-        <div
-          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+    <template v-else>
+      <!-- 分段控制器：两类账户各占一个分区，弹窗不再被拉得很长 -->
+      <div class="mb-4 flex gap-1 rounded-lg bg-surface-muted p-1">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          type="button"
+          class="flex-1 rounded-md py-1.5 text-body font-medium transition-fast"
           :class="
-            isMicrosoft ? 'bg-success-soft text-success' : 'bg-brand-500/12 text-brand-600'
+            activeTab === tab.id
+              ? 'bg-surface font-semibold text-ink shadow-sm'
+              : 'text-ink-muted hover:text-ink-soft'
           "
+          @click="activeTab = tab.id"
         >
-          {{ (state?.name ?? "?").slice(0, 1).toUpperCase() }}
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-1.5">
-            <span class="truncate text-[14px] font-semibold text-ink">{{ state?.name }}</span>
-            <span
-              class="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-              :class="
-                isMicrosoft ? 'bg-success-soft text-success' : 'bg-ink/6 text-ink-muted'
-              "
-            >
-              {{ isMicrosoft ? "正版" : "离线" }}
-            </span>
-          </div>
-          <div class="truncate text-[11px] text-ink-muted">
-            {{ isMicrosoft ? (state?.uuid ?? "") : "离线账户，可使用本地皮肤与联机 mod" }}
-          </div>
-        </div>
-        <AppButton
-          v-if="isMicrosoft"
-          variant="ghost"
-          size="sm"
-          :disabled="busy"
-          @click="logout"
-        >
-          <LogOut :size="13" class="mr-1" />
-          退出
-        </AppButton>
+          {{ tab.label }}
+        </button>
       </div>
 
-      <p
-        v-if="ephemeral"
-        class="rounded-md bg-warning-soft px-3 py-2 text-[12px] text-warning"
-      >
-        系统凭据管理器不可用，登录令牌只在本次运行内有效，重启后需要重新登录。
-      </p>
-
-      <!-- 微软登录 -->
-      <div class="flex flex-col gap-2">
-        <div class="flex items-center gap-1.5 text-[13px] font-medium text-ink">
-          <ShieldCheck :size="14" class="text-brand-500" />
-          微软正版登录
+      <!-- ================= 离线档案 ================= -->
+      <div v-if="activeTab === 'offline'" class="flex flex-col gap-4">
+        <!-- 当前正在使用的档案 -->
+        <div
+          v-if="currentOffline"
+          class="flex items-center gap-3 rounded-lg border border-line bg-surface-muted/50 px-4 py-3"
+        >
+          <span
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-h2 font-semibold text-ink-soft"
+          >
+            {{ currentOffline.name.slice(0, 1).toUpperCase() }}
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="truncate text-h2 font-semibold text-ink">{{ currentOffline.name }}</span>
+              <span
+                class="shrink-0 rounded-xs bg-ink/6 px-1.5 py-0.5 text-micro font-medium text-ink-muted"
+              >
+                使用中
+              </span>
+            </div>
+            <p class="mt-0.5 truncate font-mono text-micro text-ink-muted">
+              UUID {{ currentOffline.uuid.slice(0, 8) }}…
+            </p>
+          </div>
         </div>
 
-        <p v-if="!canLogin" class="rounded-md bg-warning-soft px-3 py-2 text-[12px] text-warning">
-          登录尚未开放：需要先在 Azure 门户注册应用，并把客户端 ID 填入
-          <code class="font-mono">SERENO_MS_CLIENT_ID</code> 或代码中的预留常量。
+        <!-- 其它档案：一个整体列表，行间用极淡的分隔线，不再一个大框套小框 -->
+        <div v-if="otherAccounts.length" class="flex flex-col gap-2">
+          <h3 class="px-1 text-caption font-medium text-ink-muted">切换其他档案</h3>
+          <div
+            class="flex flex-col divide-y divide-line/50 overflow-hidden rounded-lg border border-line bg-surface"
+          >
+            <div
+              v-for="profile in otherAccounts"
+              :key="profile.id"
+              class="group flex items-center justify-between px-4 py-2.5 transition-fast hover:bg-surface-muted"
+            >
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-not-allowed"
+                :disabled="!!busy"
+                @click="switchOffline(profile.id)"
+              >
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-body font-semibold text-ink-soft"
+                >
+                  {{ profile.name.slice(0, 1).toUpperCase() }}
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-body font-medium text-ink-soft">
+                    {{ profile.name }}
+                  </span>
+                  <span class="block truncate font-mono text-micro text-ink-muted">
+                    {{ profile.uuid.slice(0, 8) }}…
+                  </span>
+                </span>
+              </button>
+              <!-- 删除按钮平时不出现，悬停该行才浮现 -->
+              <button
+                type="button"
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-0 transition-all hover:bg-danger-soft hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/35"
+                :title="`删除 ${profile.name}`"
+                :disabled="!!busy"
+                @click="removeOffline(profile.id, profile.name)"
+              >
+                <Trash2 :size="13" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 新建离线档案 -->
+        <div class="flex flex-col gap-2 rounded-lg border border-dashed border-line px-4 py-3">
+          <div class="flex items-center gap-1.5 text-body font-semibold text-ink">
+            <Plus :size="14" class="text-ink-muted" />
+            新建离线档案
+          </div>
+          <div class="flex gap-2">
+            <AppInput
+              :model-value="newName"
+              class="flex-1"
+              placeholder="3–16 位字母、数字或下划线（不支持中文）"
+              :invalid="newName.length > 0 && !nameValid"
+              @update:model-value="onNameInput"
+              @submit="createOffline"
+            />
+            <AppButton
+              variant="primary"
+              :disabled="!nameValid || !!busy"
+              :loading="busy === 'add'"
+              @click="createOffline"
+            >
+              创建
+            </AppButton>
+          </div>
+          <p class="text-micro leading-5 text-ink-muted">
+            档案创建时会固化一个 UUID。切换档案会切换到对应的玩家数据；想保留存档里的物品，请切回原来的档案。
+          </p>
+        </div>
+      </div>
+
+      <!-- ================= 微软正版 ================= -->
+      <div v-else class="flex flex-col gap-4">
+        <p
+          v-if="ephemeral"
+          class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
+        >
+          系统凭据管理器不可用，登录令牌只在本次运行内有效，重启后需要重新登录。
         </p>
 
-        <template v-else-if="!isMicrosoft">
-          <!-- 设备码 -->
+        <!-- 正在使用微软账户 -->
+        <div v-if="isMicrosoft" class="flex flex-col items-center gap-3 py-2 text-center">
           <div
-            v-if="deviceCode"
-            class="flex flex-col items-center gap-2 rounded-lg border border-brand-500/25 bg-brand-500/5 px-3 py-3"
+            class="flex h-14 w-14 items-center justify-center rounded-full bg-success-soft text-success"
           >
-            <p class="text-[12px] text-ink-muted">
-              在浏览器打开
-              <span class="font-medium text-brand-600">{{ verificationUri }}</span>
-              并输入下面的代码
+            <BadgeCheck :size="26" />
+          </div>
+          <div>
+            <h3 class="text-h2 font-semibold text-ink">
+              {{ microsoftProfile?.name ?? state?.name }}
+            </h3>
+            <p class="mt-1 text-caption text-success">正版账户已登录</p>
+          </div>
+          <AppButton variant="secondary" size="sm" :disabled="!!busy" @click="logout">
+            <LogOut :size="13" />
+            退出登录
+          </AppButton>
+        </div>
+
+        <!-- 已登录，但当前使用的是离线档案 -->
+        <div v-else-if="microsoftProfile" class="flex flex-col items-center gap-3 py-2 text-center">
+          <div
+            class="flex h-14 w-14 items-center justify-center rounded-full bg-surface-muted text-ink-soft"
+          >
+            <BadgeCheck :size="26" />
+          </div>
+          <div>
+            <h3 class="text-h2 font-semibold text-ink">{{ microsoftProfile.name }}</h3>
+            <p class="mt-1 text-caption text-ink-muted">微软正版 · 登录状态已保存</p>
+          </div>
+          <AppButton variant="primary" size="sm" :disabled="!!busy" @click="switchMicrosoft">
+            切换到微软正版
+          </AppButton>
+        </div>
+
+        <!-- 尚未登录 -->
+        <template v-else>
+          <p
+            v-if="!canLogin"
+            class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
+          >
+            登录尚未开放：需要先在 Azure 门户注册应用，并把客户端 ID 填入
+            <code class="font-mono">SERENO_MS_CLIENT_ID</code>。
+          </p>
+
+          <div
+            v-else-if="deviceCode"
+            class="flex flex-col items-center gap-2 rounded-lg border border-line bg-surface-muted/50 px-3 py-4"
+          >
+            <p class="text-caption text-ink-muted">
+              浏览器已打开，输入下面的代码即可完成授权
             </p>
             <div class="flex items-center gap-2">
-              <span class="font-mono text-[20px] font-semibold tracking-[0.12em] text-ink">
+              <span class="font-mono text-[22px] font-semibold tracking-[0.14em] text-ink">
                 {{ deviceCode }}
               </span>
               <button
@@ -276,63 +495,45 @@ async function useOffline(): Promise<void> {
               <button
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-ink/6 hover:text-ink"
-                title="打开浏览器"
+                title="重新打开浏览器"
                 @click="openBrowser"
               >
                 <ExternalLink :size="14" />
               </button>
             </div>
-            <p class="flex items-center gap-1.5 text-[11px] text-ink-muted">
+            <p class="text-micro" :class="autoCopied ? 'text-success' : 'text-ink-muted'">
+              {{ autoCopied ? "代码已自动复制到剪贴板" : "代码未自动复制，请点上面的按钮复制" }}
+            </p>
+            <p class="flex items-center gap-1.5 text-micro text-ink-muted">
               <AppLoading :size="14" />
               正在等待你在浏览器中完成授权…
             </p>
           </div>
 
-          <AppButton v-else variant="secondary" :loading="busy" @click="login">
-            使用 Microsoft 账号登录
-          </AppButton>
-          <p class="text-[11px] text-ink-muted">
-            登录信息只保存在系统凭据管理器，不会写进设置文件或日志。
-          </p>
+          <div v-else class="flex flex-col items-center gap-3 py-2 text-center">
+            <p class="text-caption text-ink-muted">
+              登录正版账户，即可使用官方皮肤与联机服务。
+            </p>
+            <AppButton
+              variant="primary"
+              :loading="busy === 'login'"
+              :disabled="!!busy"
+              @click="login"
+            >
+              使用 Microsoft 账号登录
+            </AppButton>
+            <p class="text-micro text-ink-muted">登录后会自动复制设备码并打开浏览器</p>
+          </div>
         </template>
-      </div>
-
-      <div class="h-px bg-line/60" />
-
-      <!-- 离线账户 -->
-      <div class="flex flex-col gap-2">
-        <div class="text-[13px] font-medium text-ink">离线账户</div>
-        <div class="flex gap-2">
-          <AppInput
-            v-model="offlineName"
-            class="flex-1"
-            placeholder="3–16 位字母、数字或下划线"
-            @keyup.enter="useOffline"
-          />
-          <AppButton
-            variant="secondary"
-            :disabled="busy || isMicrosoft"
-            @click="useOffline"
-          >
-            使用离线
-          </AppButton>
-        </div>
-        <p v-if="isMicrosoft" class="text-[11px] text-ink-muted">
-          当前是正版账户；切换离线会退出微软登录。
-        </p>
       </div>
 
       <p
         v-if="error"
-        class="text-[12px]"
-        :class="
-          apiPending
-            ? 'rounded-md bg-warning-soft px-3 py-2 text-warning'
-            : 'text-danger'
-        "
+        class="mt-4 text-caption"
+        :class="apiPending ? 'rounded-md bg-warning-soft px-3 py-2 text-warning' : 'text-danger'"
       >
         {{ error }}
       </p>
-    </div>
+    </template>
   </AppModal>
 </template>

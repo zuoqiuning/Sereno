@@ -97,13 +97,13 @@ function runAction(kind: string): void {
   <AppModal width="md" height="fixed" :open="open" @close="emit('close')">
     <template #header>
       <div
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
       >
         <HeartPulse :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h2 class="text-[16px] font-semibold leading-5 text-ink">健康检查</h2>
-        <p class="truncate text-[11px] text-ink-muted">
+        <h2 class="text-h2 font-semibold leading-5 text-ink">健康检查</h2>
+        <p class="truncate text-micro text-ink-muted">
           {{ instance.displayName }} · Minecraft {{ instance.gameVersion }}
           <span v-if="running">· 游戏运行中</span>
         </p>
@@ -117,10 +117,10 @@ function runAction(kind: string): void {
     <div v-if="loading" class="flex h-64 items-center justify-center">
       <AppLoading :size="56" label="正在检查实例…" />
     </div>
-    <p v-else-if="error" class="text-[12px] text-danger">{{ error }}</p>
+    <p v-else-if="error" class="text-caption text-danger">{{ error }}</p>
 
     <div v-else-if="report" class="flex flex-col gap-4">
-      <div class="flex items-center gap-4 text-[12px]">
+      <div class="flex items-center gap-4 text-caption">
         <span class="flex items-center gap-1.5 text-success">
           <CheckCircle2 :size="14" />{{ counts.ok }} 项正常
         </span>
@@ -145,8 +145,8 @@ function runAction(kind: string): void {
             :class="statusClass(check.status)"
           />
           <div class="min-w-0 flex-1">
-            <div class="text-[13px] font-medium leading-4 text-ink">{{ check.title }}</div>
-            <div class="mt-1 text-[11px] leading-4 text-ink-muted">{{ check.detail }}</div>
+            <div class="text-body font-medium leading-4 text-ink">{{ check.title }}</div>
+            <div class="mt-1 text-micro leading-4 text-ink-muted">{{ check.detail }}</div>
           </div>
           <AppButton
             v-if="check.action"
@@ -169,16 +169,16 @@ function runAction(kind: string): void {
         "
         class="rounded-lg border border-line/50 bg-surface/50 px-3 py-2.5"
       >
-        <div class="mb-2 text-[12px] font-medium text-ink">Mod 依赖图</div>
+        <div class="mb-2 text-caption font-medium text-ink">Mod 依赖图</div>
 
         <div v-if="modIssues.missing.length" class="mb-2 flex flex-col gap-1">
-          <div class="flex items-center gap-1.5 text-[11px] font-medium text-danger">
+          <div class="flex items-center gap-1.5 text-micro font-medium text-danger">
             <XCircle :size="13" />缺失前置
           </div>
           <div
             v-for="issue in modIssues.missing"
             :key="`missing-${issue.modId}`"
-            class="flex items-start justify-between gap-2 text-[11px] leading-4 text-ink-soft"
+            class="flex items-start justify-between gap-2 text-micro leading-4 text-ink-soft"
           >
             <span class="min-w-0">
               <span class="font-medium text-ink">{{ issue.modId }}</span>
@@ -189,7 +189,7 @@ function runAction(kind: string): void {
             </span>
             <button
               type="button"
-              class="shrink-0 text-[11px] text-brand-600 hover:underline"
+              class="shrink-0 text-micro text-brand-600 hover:underline"
               @click="runAction(`download:${issue.modId}`)"
             >
               去下载
@@ -198,13 +198,13 @@ function runAction(kind: string): void {
         </div>
 
         <div v-if="modIssues.mismatched.length" class="mb-2 flex flex-col gap-1">
-          <div class="flex items-center gap-1.5 text-[11px] font-medium text-warning">
+          <div class="flex items-center gap-1.5 text-micro font-medium text-warning">
             <AlertTriangle :size="13" />版本不满足
           </div>
           <div
             v-for="issue in modIssues.mismatched"
             :key="`mismatch-${issue.modId}`"
-            class="flex items-start justify-between gap-2 text-[11px] leading-4 text-ink-soft"
+            class="flex items-start justify-between gap-2 text-micro leading-4 text-ink-soft"
           >
             <span class="min-w-0">
               <span class="font-medium text-ink">{{ issue.modId }}</span>
@@ -216,7 +216,7 @@ function runAction(kind: string): void {
             </span>
             <button
               type="button"
-              class="shrink-0 text-[11px] text-brand-600 hover:underline"
+              class="shrink-0 text-micro text-brand-600 hover:underline"
               @click="runAction(`download:${issue.modId}`)"
             >
               去下载
@@ -225,13 +225,13 @@ function runAction(kind: string): void {
         </div>
 
         <div v-if="modIssues.duplicates.length" class="flex flex-col gap-1">
-          <div class="flex items-center gap-1.5 text-[11px] font-medium text-danger">
+          <div class="flex items-center gap-1.5 text-micro font-medium text-danger">
             <XCircle :size="13" />重复安装
           </div>
           <div
             v-for="duplicate in modIssues.duplicates"
             :key="`duplicate-${duplicate.modId}`"
-            class="text-[11px] leading-4 text-ink-soft"
+            class="text-micro leading-4 text-ink-soft"
           >
             <span class="font-medium text-ink">{{ duplicate.name }}</span>
             <span class="text-ink-muted">：{{ duplicate.files.join("、") }}</span>
@@ -245,7 +245,7 @@ function runAction(kind: string): void {
         class="rounded-lg border border-line/50 bg-surface/50 px-3 py-2.5"
       >
         <div class="mb-2 flex items-center justify-between">
-          <div class="text-[12px] font-medium text-ink">最近一次崩溃</div>
+          <div class="text-caption font-medium text-ink">最近一次崩溃</div>
           <AppButton variant="ghost" size="sm" @click="runAction('open-logs')">
             查看完整日志
           </AppButton>
@@ -263,13 +263,13 @@ function runAction(kind: string): void {
             />
             <Info v-else :size="14" class="mt-0.5 shrink-0 text-warning" />
             <div class="min-w-0">
-              <div class="text-[12px] font-medium leading-4 text-ink">
+              <div class="text-caption font-medium leading-4 text-ink">
                 {{ finding.title }}
-                <span v-if="finding.confidence !== 'high'" class="text-[10px] font-normal text-ink-muted">
+                <span v-if="finding.confidence !== 'high'" class="text-micro font-normal text-ink-muted">
                   可能有其它原因
                 </span>
               </div>
-              <div class="mt-0.5 text-[11px] leading-4 text-ink-muted">
+              <div class="mt-0.5 text-micro leading-4 text-ink-muted">
                 {{ finding.suggestion }}
               </div>
             </div>

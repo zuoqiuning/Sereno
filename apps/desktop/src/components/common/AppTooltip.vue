@@ -88,7 +88,7 @@ const placementClass = computed(() => {
         v-if="visible"
         :id="tipId"
         role="tooltip"
-        class="pointer-events-none absolute z-50 whitespace-nowrap rounded-xs bg-ink px-2.5 py-1.5 text-xs text-canvas shadow-lg"
+        class="pointer-events-none absolute z-50 whitespace-nowrap rounded-xs bg-ink px-2.5 py-1.5 text-micro text-canvas shadow-lg"
         :class="placementClass"
       >
         {{ content }}

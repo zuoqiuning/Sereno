@@ -1,11 +1,11 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 
 import App from "./App.vue";
 import { warmAccountSession } from "./api/account";
 import { searchResources } from "./api/resource";
-import { getSettings, finishStartup, log } from "./api/settings";
+import { getSettings, finishStartup, log, saveWindowState } from "./api/settings";
 import { router } from "./router";
 import { useVersionStore } from "./stores/version";
 import { applyTheme } from "./utils/theme";
@@ -146,6 +146,74 @@ async function showMainWindow(): Promise<void> {
 }
 
 /**
+ * 恢复上次的窗口尺寸与位置。
+ *
+ * 之前 `AppSettings.window` 字段定义了却没人用，用户每次启动都要重新拖一次窗口。
+ * 这里把**逻辑像素**（物理像素 ÷ 缩放比）写进设置，跨 DPI 显示器时也不会失真。
+ */
+async function restoreWindowState(): Promise<void> {
+  try {
+    const settings = await getSettings();
+    const { width, height, x, y } = settings.window;
+    if (!width || !height) return;
+
+    const win = getCurrentWindow();
+    await win.setSize(new LogicalSize(width, height));
+    if (x !== null && x !== undefined && y !== null && y !== undefined) {
+      await win.setPosition(new LogicalPosition(x, y));
+    }
+  } catch {
+    // 浏览器预览 / 首次启动：没有窗口 API 或没有历史值，保持默认尺寸
+  }
+}
+
+/** 窗口尺寸变化后写回设置的防抖延迟：拖拽过程中不要频繁写盘。 */
+const WINDOW_SAVE_DELAY = 600;
+
+/** 监听窗口尺寸/位置变化并持久化。 */
+function trackWindowState(): void {
+  let timer: number | undefined;
+  let last = "";
+
+  const schedule = (): void => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const win = getCurrentWindow();
+          const size = await win.innerSize();
+          // 最小化 / 隐藏时尺寸可能退化为 0，不要覆盖有效值
+          if (size.width < 320 || size.height < 240) return;
+
+          const scale = await win.scaleFactor();
+          const logicalWidth = Math.round(size.width / scale);
+          const logicalHeight = Math.round(size.height / scale);
+          const position = await win.innerPosition();
+          const logicalX = Math.round(position.x / scale);
+          const logicalY = Math.round(position.y / scale);
+
+          const signature = `${logicalWidth}x${logicalHeight}@${logicalX},${logicalY}`;
+          if (signature === last) return;
+          last = signature;
+
+          await saveWindowState(logicalWidth, logicalHeight, logicalX, logicalY);
+        } catch {
+          // 浏览器预览下没有窗口 API，静默忽略
+        }
+      })();
+    }, WINDOW_SAVE_DELAY);
+  };
+
+  try {
+    const win = getCurrentWindow();
+    void win.onResized(schedule);
+    void win.onMoved(schedule);
+  } catch {
+    // 同上
+  }
+}
+
+/**
  * 启动流程。
  *
  * 主窗口在 `tauri.conf.json` 里 `visible: false`，启动画面是独立的透明窗口。
@@ -164,10 +232,12 @@ async function bootstrap(): Promise<void> {
 
   app.mount("#app");
 
-  // 主题在首屏挂载后立刻应用；读取失败就保持默认浅色。
+  // 主题与窗口尺寸在首屏挂载后立刻应用；读取失败就保持默认值。
   void getSettings()
     .then((settings) => applyTheme(settings.theme))
     .catch(() => undefined);
+  void restoreWindowState();
+  trackWindowState();
 
   await preloadStartupData(pinia);
   await showMainWindow();

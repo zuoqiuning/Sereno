@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import type { Component } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Gamepad2,
-  Gift,
   Loader2,
   Database,
   Package,
   Palette,
   Puzzle,
+  RefreshCw,
   Search,
   Sparkles,
-  ChevronRight,
   Check,
   X,
 } from "@lucide/vue";
@@ -19,12 +17,17 @@ import { useRoute, useRouter } from "vue-router";
 
 import AppBadge from "@/components/common/AppBadge.vue";
 import AppButton from "@/components/common/AppButton.vue";
-import AppCard from "@/components/common/AppCard.vue";
+import AppEmptyState from "@/components/common/AppEmptyState.vue";
+import AppIconButton from "@/components/common/AppIconButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
-import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import AppSelect from "@/components/common/AppSelect.vue";
+import AppSkeleton from "@/components/common/AppSkeleton.vue";
+import PageShell from "@/components/layout/PageShell.vue";
+import SideNav from "@/components/layout/SideNav.vue";
+import type { SideNavItem } from "@/components/layout/SideNav.vue";
 import ResourceBrowser from "@/components/downloads/ResourceBrowser.vue";
-import { createInstance } from "@/api/instance";
+import { createInstance, listInstances } from "@/api/instance";
 import { installGame } from "@/api/install";
 import { installLoader, getLoaderVersions, type LoaderType } from "@/api/loader";
 import { isApiError } from "@/api/invoke";
@@ -33,12 +36,7 @@ import { useVersionStore } from "@/stores/version";
 import { useTaskStore } from "@/stores/task";
 import type { DownloadProgress, VersionSummary, VersionType } from "@/types";
 
-interface Category {
-  id: string;
-  label: string;
-  icon: Component;
-}
-const categories: Category[] = [
+const categories: SideNavItem[] = [
   { id: "vanilla", label: "原版游戏", icon: Gamepad2 },
   { id: "mod", label: "MOD", icon: Puzzle },
   { id: "modpack", label: "整合包", icon: Package },
@@ -46,6 +44,16 @@ const categories: Category[] = [
   { id: "datapack", label: "数据包", icon: Database },
   { id: "shader", label: "光影", icon: Sparkles },
 ];
+
+/** 分类 → 工具条里的一句话提示（不单开一行，宽屏才显示）。 */
+const CATEGORY_HINT: Record<string, string> = {
+  vanilla: "安装原版游戏，可同时选择加载器",
+  mod: "搜索并安装 Mod，支持 Modrinth 与 CurseForge",
+  modpack: "一键安装整合包，自动装好游戏与全部 Mod",
+  resourcepack: "替换材质与音效",
+  datapack: "安装数据包，改变游戏机制",
+  shader: "安装光影，需要 Iris 或 OptiFine",
+};
 
 type TabId = "release" | "snapshot" | "old" | "april";
 const tabs = [
@@ -88,6 +96,33 @@ const activeTab = ref<TabId>("release");
 const searchKeyword = ref("");
 const loading = ref(false);
 const errorMessage = ref("");
+
+/** 已安装的 MC 版本集合：用来在版本列表里标出「你已经装过了」。 */
+const installedVersions = ref<Set<string>>(new Set());
+
+/**
+ * 搜索防抖。
+ *
+ * 版本清单有 800+ 条，每次按键都全量过滤会让输入明显发涩；
+ * 200ms 是「感觉不到延迟」与「不打字也计算」之间的平衡点。
+ */
+const debouncedKeyword = ref("");
+let keywordTimer: number | undefined;
+watch(searchKeyword, (value) => {
+  window.clearTimeout(keywordTimer);
+  keywordTimer = window.setTimeout(() => {
+    debouncedKeyword.value = value;
+  }, 200);
+});
+onBeforeUnmount(() => window.clearTimeout(keywordTimer));
+
+/** 当前分类的一句话提示：贴在工具条里，不额外占一行高度。 */
+const pageHint = computed(() => CATEGORY_HINT[activeCategory.value] ?? "");
+
+// 分类写回 query：刷新页面 / 从命令面板跳回来时还在同一个分类
+watch(activeCategory, (value) => {
+  void router.replace({ query: { ...route.query, category: value } });
+});
 
 // --- 弹窗相关状态 ---
 const showModal = ref(false);
@@ -175,11 +210,16 @@ function getLoaderState(id: string) {
 function getAprilFoolsInfo(id: string) {
   return APRIL_FOOLS[id.toLowerCase()];
 }
+
+/** 这个版本是否已经在某个实例里装过。 */
+function isInstalled(versionId: string): boolean {
+  return installedVersions.value.has(versionId);
+}
 const manifestVersions = computed<VersionSummary[]>(() => versionStore.manifest?.versions ?? []);
 
 const filteredVersions = computed<VersionSummary[]>(() => {
   const all = manifestVersions.value;
-  const keyword = searchKeyword.value.trim().toLowerCase();
+  const keyword = debouncedKeyword.value.trim().toLowerCase();
   let list = all.filter((v) => {
     const isApril = !!getAprilFoolsInfo(v.id);
     if (activeTab.value === "april") return isApril;
@@ -199,8 +239,7 @@ const filteredVersions = computed<VersionSummary[]>(() => {
   return list;
 });
 
-function typeLabel(type: VersionType): string {
-  switch (type) {
+function typeLabel(type: VersionType): string {  switch (type) {
     case "release":
       return "正式";
     case "snapshot":
@@ -225,24 +264,6 @@ function typeVariant(type: VersionType): "success" | "warning" | "default" | "da
     default:
       return "danger";
   }
-}
-function badgeClass(version: VersionSummary): string {
-  if (getAprilFoolsInfo(version.id)) return "bg-warning-soft text-warning";
-  switch (version.type) {
-    case "release":
-      return "bg-success-soft text-success";
-    case "snapshot":
-      return "bg-warning-soft text-warning";
-    default:
-      return "bg-ink/5 text-ink-soft";
-  }
-}
-function formatYear(version: VersionSummary): string {
-  const raw = version.releaseTime || version.time || "";
-  if (!raw) return "未知";
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw.slice(0, 4) || "未知";
-  return date.getFullYear().toString();
 }
 function formatDate(version: VersionSummary): string {
   const raw = version.releaseTime || version.time || "";
@@ -398,243 +419,268 @@ onMounted(() => {
     activeCategory.value = category;
   }
   void loadVersions();
+
+  // 「已安装」标记：进页面读一次实例列表即可，不需要每次渲染都算
+  void listInstances()
+    .then((instances) => {
+      installedVersions.value = new Set(instances.map((item) => item.gameVersion));
+    })
+    .catch(() => undefined);
 });
 </script>
 
 <template>
-  <div class="mx-auto flex h-full w-full max-w-7xl gap-6 px-10 pt-8 pb-10">
-    <!-- 左侧分类导航 -->
-    <aside class="sereno-glass flex w-40 shrink-0 flex-col gap-1 self-start rounded-xl p-2">
-      <h2 class="mb-1 px-2 text-[12px] font-semibold tracking-widest text-ink-muted">资源分类</h2>
-      <button
-        v-for="cat in categories"
-        :key="cat.id"
-        type="button"
-        class="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors"
-        :class="
-          activeCategory === cat.id
-            ? 'bg-brand-500 text-white shadow-sm'
-            : 'text-ink-muted hover:bg-ink/4 hover:text-ink-soft'
-        "
-        @click="activeCategory = cat.id"
-      >
-        <component :is="cat.icon" :size="15" :stroke-width="2.2" />
-        <span :class="activeCategory === cat.id ? 'font-semibold' : 'font-medium'">{{
-          cat.label
-        }}</span>
-      </button>
-    </aside>
+  <PageShell :chrome="false" width="xl">
+    <div class="flex min-h-0 flex-1 gap-6">
+      <SideNav v-model="activeCategory" :items="categories" title="下载" />
 
-    <main class="flex min-w-0 flex-1 flex-col gap-4">
-      <!-- 社区资源搜索：MOD / 整合包 / 资源包 / 光影 -->
-      <ResourceBrowser v-if="activeCategory === 'mod'" kind="mod" />
-      <ResourceBrowser v-else-if="activeCategory === 'modpack'" kind="modpack" />
-      <ResourceBrowser v-else-if="activeCategory === 'resourcepack'" kind="resourcepack" />
-      <ResourceBrowser v-else-if="activeCategory === 'datapack'" kind="datapack" />
-      <ResourceBrowser v-else-if="activeCategory === 'shader'" kind="shader" />
+      <div class="flex min-w-0 flex-1 flex-col gap-4">
+        <!-- 社区资源：搜索 + 详情由 ResourceBrowser 自己管理 -->
+        <ResourceBrowser v-if="activeCategory === 'mod'" key="mod" kind="mod" />
+        <ResourceBrowser v-else-if="activeCategory === 'modpack'" key="modpack" kind="modpack" />
+        <ResourceBrowser
+          v-else-if="activeCategory === 'resourcepack'"
+          key="resourcepack"
+          kind="resourcepack"
+        />
+        <ResourceBrowser
+          v-else-if="activeCategory === 'datapack'"
+          key="datapack"
+          kind="datapack"
+        />
+        <ResourceBrowser v-else-if="activeCategory === 'shader'" key="shader" kind="shader" />
 
-      <template v-if="activeCategory === 'vanilla'">
-        <div
-          class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line/30 pb-3"
-        >
-          <div class="flex gap-1 rounded-md bg-ink/5 p-1">
-            <button
-              v-for="tab in tabs"
-              :key="tab.id"
-              type="button"
-              class="rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors"
-              :class="
-                activeTab === tab.id
-                  ? 'bg-surface text-ink shadow-sm'
-                  : 'text-ink-muted hover:text-ink-soft'
-              "
-              @click="activeTab = tab.id"
+        <template v-else>
+          <!-- 工具条：类型 tab + 分类提示 + 刷新 + 搜索，一行放完，不再单开页头 -->
+          <div class="flex shrink-0 items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex shrink-0 gap-1 rounded-md bg-surface-muted p-1">
+                <button
+                  v-for="tab in tabs"
+                  :key="tab.id"
+                  type="button"
+                  class="rounded-sm px-3 py-1.5 text-caption transition-fast"
+                  :class="
+                    activeTab === tab.id
+                      ? 'bg-surface font-semibold text-ink shadow-sm'
+                      : 'font-medium text-ink-muted hover:text-ink-soft'
+                  "
+                  @click="activeTab = tab.id"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+              <p class="hidden truncate text-micro text-ink-muted lg:block">{{ pageHint }}</p>
+            </div>
+
+            <div class="flex shrink-0 items-center gap-2">
+              <AppIconButton
+                size="sm"
+                label="刷新版本清单"
+                :disabled="loading"
+                @click="loadVersions(true)"
+              >
+                <RefreshCw :size="14" :class="{ 'animate-spin': loading }" />
+              </AppIconButton>
+              <div class="w-56">
+                <AppInput v-model="searchKeyword" clearable placeholder="搜索版本号…">
+                  <template #prefix>
+                    <Search :size="14" />
+                  </template>
+                </AppInput>
+              </div>
+            </div>
+          </div>
+
+          <!-- 版本列表：用「行 + 分隔线」而不是一版一卡，800 条才不会变成一堵墙 -->
+          <Transition name="tab" mode="out-in">
+            <div
+              :key="activeTab"
+              class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface"
             >
-              {{ tab.label }}
-            </button>
-          </div>
-          <div class="w-64">
-            <AppInput v-model="searchKeyword" placeholder="搜索版本..." />
-          </div>
-        </div>
-
-        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div v-if="loading" class="flex h-full items-center justify-center">
-            <AppLoading :size="64" label="正在获取版本清单…" />
-          </div>
-          <div
-            v-else-if="errorMessage"
-            class="flex h-full flex-col items-center justify-center gap-3 text-ink-muted"
-          >
-            <Search :size="32" :stroke-width="1.6" class="opacity-30" />
-            <p class="max-w-md text-center text-[14px] text-danger">{{ errorMessage }}</p>
-            <AppButton variant="secondary" @click="loadVersions(true)">重试</AppButton>
-          </div>
-          <div
-            v-else-if="filteredVersions.length === 0"
-            class="flex h-full flex-col items-center justify-center text-ink-muted"
-          >
-            <Search :size="32" :stroke-width="1.6" class="mb-3 opacity-30" />
-            <p class="text-[14px]">没有找到匹配的版本</p>
-          </div>
-          <div v-else class="flex flex-col gap-2 pb-2">
-            <AppCard v-for="version in filteredVersions" :key="version.id" padding="sm" hoverable>
-              <div class="flex items-center justify-between gap-4">
-                <div class="flex min-w-0 items-center gap-3">
-                  <div
-                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                    :class="badgeClass(version)"
-                  >
-                    <Gift
-                      v-if="getAprilFoolsInfo(version.id)"
-                      :size="20"
-                      :stroke-width="2.2"
-                    /><Package v-else :size="20" :stroke-width="2.2" />
+              <div v-if="loading" class="flex flex-col divide-y divide-line/50">
+                <div v-for="i in 8" :key="i" class="flex items-center gap-3 px-4 py-3">
+                  <AppSkeleton width="h-9 w-9" rounded="rounded-md" />
+                  <div class="flex flex-1 flex-col gap-2">
+                    <AppSkeleton width="w-24" height="h-4" />
+                    <AppSkeleton width="w-40" height="h-3" />
                   </div>
-                  <div class="flex min-w-0 flex-col gap-0.5">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-mono text-[16px] font-bold text-ink">{{
-                        getAprilFoolsInfo(version.id)?.displayId ?? version.id
-                      }}</span>
+                  <AppSkeleton width="w-16" height="h-7" rounded="rounded-md" />
+                </div>
+              </div>
+
+              <div v-else-if="errorMessage" class="flex flex-1 items-center justify-center">
+                <AppEmptyState
+                  :icon="Search"
+                  title="版本清单获取失败"
+                  :description="errorMessage"
+                  action-label="重试"
+                  @action="loadVersions(true)"
+                />
+              </div>
+
+              <div v-else-if="filteredVersions.length === 0" class="flex flex-1 items-center justify-center">
+                <AppEmptyState
+                  :icon="Search"
+                  title="没有找到匹配的版本"
+                  description="换个关键词，或切到其它类型看看。"
+                  action-label="清空搜索"
+                  @action="searchKeyword = ''"
+                />
+              </div>
+
+              <div v-else class="min-h-0 flex-1 overflow-y-auto">
+                <div class="flex flex-col divide-y divide-line/50">
+                  <div
+                    v-for="version in filteredVersions"
+                    :key="version.id"
+                    class="group flex items-center gap-3 px-4 py-3 transition-fast hover:bg-surface-muted"
+                  >
+                    <!-- 行首不再放图标块：版本号本身就是这一行的主体 -->
+                    <span class="w-[140px] shrink-0 truncate font-mono text-h2 font-semibold text-ink tabular">
+                      {{ getAprilFoolsInfo(version.id)?.displayId ?? version.id }}
+                    </span>
+
+                    <div class="flex min-w-0 flex-1 items-center gap-2">
                       <AppBadge
                         v-if="activeTab !== 'april'"
                         :variant="typeVariant(version.type)"
                         size="sm"
                         outline
-                        >{{ typeLabel(version.type) }}</AppBadge
                       >
+                        {{ typeLabel(version.type) }}
+                      </AppBadge>
+                      <AppBadge v-if="isInstalled(version.id)" variant="brand" size="sm">
+                        已安装
+                      </AppBadge>
+                      <span
+                        v-if="activeTab === 'april'"
+                        class="truncate text-micro text-ink-muted"
+                        :title="getAprilFoolsInfo(version.id)?.desc"
+                      >
+                        {{ getAprilFoolsInfo(version.id)?.desc }}
+                      </span>
                     </div>
-                    <p v-if="activeTab === 'april'" class="text-[12px] text-ink-muted">
-                      <span class="font-medium opacity-80">{{ formatYear(version) }}</span
-                      ><span class="mx-1.5 opacity-30">|</span
-                      >{{ getAprilFoolsInfo(version.id)?.desc }}
-                    </p>
-                    <p v-else class="text-[12px] text-ink-muted">{{ formatDate(version) }}</p>
+
+                    <span class="w-20 shrink-0 text-right text-micro text-ink-muted tabular">
+                      {{ formatDate(version) }}
+                    </span>
+
+                    <AppButton
+                      :variant="isInstalled(version.id) ? 'ghost' : 'link'"
+                      size="sm"
+                      class="w-[76px] shrink-0"
+                      @click="openDownloadModal(version)"
+                    >
+                      {{ isInstalled(version.id) ? "再装一个" : "下载" }}
+                    </AppButton>
                   </div>
                 </div>
-                <AppButton variant="primary" size="sm" @click="openDownloadModal(version)">
-                  下载
-                </AppButton>
               </div>
-            </AppCard>
-          </div>
-        </div>
-      </template>
-    </main>
+            </div>
+          </Transition>
+        </template>
+      </div>
+    </div>
 
     <!-- 下载选项 Modal -->
-    <AppModal :open="showModal" width="sm" @close="showModal = false">
+    <AppModal :open="showModal" width="sm" aria-label="安装选项" @close="showModal = false">
       <template #header>
         <div class="min-w-0 flex-1">
-          <h2 class="text-[15px] font-semibold text-ink">安装选项</h2>
-          <p class="text-[11px] text-ink-muted">选择需要的加载器</p>
+          <h2 class="text-h2 font-semibold text-ink">安装选项</h2>
+          <p class="text-micro text-ink-muted">
+            {{ modalVersion ? getAprilFoolsInfo(modalVersion.id)?.displayId ?? modalVersion.id : "" }}
+            · 选择需要一并安装的加载器
+          </p>
         </div>
       </template>
 
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-2">
         <div
           v-for="(item, index) in loadersInfo"
           :key="item.id"
-          class="flex flex-col rounded-lg border overflow-hidden transition-colors"
+          class="overflow-hidden rounded-md border transition-fast"
           :class="[
-            item.selected ? 'bg-brand-500/5 border-brand-500/30' : 'bg-surface border-line/60',
-            getLoaderState(item.id).disabled ? 'opacity-60 bg-surface-muted grayscale' : '',
+            item.selected ? 'border-brand-500/40 bg-brand-500/5' : 'border-line/70 bg-surface',
+            getLoaderState(item.id).disabled ? 'opacity-60' : '',
           ]"
         >
           <div
-            class="flex items-center justify-between p-3 px-4 select-none"
+            class="flex select-none items-center justify-between px-3 py-2.5"
             :class="getLoaderState(item.id).disabled ? 'cursor-not-allowed' : 'cursor-pointer'"
             @click="toggleLoader(index)"
           >
-            <div class="flex items-center gap-3 w-full">
-              <!-- 复选框图标 -->
+            <div class="flex w-full items-center gap-3">
               <div
-                class="flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors"
+                class="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-xs border transition-fast"
                 :class="
                   item.selected
-                    ? 'bg-brand-500 border-brand-500 text-white'
-                    : 'border-line/80 bg-surface'
+                    ? 'border-brand-500 bg-brand-500 text-white'
+                    : 'border-line bg-surface'
                 "
+                style="height: 18px; width: 18px"
               >
-                <Check v-if="item.selected" :size="14" stroke-width="3" />
+                <Check v-if="item.selected" :size="12" stroke-width="3" />
               </div>
 
-              <span
-                class="text-[14px] font-medium"
-                :class="item.selected ? 'text-ink' : 'text-ink-soft'"
-              >
+              <span class="text-body font-medium" :class="item.selected ? 'text-ink' : 'text-ink-soft'">
                 {{ item.name }}
               </span>
 
-              <!-- 禁用提示 -->
-              <span v-if="getLoaderState(item.id).disabled" class="text-[12px] text-ink-muted">
+              <span v-if="getLoaderState(item.id).disabled" class="text-micro text-ink-muted">
                 {{ getLoaderState(item.id).reason }}
               </span>
 
-              <!-- 已选版本的展示 -->
               <span
                 v-if="item.selected && item.version && !item.loading"
-                class="text-[12px] text-brand-500 font-mono bg-brand-500/10 px-2 py-0.5 rounded flex-1 truncate max-w-[150px]"
+                class="max-w-[150px] flex-1 truncate rounded-xs bg-brand-500/10 px-2 py-0.5 font-mono text-micro text-brand-500"
               >
                 {{ item.version }}
               </span>
-              <Loader2
-                v-else-if="item.loading"
-                :size="14"
-                class="shrink-0 animate-spin text-ink-muted"
-              />
+              <Loader2 v-else-if="item.loading" :size="14" class="shrink-0 animate-spin text-ink-muted" />
               <span
                 v-else-if="
                   !item.selected && item.versions.length === 0 && !getLoaderState(item.id).disabled
                 "
-                class="text-[11px]"
+                class="text-micro"
                 :class="item.failed ? 'text-danger' : 'text-ink-muted'"
               >
                 {{ item.failed ? "获取版本失败" : "不支持此版本" }}
               </span>
             </div>
 
-            <div class="flex items-center gap-2">
-              <button
-                v-if="item.selected"
-                @click.stop="toggleLoader(index)"
-                class="text-ink-muted hover:text-danger transition-colors p-1"
-              >
-                <X :size="16" />
-              </button>
-              <ChevronRight
-                v-if="!getLoaderState(item.id).disabled"
-                :size="16"
-                class="text-ink-muted transition-transform duration-200"
-                :class="item.selected ? 'rotate-90' : ''"
-              />
-            </div>
+            <AppIconButton
+              v-if="item.selected"
+              size="sm"
+              variant="danger"
+              label="取消选择"
+              @click.stop="toggleLoader(index)"
+            >
+              <X :size="14" />
+            </AppIconButton>
           </div>
 
-          <!-- 展开的版本选择区 -->
-          <div v-if="item.selected && !getLoaderState(item.id).disabled" class="px-4 pb-4 pt-1">
-            <div v-if="item.loading" class="flex items-center gap-2 text-[13px] text-ink-muted">
-              <Loader2 :size="14" class="animate-spin" /> 正在获取版本...
+          <div v-if="item.selected && !getLoaderState(item.id).disabled" class="px-3 pb-3">
+            <div v-if="item.loading" class="flex items-center gap-2 text-caption text-ink-muted">
+              <Loader2 :size="14" class="animate-spin" /> 正在获取版本…
             </div>
             <div
               v-else-if="item.versions.length === 0"
-              class="text-[13px] text-warning bg-warning/10 px-3 py-2 rounded-md"
+              class="rounded-sm bg-warning-soft px-3 py-2 text-caption text-warning"
             >
               该游戏版本暂无此加载器的支持。
             </div>
-            <select
+            <AppSelect
               v-else
               v-model="item.version"
-              class="w-full h-9 rounded-md border border-line/80 bg-surface px-3 text-[13px] text-ink outline-none focus:border-brand-500"
-            >
-              <option v-for="v in item.versions" :key="v" :value="v">{{ v }}</option>
-            </select>
+              :options="item.versions.map((version) => ({ value: version, label: version }))"
+            />
           </div>
         </div>
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
+        <div class="flex justify-end gap-2">
           <AppButton variant="secondary" @click="showModal = false">取消</AppButton>
           <AppButton variant="primary" :disabled="loaderLoading" @click="executeDownload">
             确认下载
@@ -642,5 +688,5 @@ onMounted(() => {
         </div>
       </template>
     </AppModal>
-  </div>
+  </PageShell>
 </template>

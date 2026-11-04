@@ -1,74 +1,101 @@
 <script setup lang="ts">
 /**
- * 统一卡片。
+ * 统一卡片：**页面主体内容只允许用它**。
  *
- * ## 为什么要封装
+ * ## 从「玻璃」改成「纯白」
  *
- * 首页四张卡、以后的实例卡、下载卡、账户卡，视觉要求完全一致：
- * 流光白半透明底 + 背景模糊 + 细边 + 柔和阴影 + 16px 圆角 + 24px 内边距。
- * 不封装的话，每个页面都会各写一遍 `border-line/60 bg-glass/60 shadow-sm
- * backdrop-blur-md`，改一次风格要翻十几个文件。
+ * 之前卡片是半透明 + 背景模糊。它压在同一块纯色背景上时，模糊几乎不可见，
+ * 却要多付一次合成开销；更麻烦的是页面里还有一堆手写的 `sereno-glass`
+ * 区块，圆角、内边距、阴影强度各不相同，同一屏看起来像两套设计。
  *
- * 玻璃质感的具体参数集中在 `main.css` 的 `.sereno-glass` 里，
- * 这里只负责**结构**（头 / 体 / 脚）与**内边距档位**。
+ * 现在的规则很简单：
+ * - **页面主体 = 纯白卡片 + 细边 + 柔和阴影**（本组件）；
+ * - **浮层才用玻璃**：弹窗、Toast、下拉、标题栏的账户入口。
  *
- * ## 插槽
+ * ## 悬停
  *
- * - `#header` —— 头部整行（标题 + 右侧操作区）。给了它就不渲染 `title`。
- * - `#icon` —— `title` 前的图标位。
- * - 默认插槽 —— 卡片主体，内部 `justify-between` 分布子元素。
- * - `#footer` —— 底部条（带一条淡分隔线）。
+ * 可点击的卡片上浮 2px + 阴影加深。人眼对「位置变化」比「颜色变化」敏感，
+ * 2px 是「被轻轻托起」，8px 就变成「跳起来」了。
  */
-type Padding = "none" | "sm" | "md" | "lg";
+type Padding = "none" | "xs" | "sm" | "md" | "lg";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** 标题（不给就用 `#header` 插槽自己排） */
     title?: string;
-    /** 内边距档位 */
+    /** 内边距档位：xs 12 / sm 16 / md 20 / lg 24 */
     padding?: Padding;
     /** 是否给出悬停反馈（用于「可点击」的卡片） */
     hoverable?: boolean;
+    /** 是否显示为「选中」态（如当前实例） */
+    selected?: boolean;
   }>(),
   {
     title: "",
     padding: "md",
     hoverable: false,
+    selected: false,
   },
 );
 
-/** 内边距档位 → Tailwind 类。md = 24px，与设计体系的 `--space-lg` 一致。 */
 const paddingClass: Record<Padding, string> = {
   none: "p-0",
+  xs: "p-3",
   sm: "p-4",
-  md: "p-6",
-  lg: "p-8",
+  md: "p-5",
+  lg: "p-6",
 };
 </script>
 
 <template>
   <div
-    class="sereno-glass flex flex-col overflow-hidden rounded-xl"
-    :class="[paddingClass[padding], hoverable ? 'sereno-glass-hover cursor-pointer' : '']"
+    class="app-card flex flex-col overflow-hidden"
+    :class="[
+      paddingClass[props.padding],
+      props.hoverable ? 'lift-on-hover cursor-pointer' : '',
+      props.selected ? 'is-selected' : '',
+    ]"
   >
-    <!-- 头部：给了 header 插槽就整行交给调用方 -->
-    <div v-if="$slots.header || title" class="mb-4 flex items-center justify-between gap-3">
+    <div v-if="$slots.header || title" class="mb-3 flex items-center justify-between gap-3">
       <slot name="header">
-        <h3 v-if="title" class="flex items-center gap-2 text-[16px] font-semibold text-ink">
+        <h3 v-if="title" class="flex items-center gap-2 text-h2 font-semibold text-ink">
           <slot name="icon" />
           {{ title }}
         </h3>
       </slot>
     </div>
 
-    <!-- 主体：flex-1 + justify-between，让子元素自动分布到上下两端 -->
     <div class="flex min-h-0 flex-1 flex-col justify-between">
       <slot />
     </div>
 
-    <!-- 底部条 -->
-    <div v-if="$slots.footer" class="mt-4 border-t border-line/40 pt-3">
+    <div v-if="$slots.footer" class="mt-3 border-t border-line/40 pt-3">
       <slot name="footer" />
     </div>
   </div>
 </template>
+
+<style scoped>
+.app-card {
+  border: 1px solid color-mix(in srgb, var(--color-line) 92%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    box-shadow var(--duration-base) var(--ease-out-soft),
+    border-color var(--duration-base) var(--ease-out-soft),
+    transform var(--duration-base) var(--ease-out-soft);
+}
+
+.app-card.lift-on-hover:hover {
+  border-color: color-mix(in srgb, var(--color-brand-500) 26%, transparent);
+  box-shadow: var(--shadow-lg);
+}
+
+.app-card.is-selected {
+  border-color: color-mix(in srgb, var(--color-brand-500) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-brand-500) 22%, transparent),
+    var(--shadow-card);
+}
+</style>

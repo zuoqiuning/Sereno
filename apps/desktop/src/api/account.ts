@@ -43,6 +43,26 @@ export function setOfflineAccount(name: string): Promise<AccountState> {
   return callCommand(() => commands.setOfflineAccount(name));
 }
 
+/** 新建离线档案并切换过去。 */
+export function addOfflineAccount(name: string): Promise<AccountState> {
+  return callCommand(() => commands.addOfflineAccount(name));
+}
+
+/** 切换到已有离线档案。 */
+export function switchOfflineAccount(id: string): Promise<AccountState> {
+  return callCommand(() => commands.switchOfflineAccount(id));
+}
+
+/** 删除离线档案（至少保留一个）。 */
+export function removeOfflineAccount(id: string): Promise<AccountState> {
+  return callCommand(() => commands.removeOfflineAccount(id));
+}
+
+/** 切回已登录过的微软账户（令牌仍在系统密钥库）。 */
+export function activateMicrosoftAccount(): Promise<AccountState> {
+  return callCommand(() => commands.activateMicrosoftAccount());
+}
+
 /** 打开微软设备码授权页（后端只放行微软域名）。 */
 export async function openMicrosoftLogin(url: string): Promise<void> {
   await callCommand(() => commands.openMicrosoftLogin(url));

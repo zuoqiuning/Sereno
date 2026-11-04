@@ -4,7 +4,14 @@ import { RouterView } from "vue-router";
 
 import ResizeHandles from "@/components/layout/ResizeHandles.vue";
 import TitleBar from "@/components/layout/TitleBar.vue";
+import ConfirmHost from "@/components/common/ConfirmHost.vue";
+import CommandPalette from "@/components/layout/CommandPalette.vue";
 import ToastStack from "@/components/common/ToastStack.vue";
+import { transitionName } from "@/composables/useNavDirection";
+import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
+
+// 全局快捷键：Ctrl/Cmd+1~6 切页面、Ctrl/Cmd+K 命令面板、Ctrl/Cmd+, 打开设置
+useKeyboardShortcuts();
 
 const scrollRoot = ref<HTMLElement | null>(null);
 
@@ -33,7 +40,8 @@ function resetScroll(): void {
     <main ref="scrollRoot" class="sereno-scroll relative flex flex-col pt-12">
       <div class="h-full w-full flex-1">
         <RouterView v-slot="{ Component, route }">
-          <Transition name="page" mode="out-in" @before-enter="resetScroll">
+          <!-- 方向由主导航顺序决定：向右切页从右侧推入，8px 位移足够表达方向 -->
+          <Transition :name="transitionName()" mode="out-in" @before-enter="resetScroll">
             <component :is="Component" :key="route.path" />
           </Transition>
         </RouterView>
@@ -44,5 +52,11 @@ function resetScroll(): void {
 
     <!-- 全局通知：顶部居中，按队列进出，退场时其余卡片平滑补位 -->
     <ToastStack />
+
+    <!-- 全局确认框：业务代码 await askConfirm(...) 即可，不阻塞渲染 -->
+    <ConfirmHost />
+
+    <!-- 命令面板：Ctrl/Cmd+K 唤出，一条路径覆盖切页面与跳设置项 -->
+    <CommandPalette />
   </div>
 </template>

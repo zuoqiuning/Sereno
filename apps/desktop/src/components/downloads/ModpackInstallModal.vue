@@ -118,13 +118,13 @@ onMounted(() => {
   <AppModal width="sm" :open="open" @close="emit('close')">
     <template #header>
       <div
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
       >
         <Package :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h2 class="truncate text-[16px] font-semibold leading-5 text-ink">安装整合包</h2>
-        <p class="truncate text-[11px] text-ink-muted">{{ versionTitle }}</p>
+        <h2 class="truncate text-h2 font-semibold leading-5 text-ink">安装整合包</h2>
+        <p class="truncate text-micro text-ink-muted">{{ versionTitle }}</p>
       </div>
     </template>
 
@@ -133,7 +133,7 @@ onMounted(() => {
     </div>
 
     <div v-else-if="info" class="flex flex-col gap-4">
-      <dl class="flex flex-col gap-2 text-[13px]">
+      <dl class="flex flex-col gap-2 text-body">
         <div class="flex items-center justify-between">
           <dt class="text-ink-muted">Minecraft</dt>
           <dd class="font-mono text-ink">{{ info.minecraftVersion || "未声明" }}</dd>
@@ -154,13 +154,13 @@ onMounted(() => {
       </dl>
 
       <div class="flex flex-col gap-1.5">
-        <span class="text-[13px] font-medium text-ink">实例名称</span>
+        <span class="text-body font-medium text-ink">实例名称</span>
         <AppInput v-model="instanceName" placeholder="整合包实例名称" />
-        <p class="text-[11px] text-ink-muted">将新建一个独立实例，不会影响已有实例。</p>
+        <p class="text-micro text-ink-muted">将新建一个独立实例，不会影响已有实例。</p>
       </div>
     </div>
 
-    <p v-if="error" class="mt-3 text-[12px] text-danger">{{ error }}</p>
+    <p v-if="error" class="mt-3 text-caption text-danger">{{ error }}</p>
 
     <template #footer>
       <div class="flex justify-end gap-2">

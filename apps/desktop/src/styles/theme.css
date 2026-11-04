@@ -43,6 +43,16 @@ html[data-theme="light"] {
 
   --color-brand-500: #4a9be0;
   --color-brand-600: #6fb2ea;
+
+  /*
+   * 深色底上「黑投影」几乎不可见，卡片会变成一块纯色板。
+   * 这里换成更深、更收敛的投影，并配合 1px 亮描边形成边界。
+   */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.5), 0 12px 28px -12px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 4px 14px -4px rgb(0 0 0 / 0.55), 0 22px 48px -16px rgb(0 0 0 / 0.6);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 30px -14px rgb(0 0 0 / 0.6);
+  --shadow-float: 0 2px 8px rgb(0 0 0 / 0.4), 0 18px 44px -12px rgb(0 0 0 / 0.65);
 }
 
 /*

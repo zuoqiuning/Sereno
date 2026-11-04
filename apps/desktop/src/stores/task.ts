@@ -1,14 +1,19 @@
 import { defineStore } from "pinia";
 import type { DownloadSessionSummary, DownloadSnapshot } from "@/types";
+import { useToastStore } from "./toast";
 
 export interface TaskItem {
   id: string; // instanceId
   name: string; // instanceName
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "cancelled";
   errorMsg: string | null;
   summary: DownloadSessionSummary | null;
   currentFile: DownloadSnapshot | null;
   speedBps: number;
+  /** 后端是否支持取消这个任务。 */
+  cancellable: boolean;
+  /** 失败后「重试」要做什么：由发起的页面注入，任务页不关心业务细节。 */
+  retry?: (() => void | Promise<void>) | null;
   _lastBytes: number;
   _lastTime: number;
 }
@@ -33,7 +38,7 @@ export const useTaskStore = defineStore("task", {
   },
 
   actions: {
-    start(instanceId: string, instanceName: string) {
+    start(instanceId: string, instanceName: string, cancellable = false) {
       this.tasks[instanceId] = {
         id: instanceId,
         name: instanceName,
@@ -42,10 +47,18 @@ export const useTaskStore = defineStore("task", {
         summary: null,
         currentFile: null,
         speedBps: 0,
+        cancellable,
+        retry: null,
         _lastBytes: 0,
         _lastTime: 0,
       };
       this.activeId = instanceId;
+    },
+
+    /** 登记「失败后重试」的动作（任务页据此显示重试按钮）。 */
+    setRetry(instanceId: string, retry: () => void | Promise<void>) {
+      const task = this.tasks[instanceId];
+      if (task) task.retry = retry;
     },
 
     updateProgress(
@@ -89,17 +102,32 @@ export const useTaskStore = defineStore("task", {
 
     finish(instanceId: string) {
       const task = this.tasks[instanceId];
-      if (task) {
+      if (task && task.status !== "cancelled") {
         task.status = "done";
         task.errorMsg = null;
+        // 完成通知放在 store 里：用户可能已经切到别的页面，
+        // 只由发起的页面弹提示会漏掉。
+        useToastStore().success("任务完成", task.name);
       }
     },
 
     setError(instanceId: string, msg: string) {
       const task = this.tasks[instanceId];
-      if (task) {
+      // 用户主动取消后，后端会回 `Cancelled`；这不是错误，保持取消态。
+      if (task && task.status !== "cancelled") {
         task.status = "error";
         task.errorMsg = msg;
+        useToastStore().error("任务失败", `${task.name}：${msg}`);
+      }
+    },
+
+    /** 用户主动取消：先落状态，避免随后到达的 `Cancelled` 被当成失败。 */
+    markCancelled(instanceId: string) {
+      const task = this.tasks[instanceId];
+      if (task) {
+        task.status = "cancelled";
+        task.errorMsg = null;
+        task.speedBps = 0;
       }
     },
 

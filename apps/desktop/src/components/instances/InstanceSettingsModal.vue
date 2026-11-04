@@ -4,6 +4,8 @@ import { Gamepad2 } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import AppSelect from "@/components/common/AppSelect.vue";
+import AppSlider from "@/components/common/AppSlider.vue";
 import { selectJavaExecutable, updateInstanceOptions } from "@/api/instance";
 import { getJavaCandidates } from "@/api/java";
 import { isApiError, callCommand } from "@/api/invoke";
@@ -43,7 +45,7 @@ const javaOptions = computed(() => {
   if (javaPath.value && !options.some((option) => option.value === javaPath.value)) {
     options.unshift({ value: javaPath.value, label: `自定义 · ${javaPath.value}` });
   }
-  return options;
+  return [{ value: "", label: "自动匹配（跟随全局设置）" }, ...options];
 });
 
 async function browseJava(): Promise<void> {
@@ -102,13 +104,13 @@ onMounted(async () => {
   <AppModal width="sm" :open="open" @close="emit('close')">
     <template #header>
       <div
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
       >
         <Gamepad2 :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h2 class="truncate text-[16px] font-semibold leading-5 text-ink">实例设置</h2>
-        <p class="truncate text-[11px] text-ink-muted">
+        <h2 class="truncate text-h2 font-semibold leading-5 text-ink">实例设置</h2>
+        <p class="truncate text-micro text-ink-muted">
           {{ instance.displayName }} · Minecraft {{ instance.gameVersion }}
         </p>
       </div>
@@ -117,57 +119,49 @@ onMounted(async () => {
     <div class="flex flex-col gap-5">
       <div class="flex flex-col gap-1.5">
         <div class="flex items-center justify-between">
-          <span class="text-[13px] font-medium text-ink">Java 运行时</span>
+          <span class="text-body font-medium text-ink">Java 运行时</span>
           <button
             type="button"
-            class="text-[12px] font-medium text-brand-600 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35"
+            class="text-caption font-medium text-brand-600 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35"
             @click="browseJava"
           >
             选择文件
           </button>
         </div>
-        <select
-          v-model="javaPath"
-          class="w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35"
-        >
-          <option value="">自动匹配（跟随全局设置）</option>
-          <option v-for="option in javaOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <p class="text-[11px] text-ink-muted">留空时按游戏版本自动挑选已安装的 Java。</p>
+        <AppSelect v-model="javaPath" :options="javaOptions" />
+        <p class="text-micro text-ink-muted">留空时按游戏版本自动挑选已安装的 Java。</p>
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between text-[13px]">
+        <div class="flex items-center justify-between text-body">
           <span class="font-medium text-ink">最大内存</span>
-          <span class="font-mono text-brand-500">{{ memoryMb }} MB</span>
+          <span class="value-chip">{{ memoryMb }} MB</span>
         </div>
-        <input
-          v-model.number="memoryMb"
-          type="range"
-          min="512"
-          max="16384"
-          step="512"
-          class="w-full accent-brand-500"
+        <AppSlider
+          :model-value="memoryMb"
+          :min="512"
+          :max="16384"
+          :step="512"
+          label="最大内存"
+          @update:model-value="(value) => (memoryMb = value)"
         />
-        <p class="text-[11px] text-ink-muted">传给 Java 的 -Xmx；大型整合包建议 4096 MB 以上。</p>
+        <p class="text-micro text-ink-muted">传给 Java 的 -Xmx；大型整合包建议 4096 MB 以上。</p>
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <span class="text-[13px] font-medium text-ink">附加 JVM 参数</span>
+        <span class="text-body font-medium text-ink">附加 JVM 参数</span>
         <textarea
           v-model="jvmArgsText"
           rows="4"
           spellcheck="false"
           placeholder="-XX:+UseG1GC&#10;-Dfile.encoding=UTF-8"
-          class="w-full resize-none rounded-md border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-5 text-ink placeholder:text-ink-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35"
+          class="w-full resize-none rounded-md border border-line bg-surface px-3 py-2 font-mono text-caption leading-5 text-ink placeholder:text-ink-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35"
         />
-        <p class="text-[11px] text-ink-muted">一行一个参数，空行会被忽略。</p>
+        <p class="text-micro text-ink-muted">一行一个参数，空行会被忽略。</p>
       </div>
     </div>
 
-    <p v-if="error" class="mt-3 text-[12px] text-danger">{{ error }}</p>
+    <p v-if="error" class="mt-3 text-caption text-danger">{{ error }}</p>
 
     <template #footer>
       <div class="flex justify-end gap-2">
@@ -177,3 +171,19 @@ onMounted(async () => {
     </template>
   </AppModal>
 </template>
+
+<style scoped>
+.value-chip {
+  min-width: 72px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+</style>

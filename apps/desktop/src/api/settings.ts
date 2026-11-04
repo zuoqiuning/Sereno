@@ -20,9 +20,34 @@ export function getSettings(): Promise<AppSettings_Serialize> {
   return callCommand(() => commands.getSettings());
 }
 
+/**
+ * 保存设置。
+ *
+ * 后端的 `save_settings` 会保留账户状态（由账户命令独占维护），
+ * 因此这里可以安全地整份提交。
+ */
+export async function saveSettings(settings: AppSettings_Serialize): Promise<void> {
+  await callCommand(() => commands.saveSettings(settings));
+}
+
 /** 预加载结束：关闭启动画面并显示主窗口。 */
 export async function finishStartup(): Promise<void> {
   await callCommand(() => commands.finishStartup());
+}
+
+/**
+ * 保存窗口尺寸与位置。
+ *
+ * 只改 `window` 一段——不要「读整份设置 → 改 → 整体保存」，
+ * 那样会和用户同时进行的其它设置修改互相覆盖。
+ */
+export async function saveWindowState(
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): Promise<void> {
+  await callCommandQuiet(() => commands.saveWindowState(width, height, x, y), null);
 }
 
 /**

@@ -62,3 +62,11 @@ export function updateInstanceOptions(
 export function selectJavaExecutable(): Promise<string | null> {
   return callCommand(() => commands.selectJavaExecutable());
 }
+
+/** 收藏 / 取消收藏实例（列表里置顶显示）。 */
+export function setInstanceFavorite(
+  instanceId: string,
+  favorite: boolean,
+): Promise<InstanceMetadata> {
+  return callCommand(() => commands.setInstanceFavorite(instanceId, favorite));
+}

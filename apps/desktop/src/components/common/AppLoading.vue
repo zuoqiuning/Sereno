@@ -93,7 +93,7 @@ const shineId = computed(() => `sereno-shine-${uid}`);
       </g>
     </svg>
 
-    <span v-if="label" class="text-[12px] text-ink-muted">{{ label }}</span>
+    <span v-if="label" class="text-caption text-ink-muted">{{ label }}</span>
   </div>
 </template>
 

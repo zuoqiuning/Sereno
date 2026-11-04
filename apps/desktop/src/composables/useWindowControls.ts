@@ -1,6 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { readonly, ref } from "vue";
 
+import { getRunningInstances } from "@/api/instance";
+import { askConfirm } from "@/composables/useConfirm";
+import { useTaskStore } from "@/stores/task";
+
 /**
  * 缩放方向。
  *
@@ -50,8 +54,35 @@ export function useWindowControls() {
     await syncMaximized();
   }
 
-  /** 关闭窗口。 */
+  /**
+   * 关闭窗口。
+   *
+   * 下载进行中或游戏正在运行时先确认一次：用户误点关闭会中断任务，
+   * 而这类「不可撤销」的动作值得多问一句。确认框是异步的，不阻塞渲染。
+   */
   async function close(): Promise<void> {
+    const runningTasks = useTaskStore().runningCount;
+    if (runningTasks > 0) {
+      const confirmed = await askConfirm({
+        title: "还有任务正在进行",
+        message: `当前有 ${runningTasks} 个下载 / 安装任务，退出后会中断（已下载的分片会保留，下次可续传）。`,
+        confirmText: "退出",
+        danger: true,
+      });
+      if (!confirmed) return;
+    } else {
+      // 没有任务时也检查一下游戏进程：游戏不会随启动器退出，但日志监控会断
+      const games = await getRunningInstances().catch(() => []);
+      if (games.length > 0) {
+        const confirmed = await askConfirm({
+          title: "游戏仍在运行",
+          message: "退出启动器不会关闭游戏，但会停止日志与崩溃监控。",
+          confirmText: "仍然退出",
+        });
+        if (!confirmed) return;
+      }
+    }
+
     await windowHandle().close();
   }
 

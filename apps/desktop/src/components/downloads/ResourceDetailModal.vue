@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronDown, ExternalLink, Link2, Loader2, Package } fro
 import AppButton from "@/components/common/AppButton.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
+import AppSelect from "@/components/common/AppSelect.vue";
 import ModpackInstallModal from "@/components/downloads/ModpackInstallModal.vue";
 import { isApiError } from "@/api/invoke";
 import {
@@ -23,6 +24,7 @@ import { log } from "@/api/settings";
 import { useModalState } from "@/composables/useModalState";
 import { gameVersionGroup } from "@/utils/gameVersion";
 import { listLocalResources } from "@/api/local";
+import { getRunningInstances } from "@/api/instance";
 import type {
   CfFile,
   InstanceMetadata,
@@ -128,9 +130,6 @@ const LOADER_ORDER = [
   "cauldron",
 ];
 
-const selectClass =
-  "h-8 rounded-md border border-line/70 bg-surface px-2.5 text-[12px] text-ink outline-none transition-colors focus:border-brand-500";
-
 const versionStore = useVersionStore();
 const loading = ref(true);
 const error = ref("");
@@ -163,9 +162,12 @@ const usesLoader = computed(() => props.kind === "mod" || props.kind === "modpac
 
 const loaderOptions = computed(() => {
   const keys = [...new Set(groups.value.map((group) => group.loaderKey).filter(Boolean))];
-  return keys
-    .sort((a, b) => loaderRank(a) - loaderRank(b))
-    .map((key) => ({ key, label: loaderLabelOf(key) }));
+  return [
+    { value: "", label: "全部加载器" },
+    ...keys
+      .sort((a, b) => loaderRank(a) - loaderRank(b))
+      .map((key) => ({ value: key, label: loaderLabelOf(key) })),
+  ];
 });
 
 const filteredGroups = computed(() =>
@@ -939,7 +941,11 @@ async function startDownload(version: DetailVersion, dependencyIds: string[]): P
   notice.value = "";
 
   const taskId = `resource-${props.item.source}-${props.item.id}-${version.key}`;
-  taskStore.start(taskId, `下载 ${version.title}`);
+  taskStore.start(taskId, `下载 ${version.title}`, true);
+
+  const instanceRunning = instance
+    ? (await getRunningInstances().catch(() => [] as string[])).includes(instance.id)
+    : false;
 
   const deps = instance
     ? dependencyIds
@@ -966,6 +972,7 @@ async function startDownload(version: DetailVersion, dependencyIds: string[]): P
       version.fileUrl,
       version.fileName,
       version.sha1,
+      taskId,
       (progress) => {
         if (progress.kind === "session") {
           taskStore.updateProgress(taskId, progress.summary, null);
@@ -990,9 +997,21 @@ async function startDownload(version: DetailVersion, dependencyIds: string[]): P
     } else {
       noticeTone.value = "success";
       notice.value = installed.length ? `${base}，并安装前置 ${installed.join("、")}` : base;
-      toast.success("下载完成", installed.length ? `已安装前置：${installed.join("、")}` : version.title);
+      if (instanceRunning) {
+        toast.warning("已下载到实例", `${version.title} · 游戏正在运行，重启后生效`);
+      } else {
+        toast.success(
+          "下载完成",
+          installed.length ? `已安装前置：${installed.join("、")}` : version.title,
+        );
+      }
+      if (instanceRunning) notice.value += "；游戏正在运行，重启后生效";
     }
   } catch (err) {
+    if (isApiError(err) && err.type === "cancelled") {
+      taskStore.markCancelled(taskId);
+      return;
+    }
     const message = toErrorMessage(err);
     taskStore.setError(taskId, message);
     noticeTone.value = "error";
@@ -1087,14 +1106,15 @@ watch(activePrefix, (prefix) => {
       <img
         v-if="item.iconUrl"
         :src="item.iconUrl"
+        referrerpolicy="no-referrer"
         class="h-10 w-10 shrink-0 rounded-lg bg-ink/5 object-cover"
       />
       <div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink/5">
         <Package :size="20" class="text-ink-muted" />
       </div>
       <div class="min-w-0 flex-1">
-        <h2 class="truncate text-[16px] font-semibold leading-5 text-ink">{{ item.title }}</h2>
-        <p class="truncate text-[11px] text-ink-muted">
+        <h2 class="truncate text-h2 font-semibold leading-5 text-ink">{{ item.title }}</h2>
+        <p class="truncate text-micro text-ink-muted">
           <span v-if="supportSummary">{{ supportSummary }} · </span>
           {{ sourceLabel }} · {{ formatDownloads(item.downloads) }} 次下载
           <span v-if="item.updatedAt"> · 更新于 {{ formatRelative(item.updatedAt) }}</span>
@@ -1110,7 +1130,7 @@ watch(activePrefix, (prefix) => {
       <div class="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          class="h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors"
+          class="h-7 rounded-md px-2.5 text-micro font-medium transition-colors"
           :class="
             activePrefix === ''
               ? 'bg-brand-500 text-white'
@@ -1124,7 +1144,7 @@ watch(activePrefix, (prefix) => {
           v-for="prefix in gamePrefixes"
           :key="prefix"
           type="button"
-          class="h-7 rounded-md px-2.5 font-mono text-[11px] font-medium transition-colors"
+          class="h-7 rounded-md px-2.5 font-mono text-micro font-medium transition-colors"
           :class="
             activePrefix === prefix
               ? 'bg-brand-500 text-white'
@@ -1136,27 +1156,19 @@ watch(activePrefix, (prefix) => {
         </button>
 
         <div class="ml-auto flex items-center gap-2">
-          <select
-            v-if="loaderOptions.length > 1"
-            v-model="activeLoader"
-            :class="selectClass"
-            class="min-w-[110px]"
-          >
-            <option value="">全部加载器</option>
-            <option v-for="option in loaderOptions" :key="option.key" :value="option.key">
-              {{ option.label }}
-            </option>
-          </select>
-          <span v-if="completing" class="flex items-center gap-1 text-[11px] text-ink-muted">
+          <div v-if="loaderOptions.length > 2" class="w-[124px]">
+            <AppSelect v-model="activeLoader" :options="loaderOptions" size="sm" />
+          </div>
+          <span v-if="completing" class="flex items-center gap-1 text-micro text-ink-muted">
             <Loader2 :size="12" class="animate-spin" />
             正在补全其它分支
           </span>
-          <span class="text-[11px] text-ink-muted">
+          <span class="text-micro text-ink-muted">
             {{ filteredGroups.length }} 组 · {{ visibleFileCount }} 条
           </span>
           <span
             v-if="kind !== 'modpack'"
-            class="rounded-md px-2 py-1 text-[11px]"
+            class="rounded-md px-2 py-1 text-micro"
             :class="instance ? 'bg-ink/5 text-ink-muted' : 'bg-warning-soft text-warning'"
           >
             目标：{{ instance?.displayName ?? "未选择实例" }}
@@ -1166,27 +1178,27 @@ watch(activePrefix, (prefix) => {
     </template>
 
     <div class="px-5 py-3">
-      <p class="line-clamp-2 text-[12px] leading-5 text-ink-soft">{{ item.description }}</p>
+      <p class="line-clamp-2 text-caption leading-5 text-ink-soft">{{ item.description }}</p>
 
       <p
         v-if="notice"
-        class="mt-2 text-[12px]"
+        class="mt-2 text-caption"
         :class="noticeTone === 'error' ? 'text-danger' : 'text-success'"
       >
         {{ notice }}
       </p>
-      <p v-else-if="downloadHint" class="mt-2 text-[12px] text-ink-muted">{{ downloadHint }}</p>
+      <p v-else-if="downloadHint" class="mt-2 text-caption text-ink-muted">{{ downloadHint }}</p>
 
       <div v-if="loading" class="flex h-64 items-center justify-center">
         <AppLoading :size="64" label="正在获取版本列表…" />
       </div>
       <div v-else-if="error" class="flex h-64 flex-col items-center justify-center gap-3">
-        <p class="text-[13px] text-danger">{{ error }}</p>
+        <p class="text-body text-danger">{{ error }}</p>
         <AppButton variant="secondary" size="sm" @click="loadVersions">重试</AppButton>
       </div>
       <div
         v-else-if="filteredGroups.length === 0"
-        class="flex h-48 items-center justify-center text-[13px] text-ink-muted"
+        class="flex h-48 items-center justify-center text-body text-ink-muted"
       >
         没有可用版本
       </div>
@@ -1202,8 +1214,8 @@ watch(activePrefix, (prefix) => {
             class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-ink/[0.03]"
             @click="toggleGroup(group)"
           >
-            <span class="text-[13px] font-semibold text-ink">{{ group.title }}</span>
-            <span class="flex items-center gap-2 text-[11px] text-ink-muted">
+            <span class="text-body font-semibold text-ink">{{ group.title }}</span>
+            <span class="flex items-center gap-2 text-micro text-ink-muted">
               {{ group.versions.length }} 个版本
               <ChevronDown
                 :size="15"
@@ -1219,7 +1231,7 @@ watch(activePrefix, (prefix) => {
               v-if="groupDependencies(group).length"
               class="border-b border-line/30 bg-ink/[0.02] px-4 py-2.5"
             >
-              <div class="mb-1.5 text-[11px] font-medium text-ink-muted">前置资源</div>
+              <div class="mb-1.5 text-micro font-medium text-ink-muted">前置资源</div>
               <div class="flex flex-col gap-2">
                 <div
                   v-for="dep in groupDependencies(group)"
@@ -1228,6 +1240,7 @@ watch(activePrefix, (prefix) => {
                 >
                   <img
                     v-if="dep.iconUrl"
+                    referrerpolicy="no-referrer"
                     :src="dep.iconUrl"
                     class="h-7 w-7 shrink-0 rounded-md bg-ink/5 object-cover"
                     loading="lazy"
@@ -1239,20 +1252,20 @@ watch(activePrefix, (prefix) => {
                     <Package :size="14" class="text-ink-muted" />
                   </div>
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-[12px] font-medium text-ink">
+                    <div class="truncate text-caption font-medium text-ink">
                       {{ dep.name }}
                       <span
                         v-if="dep.optional"
-                        class="ml-1 rounded bg-ink/5 px-1 py-0.5 text-[10px] font-normal text-ink-muted"
+                        class="ml-1 rounded bg-ink/5 px-1 py-0.5 text-micro font-normal text-ink-muted"
                       >
                         可选
                       </span>
                     </div>
-                    <div v-if="dep.description" class="truncate text-[11px] text-ink-muted">
+                    <div v-if="dep.description" class="truncate text-micro text-ink-muted">
                       {{ dep.description }}
                     </div>
                   </div>
-                  <div class="shrink-0 text-right text-[11px] text-ink-muted">
+                  <div class="shrink-0 text-right text-micro text-ink-muted">
                     <span v-if="dep.downloads">{{ formatDownloads(dep.downloads) }} 次下载 · </span>
                     <span v-if="dep.updatedAt">{{ formatRelative(dep.updatedAt) }} · </span>
                     {{ dep.source === "modrinth" ? "Modrinth" : "CurseForge" }}
@@ -1267,7 +1280,7 @@ watch(activePrefix, (prefix) => {
                   >
                     安装
                   </AppButton>
-                  <span v-else-if="kind === 'mod'" class="shrink-0 text-[11px] text-ink-muted">
+                  <span v-else-if="kind === 'mod'" class="shrink-0 text-micro text-ink-muted">
                     选实例后安装
                   </span>
                 </div>
@@ -1281,7 +1294,7 @@ watch(activePrefix, (prefix) => {
                 class="flex items-center gap-3 px-4 py-2"
               >
                 <span
-                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold"
+                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-micro font-semibold"
                   :class="channelTone(version.channelKey)"
                 >
                   {{
@@ -1292,22 +1305,22 @@ watch(activePrefix, (prefix) => {
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex min-w-0 items-center gap-1.5">
-                    <span class="truncate text-[13px] font-medium leading-5 text-ink">
+                    <span class="truncate text-body font-medium leading-5 text-ink">
                       {{ version.title }}
                     </span>
                     <span
                       v-if="installedFileNames.has(version.fileName)"
-                      class="shrink-0 rounded bg-success-soft px-1.5 py-0.5 text-[10px] text-success"
+                      class="shrink-0 rounded bg-success-soft px-1.5 py-0.5 text-micro text-success"
                     >
                       已安装
                     </span>
                   </div>
-                  <div v-if="rowMeta(version)" class="truncate text-[11px] text-ink-muted">
+                  <div v-if="rowMeta(version)" class="truncate text-micro text-ink-muted">
                     {{ rowMeta(version) }}
                   </div>
                   <div
                     v-if="dependencyCount(version)"
-                    class="flex items-center gap-1 truncate text-[11px] text-ink-muted"
+                    class="flex items-center gap-1 truncate text-micro text-ink-muted"
                     :title="dependencyText(version)"
                   >
                     <Link2 :size="11" class="shrink-0" />
@@ -1317,7 +1330,7 @@ watch(activePrefix, (prefix) => {
                   </div>
                   <div
                     v-if="conflictText(version)"
-                    class="flex items-center gap-1 truncate text-[11px] text-danger"
+                    class="flex items-center gap-1 truncate text-micro text-danger"
                     :title="conflictText(version)"
                   >
                     <AlertTriangle :size="11" class="shrink-0" />
@@ -1365,8 +1378,8 @@ watch(activePrefix, (prefix) => {
   <AppModal :open="dependencyDialogOpen" width="sm" @close="closeDependencyDialog">
     <template #header>
       <div class="min-w-0 flex-1">
-        <h3 class="text-[15px] font-semibold text-ink">前置资源</h3>
-        <p class="truncate text-[11px] text-ink-muted">
+        <h3 class="text-h2 font-semibold text-ink">前置资源</h3>
+        <p class="truncate text-micro text-ink-muted">
           {{ dependencyDialog?.version.title }}
         </p>
       </div>
@@ -1374,7 +1387,7 @@ watch(activePrefix, (prefix) => {
 
     <div v-if="dependencyDialog" class="flex flex-col gap-4">
       <template v-if="!dependencyDialog.manual">
-        <p class="text-[12px] leading-5 text-ink-muted">
+        <p class="text-caption leading-5 text-ink-muted">
           检测到 {{ dependencyDialog.deps.length }} 个前置，其中
           {{ dependencyDialog.deps.filter((dep) => dep.optional).length }} 个为可选。
         </p>
@@ -1404,10 +1417,10 @@ watch(activePrefix, (prefix) => {
               :checked="dependencyDialog.selected.includes(dep.id)"
               @change="toggleDependency(dep.id)"
             />
-            <span class="min-w-0 flex-1 truncate text-[12px] text-ink">{{ dep.name }}</span>
+            <span class="min-w-0 flex-1 truncate text-caption text-ink">{{ dep.name }}</span>
             <span
               v-if="dep.optional"
-              class="shrink-0 rounded bg-ink/5 px-1 py-0.5 text-[10px] text-ink-muted"
+              class="shrink-0 rounded bg-ink/5 px-1 py-0.5 text-micro text-ink-muted"
             >
               可选
             </span>

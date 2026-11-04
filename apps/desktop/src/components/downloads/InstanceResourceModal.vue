@@ -321,19 +321,19 @@ onMounted(() => {
   <AppModal width="lg" height="fixed" :open="open" @close="emit('close')">
     <template #header>
       <div
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
       >
         <component :is="activeKindOption.icon" :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h2 class="truncate text-[16px] font-semibold leading-5 text-ink">
+        <h2 class="truncate text-h2 font-semibold leading-5 text-ink">
           {{ instance.displayName }}
         </h2>
-        <p class="truncate text-[11px] text-ink-muted">
+        <p class="truncate text-micro text-ink-muted">
           {{ instance.gameVersion }} · {{ loaderLabel }} · 资源管理
         </p>
       </div>
-      <span class="text-[11px] text-ink-muted"
+      <span class="text-micro text-ink-muted"
         >启用 {{ enabledCount }} · 禁用 {{ disabledCount }}</span
       >
     </template>
@@ -377,7 +377,7 @@ onMounted(() => {
           v-for="kind in kinds"
           :key="kind.id"
           type="button"
-          class="flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-[12px] font-medium transition-colors"
+          class="flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-caption font-medium transition-colors"
           :class="
             activeKind === kind.id
               ? 'bg-surface text-ink shadow-sm'
@@ -395,7 +395,7 @@ onMounted(() => {
           v-for="option in filterOptions"
           :key="option.id"
           type="button"
-          class="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
+          class="rounded-md px-2.5 py-1 text-caption font-medium transition-colors"
           :class="filter === option.id ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5'"
           @click="filter = option.id"
         >
@@ -406,7 +406,7 @@ onMounted(() => {
 
     <p
       v-if="notice"
-      class="mt-3 text-[12px]"
+      class="mt-3 text-caption"
       :class="
         noticeTone === 'error'
           ? 'text-danger'
@@ -422,7 +422,7 @@ onMounted(() => {
       <AppLoading :size="64" label="正在读取本地资源…" />
     </div>
     <div v-else-if="error" class="flex h-64 flex-col items-center justify-center gap-3">
-      <p class="text-[13px] text-danger">{{ error }}</p>
+      <p class="text-body text-danger">{{ error }}</p>
       <AppButton variant="secondary" size="sm" @click="loadResources">重试</AppButton>
     </div>
     <div
@@ -430,10 +430,10 @@ onMounted(() => {
       class="flex h-56 flex-col items-center justify-center gap-2 text-ink-muted"
     >
       <component :is="activeKindOption.icon" :size="32" class="opacity-25" />
-      <p class="text-[13px]">
+      <p class="text-body">
         {{ items.length === 0 ? "该分类还没有安装资源" : "没有匹配的资源" }}
       </p>
-      <p v-if="items.length === 0" class="text-[11px]">可以用「从文件安装」或「下载新资源」添加</p>
+      <p v-if="items.length === 0" class="text-micro">可以用「从文件安装」或「下载新资源」添加</p>
     </div>
     <div v-else class="mt-3 flex flex-col gap-2">
       <div
@@ -445,6 +445,7 @@ onMounted(() => {
         <img
           v-if="metaFor(item)?.iconUrl || updateFor(item)?.iconUrl"
           :src="metaFor(item)?.iconUrl ?? updateFor(item)?.iconUrl ?? ''"
+          referrerpolicy="no-referrer"
           class="h-10 w-10 shrink-0 rounded-lg bg-ink/5 object-cover"
           loading="lazy"
         />
@@ -458,23 +459,23 @@ onMounted(() => {
 
         <div class="min-w-0 flex-1" :class="item.enabled ? '' : 'opacity-60'">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="truncate text-[14px] font-medium text-ink">
+            <span class="truncate text-body font-medium text-ink">
               {{ metaFor(item)?.title ?? updateFor(item)?.title ?? item.displayName }}
             </span>
             <span
               v-if="!item.enabled"
-              class="rounded bg-ink/5 px-1.5 py-0.5 text-[10px] text-ink-muted"
+              class="rounded bg-ink/5 px-1.5 py-0.5 text-micro text-ink-muted"
             >
               已禁用
             </span>
             <span
               v-if="updateFor(item)"
-              class="rounded bg-success-soft px-1.5 py-0.5 text-[10px] text-success"
+              class="rounded bg-success-soft px-1.5 py-0.5 text-micro text-success"
             >
               可更新 {{ updateFor(item)?.versionName }}
             </span>
           </div>
-          <p class="mt-0.5 truncate text-[11px] text-ink-muted" :title="item.fileName">
+          <p class="mt-0.5 truncate text-micro text-ink-muted" :title="item.fileName">
             {{ metaFor(item)?.description || item.fileName }}
           </p>
         </div>

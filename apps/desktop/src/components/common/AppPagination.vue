@@ -91,14 +91,14 @@ function jump(): void {
     </AppButton>
 
     <template v-for="(token, index) in tokens" :key="`${token}-${index}`">
-      <span v-if="token === 'gap'" class="px-1 text-[12px] text-ink-muted">…</span>
+      <span v-if="token === 'gap'" class="px-1 text-caption text-ink-muted">…</span>
       <button
         v-else
         type="button"
         :disabled="disabled"
         :aria-current="token === page ? 'page' : undefined"
         :aria-label="`第 ${token} 页`"
-        class="h-8 min-w-8 rounded-md px-1.5 text-[12px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-40"
+        class="h-8 min-w-8 rounded-md px-1.5 text-caption font-medium transition-colors disabled:pointer-events-none disabled:opacity-40"
         :class="
           token === page ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5 hover:text-ink'
         "
@@ -121,17 +121,17 @@ function jump(): void {
     <span class="mx-1 hidden h-4 w-px bg-line/60 sm:block" />
 
     <div class="flex items-center gap-1.5">
-      <span class="text-[12px] text-ink-muted">跳至</span>
+      <span class="text-caption text-ink-muted">跳至</span>
       <input
         v-model="jumpInput"
         type="number"
         min="1"
         :max="pageCount"
         :disabled="disabled"
-        class="h-8 w-14 rounded-md border border-line/80 bg-surface px-2 text-center text-[12px] text-ink outline-none transition-colors focus:border-brand-500 disabled:opacity-40"
+        class="h-8 w-14 rounded-md border border-line/80 bg-surface px-2 text-center text-caption text-ink outline-none transition-colors focus:border-brand-500 disabled:opacity-40"
         @keydown.enter="jump"
       />
-      <span class="text-[12px] text-ink-muted">页</span>
+      <span class="text-caption text-ink-muted">页</span>
       <AppButton variant="secondary" size="sm" :disabled="disabled" @click="jump"> 前往 </AppButton>
     </div>
   </div>

@@ -8,8 +8,9 @@ import AppCard from "@/components/common/AppCard.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppPagination from "@/components/common/AppPagination.vue";
+import AppSelect from "@/components/common/AppSelect.vue";
 import ResourceDetailModal from "@/components/downloads/ResourceDetailModal.vue";
-import { listInstances } from "@/api/instance";
+import { getRunningInstances, listInstances } from "@/api/instance";
 import { isApiError } from "@/api/invoke";
 import { searchResources, downloadResource, getCfModVersions, getModVersions, installResourceDependency } from "@/api/resource";
 import { useToastStore } from "@/stores/toast";
@@ -44,8 +45,6 @@ const PREFETCH_AHEAD: Record<ResourceSource, number> = {
   aggregate: 2,
 };
 const PREFETCH_DELAY = 600;
-const selectClass =
-  "h-9 rounded-md border border-line/80 bg-surface px-2.5 text-[13px] text-ink outline-none transition-colors focus:border-brand-500";
 
 const route = useRoute();
 const versionStore = useVersionStore();
@@ -77,6 +76,46 @@ const releaseVersions = computed(() =>
 const targetInstance = computed(
   () => instances.value.find((instance) => instance.id === instanceId.value) ?? null,
 );
+
+const instanceOptions = computed(() => [
+  { value: "all", label: "全部实例" },
+  ...instances.value.map((instance) => ({
+    value: instance.id,
+    label: `${instance.displayName}（${instance.gameVersion}）`,
+  })),
+]);
+
+const mcVersionOptions = computed(() => [
+  { value: "", label: "全部正式版" },
+  ...releaseVersions.value.map((version) => ({ value: version.id, label: version.id })),
+]);
+
+const sourceOptions = [
+  { value: "aggregate", label: "双源聚合" },
+  { value: "modrinth", label: "Modrinth" },
+  { value: "curseforge", label: "CurseForge" },
+];
+
+const sortOptions = [
+  { value: "downloads", label: "下载量最多" },
+  { value: "updated", label: "最近更新" },
+];
+
+const loaderOptions = [
+  { value: "", label: "全部加载器" },
+  { value: "fabric", label: "Fabric" },
+  { value: "forge", label: "Forge" },
+  { value: "neoforge", label: "NeoForge" },
+  { value: "quilt", label: "Quilt" },
+];
+
+const pageSizeOptions = computed(() =>
+  PAGE_SIZE_OPTIONS.map((size) => ({ value: size, label: `${size} 条 / 页` })),
+);
+
+function onFilterChange(): void {
+  void reload(1);
+}
 
 const totalLabel = computed(() => {
   const amount = total.value.toLocaleString("zh-CN");
@@ -212,10 +251,11 @@ async function quickDownload(item: ModProject): Promise<void> {
 
   quickDownloadIds.value.add(key);
   const taskId = `quick-${key}`;
-  taskStore.start(taskId, `下载 ${item.title}`);
+  taskStore.start(taskId, `下载 ${item.title}`, true);
 
   try {
     const loader = instance.loader.type === "vanilla" ? "" : instance.loader.type;
+    const running = await getRunningInstances().catch(() => [] as string[]);
     let fileUrl = "";
     let filename = "";
     let sha1: string | null = null;
@@ -256,7 +296,7 @@ async function quickDownload(item: ModProject): Promise<void> {
       }
     }
 
-    await downloadResource(instance.id, props.kind, fileUrl, filename, sha1, (progress) => {
+    await downloadResource(instance.id, props.kind, fileUrl, filename, sha1, taskId, (progress) => {
       if (progress.kind === "session") {
         taskStore.updateProgress(taskId, progress.summary, null);
       } else {
@@ -265,8 +305,16 @@ async function quickDownload(item: ModProject): Promise<void> {
     });
 
     taskStore.finish(taskId);
-    toast.success("下载完成", `${item.title} 已安装到 ${instance.displayName}`);
+    if (running.includes(instance.id)) {
+      toast.warning("已下载到实例", `${item.title} · 游戏正在运行，重启后生效`);
+    } else {
+      toast.success("下载完成", `${item.title} 已安装到 ${instance.displayName}`);
+    }
   } catch (err) {
+    if (isApiError(err) && err.type === "cancelled") {
+      taskStore.markCancelled(taskId);
+      return;
+    }
     const message = toErrorMessage(err);
     taskStore.setError(taskId, message);
     toast.error("下载失败", message);
@@ -331,33 +379,46 @@ onMounted(() => {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <div class="sereno-glass shrink-0 rounded-xl p-3">
+    <div class="shrink-0 rounded-lg border border-line/70 bg-surface p-3 shadow-sm">
       <div class="flex flex-wrap items-center gap-2">
-        <select
-          v-if="kind !== 'modpack'"
-          v-model="instanceId"
-          :class="selectClass"
-          class="min-w-[150px]"
-          @change="onInstanceChange"
-        >
-          <option value="all">全部实例</option>
-          <option v-for="instance in instances" :key="instance.id" :value="instance.id">
-            {{ instance.displayName }}（{{ instance.gameVersion }}）
-          </option>
-        </select>
-        <select v-model="mcVersion" :class="selectClass" class="min-w-[130px]" @change="reload(1)">
-          <option value="">全部正式版</option>
-          <option v-for="version in releaseVersions" :key="version.id" :value="version.id">
-            {{ version.id }}
-          </option>
-        </select>
-        <select v-model="source" :class="selectClass" @change="reload(1)">
-          <option value="aggregate">双源聚合</option>
-          <option value="modrinth">Modrinth</option>
-          <option value="curseforge">CurseForge</option>
-        </select>
+        <div v-if="kind !== 'modpack'" class="w-[168px]">
+          <AppSelect
+            v-model="instanceId"
+            :options="instanceOptions"
+            @change="onInstanceChange"
+          />
+        </div>
+        <div class="w-[132px]">
+          <AppSelect
+            :model-value="mcVersion"
+            :options="mcVersionOptions"
+            @update:model-value="
+              (value) => {
+                mcVersion = String(value);
+                onFilterChange();
+              }
+            "
+          />
+        </div>
+        <div class="w-[128px]">
+          <AppSelect
+            :model-value="source"
+            :options="sourceOptions"
+            @update:model-value="
+              (value) => {
+                source = value as ResourceSource;
+                onFilterChange();
+              }
+            "
+          />
+        </div>
         <div class="min-w-[180px] flex-1">
-          <AppInput v-model="keyword" :placeholder="placeholder" @submit="reload(1)" />
+          <AppInput
+            v-model="keyword"
+            clearable
+            :placeholder="placeholder"
+            @submit="reload(1)"
+          />
         </div>
         <AppButton variant="primary" :loading="loading" @click="reload(1)">搜索</AppButton>
       </div>
@@ -367,7 +428,7 @@ onMounted(() => {
           <SlidersHorizontal :size="14" />
           筛选
         </AppButton>
-        <span class="text-[12px] text-ink-muted"
+        <span class="text-caption text-ink-muted"
           >按{{ sort === "downloads" ? "下载量" : "更新时间" }}排序</span
         >
       </div>
@@ -376,30 +437,53 @@ onMounted(() => {
         v-if="filtersOpen"
         class="mt-2 flex flex-wrap items-center gap-2 border-t border-line/30 pt-2"
       >
-        <select v-model="sort" :class="selectClass" @change="reload(1)">
-          <option value="downloads">下载量最多</option>
-          <option value="updated">最近更新</option>
-        </select>
-        <select v-if="kind === 'mod'" v-model="loader" :class="selectClass" @change="reload(1)">
-          <option value="">全部加载器</option>
-          <option value="fabric">Fabric</option>
-          <option value="forge">Forge</option>
-          <option value="neoforge">NeoForge</option>
-          <option value="quilt">Quilt</option>
-        </select>
-        <select v-model.number="pageSize" :class="selectClass" @change="reload(1)">
-          <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">
-            {{ size }} 条 / 页
-          </option>
-        </select>
+        <div class="w-[128px]">
+          <AppSelect
+            :model-value="sort"
+            :options="sortOptions"
+            size="sm"
+            @update:model-value="
+              (value) => {
+                sort = value as ResourceSort;
+                onFilterChange();
+              }
+            "
+          />
+        </div>
+        <div v-if="kind === 'mod'" class="w-[128px]">
+          <AppSelect
+            :model-value="loader"
+            :options="loaderOptions"
+            size="sm"
+            @update:model-value="
+              (value) => {
+                loader = String(value);
+                onFilterChange();
+              }
+            "
+          />
+        </div>
+        <div class="w-[112px]">
+          <AppSelect
+            :model-value="pageSize"
+            :options="pageSizeOptions"
+            size="sm"
+            @update:model-value="
+              (value) => {
+                pageSize = Number(value);
+                onFilterChange();
+              }
+            "
+          />
+        </div>
         <AppButton variant="ghost" size="sm" @click="resetFilters">重置筛选</AppButton>
       </div>
     </div>
 
-    <p v-if="error" class="shrink-0 text-[13px] text-danger">{{ error }}</p>
+    <p v-if="error" class="shrink-0 text-body text-danger">{{ error }}</p>
     <p
       v-else-if="warnings.length"
-      class="flex shrink-0 items-start gap-1.5 text-[12px] text-warning"
+      class="flex shrink-0 items-start gap-1.5 text-caption text-warning"
     >
       <AlertTriangle :size="14" class="mt-0.5 shrink-0" />
       <span>{{ warnings.join("；") }}</span>
@@ -413,7 +497,7 @@ onMounted(() => {
         class="flex h-full flex-col items-center justify-center text-ink-muted"
       >
         <Search :size="32" :stroke-width="1.6" class="mb-3 opacity-30" />
-        <p class="text-[14px]">没有找到匹配的资源，换个关键词或筛选条件试试</p>
+        <p class="text-body">没有找到匹配的资源，换个关键词或筛选条件试试</p>
       </div>
       <div v-else class="flex flex-col gap-1.5 pb-2">
         <AppCard v-for="item in items" :key="`${item.source}-${item.id}`" padding="none" hoverable>
@@ -426,6 +510,7 @@ onMounted(() => {
               <img
                 v-if="item.iconUrl"
                 :src="item.iconUrl"
+                referrerpolicy="no-referrer"
                 class="h-10 w-10 shrink-0 rounded-lg bg-ink/5 object-cover"
                 loading="lazy"
               />
@@ -436,23 +521,17 @@ onMounted(() => {
                 <Package :size="18" class="text-ink-muted" />
               </div>
               <div class="flex min-w-0 flex-1 flex-col">
-                <span class="truncate text-[14px] font-semibold text-ink">{{ item.title }}</span>
-                <span class="truncate text-[11px] text-ink-muted">{{ item.description }}</span>
+                <span class="truncate text-body font-semibold text-ink">{{ item.title }}</span>
+                <span class="truncate text-micro text-ink-muted">{{ item.description }}</span>
               </div>
             </button>
 
-            <div class="flex shrink-0 items-center gap-2 text-[10px]">
+            <div class="flex shrink-0 items-center gap-2 text-micro">
               <span class="hidden text-ink-muted sm:block">
                 {{ formatDownloads(item.downloads) }} 次下载
               </span>
-              <span
-                class="rounded px-1.5 py-0.5"
-                :class="
-                  item.source === 'modrinth'
-                    ? 'bg-success-soft text-success'
-                    : 'bg-warning-soft text-warning'
-                "
-              >
+              <!-- 来源只做信息标注：中性描边 + 弱化文字，不与标题抢注意力 -->
+              <span class="rounded-sm border border-line px-1.5 py-0.5 text-micro text-ink-muted">
                 {{ sourceLabel(item.source) }}
               </span>
               <button
@@ -478,9 +557,9 @@ onMounted(() => {
     </div>
 
     <div
-      class="sereno-glass flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2"
+      class="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-line/70 bg-surface px-3 py-2 shadow-sm"
     >
-      <span class="text-[12px] text-ink-muted">{{ totalLabel }}</span>
+      <span class="text-caption text-ink-muted">{{ totalLabel }}</span>
       <AppPagination :page="page" :page-count="pageCount" :disabled="loading" @change="reload" />
     </div>
 

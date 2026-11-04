@@ -36,8 +36,8 @@ withDefaults(
 
 /** 浅底配色 */
 const colorMap: Record<Variant, string> = {
-  default: "bg-ink/5 text-ink-soft",
-  brand: "bg-brand-500/10 text-brand-500",
+  default: "bg-[var(--alpha-ink-6)] text-ink-soft",
+  brand: "bg-[var(--alpha-brand-12)] text-brand-500",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",
@@ -57,7 +57,7 @@ const outlineMap: Record<Variant, string> = {
   <span
     class="inline-flex items-center justify-center gap-1.5 rounded-xs font-medium tracking-wide"
     :class="[
-      size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-[12px]',
+      size === 'sm' ? 'px-2 py-0.5 text-micro' : 'px-2.5 py-1 text-caption',
       outline ? outlineMap[variant] : colorMap[variant],
     ]"
   >

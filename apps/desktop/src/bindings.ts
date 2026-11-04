@@ -33,10 +33,23 @@ export const commands = {
 	 *  避免把一个不是 Java 的文件存进去、到启动时才报错。
 	 */
 	updateInstanceOptions: (instanceId: string, javaPath: string | null, memoryMb: number | null, jvmArgs: string[]) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("update_instance_options", { instanceId, javaPath, memoryMb, jvmArgs })),
+	setInstanceFavorite: (instanceId: string, favorite: boolean) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_favorite", { instanceId, favorite })),
 	readInstanceLogs: (instanceId: string) => typedError<InstanceLogs_Serialize, LauncherError>(__TAURI_INVOKE("read_instance_logs", { instanceId })),
 	createWorldBackup: (instanceId: string) => typedError<WorldBackup, LauncherError>(__TAURI_INVOKE("create_world_backup", { instanceId })),
 	listWorldBackups: (instanceId: string) => typedError<WorldBackup[], LauncherError>(__TAURI_INVOKE("list_world_backups", { instanceId })),
 	restoreWorldBackup: (instanceId: string, name: string) => typedError<null, LauncherError>(__TAURI_INVOKE("restore_world_backup", { instanceId, name })),
+	/**
+	 *  创建内容快照（mods / config / 资源包 / 光影）。
+	 * 
+	 *  打包整个内容目录是 IO 密集型操作（几百 MB 的整合包要几秒），
+	 *  放到阻塞线程里执行，避免占住 IPC 运行时。
+	 */
+	createContentSnapshot: (instanceId: string, reason: string | null, pinned: boolean | null) => typedError<ContentSnapshot, LauncherError>(__TAURI_INVOKE("create_content_snapshot", { instanceId, reason, pinned })),
+	listContentSnapshots: (instanceId: string) => typedError<ContentSnapshot[], LauncherError>(__TAURI_INVOKE("list_content_snapshots", { instanceId })),
+	/**  回滚到某个快照。回滚会**替换**当前 mods / config，属于破坏性操作。 */
+	restoreContentSnapshot: (instanceId: string, snapshotId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("restore_content_snapshot", { instanceId, snapshotId })),
+	deleteContentSnapshot: (instanceId: string, snapshotId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("delete_content_snapshot", { instanceId, snapshotId })),
+	pinContentSnapshot: (instanceId: string, snapshotId: string, pinned: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("pin_content_snapshot", { instanceId, snapshotId, pinned })),
 	/**
 	 *  导出诊断包（启动器日志 + 实例日志/崩溃报告），返回 zip 路径。
 	 * 
@@ -49,10 +62,20 @@ export const commands = {
 	selectDirectory: () => typedError<string | null, LauncherError>(__TAURI_INVOKE("select_directory")),
 	/**  前端预加载结束后调用：显示主窗口并关闭启动画面。 */
 	finishStartup: () => typedError<null, LauncherError>(__TAURI_INVOKE("finish_startup")),
+	/**
+	 *  保存窗口尺寸与位置。
+	 * 
+	 *  单独一个命令而不是让前端「读整份设置 → 改 window → 整体保存」：
+	 *  那样在用户同时改内存 / 主题时会把对方的改动覆盖掉。
+	 *  这里只改 `window` 一段，写盘前仍走 `update_settings` 的合并逻辑。
+	 */
+	saveWindowState: (width: number, height: number, x: number, y: number) => typedError<null, LauncherError>(__TAURI_INVOKE("save_window_state", { width, height, x, y })),
 	/**  鸣谢页与关于页的赞助入口。 */
 	openSupporterPage: (target: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_supporter_page", { target })),
 	/**  关于页：直达项目仓库。 */
 	openProjectRepo: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_repo")),
+	/**  反馈页：直达 GitHub Issues。 */
+	openProjectIssues: () => typedError<null, LauncherError>(__TAURI_INVOKE("open_project_issues")),
 	/**
 	 *  安装原版游戏，全程推送同一条整体进度。
 	 * 
@@ -83,7 +106,9 @@ export const commands = {
 	 *  `instance_id` 为空时下载到启动器的下载目录（`%APPDATA%\Sereno\downloads\<kind>`），
 	 *  用户可以先下载、再决定放进哪个实例。
 	 */
-	downloadResource: (instanceId: string | null, kind: ResourceKind, fileUrl: string, filename: string, sha1: string | null, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("download_resource", { instanceId, kind, fileUrl, filename, sha1, channel })),
+	downloadResource: (instanceId: string | null, kind: ResourceKind, fileUrl: string, filename: string, sha1: string | null, taskId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("download_resource", { instanceId, kind, fileUrl, filename, sha1, taskId, channel })),
+	/**  取消一个资源下载任务（任务页的“取消”按钮）；返回是否命中任务。 */
+	cancelDownload: (taskId: string) => typedError<boolean, LauncherError>(__TAURI_INVOKE("cancel_download", { taskId })),
 	/**  安装单个必需前置：按目标实例的游戏版本 / 加载器挑选文件后下载到 `mods`。 */
 	installResourceDependency: (instanceId: string, source: string, projectId: string, versionId: string | null) => typedError<string, LauncherError>(__TAURI_INVOKE("install_resource_dependency", { instanceId, source, projectId, versionId })),
 	getCfModVersions: (modId: string, mcVersion: string, loader: string) => typedError<CfFile_Serialize[], LauncherError>(__TAURI_INVOKE("get_cf_mod_versions", { modId, mcVersion, loader })),
@@ -128,10 +153,22 @@ export const commands = {
 	 *  这一步会阻塞到用户在浏览器里完成授权（或超时），前端用 loading 态承载。
 	 */
 	completeMicrosoftLogin: (deviceCode: string, interval: number, expiresIn: number) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("complete_microsoft_login", { deviceCode, interval, expiresIn })),
-	/**  退出登录：删除凭据、清空会话缓存、切回离线账户。 */
+	/**
+	 *  退出登录：删除凭据、清空会话缓存、切回离线账户。
+	 * 
+	 *  只清掉微软资料，**离线档案列表必须保留**，否则用户建过的档案会全部丢失。
+	 */
 	logoutAccount: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("logout_account")),
-	/**  设置离线用户名（切回离线账户）。 */
+	/**  设置离线用户名（切回离线账户）；同名档案存在时直接切换过去。 */
 	setOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("set_offline_account", { name })),
+	/**  新建离线档案并切换过去。 */
+	addOfflineAccount: (name: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("add_offline_account", { name })),
+	/**  切换到某个离线档案。 */
+	switchOfflineAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("switch_offline_account", { id })),
+	/**  删除离线档案（至少保留一个）。 */
+	removeOfflineAccount: (id: string) => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("remove_offline_account", { id })),
+	/**  切换回已登录过的微软账户（令牌仍在系统密钥库）。 */
+	activateMicrosoftAccount: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("activate_microsoft_account")),
 	/**
 	 *  诊断用：当前是否配置了微软客户端 ID。
 	 * 
@@ -191,6 +228,10 @@ export type AccountSettings_Deserialize = {
 	kind?: string,
 	/**  微软资料；离线账户为 null。 */
 	microsoft?: MicrosoftProfile | null,
+	/**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
+	offlineAccounts?: OfflineProfile[],
+	/**  当前选中的离线档案 ID。 */
+	activeOfflineId?: string | null,
 };
 
 /**
@@ -204,6 +245,10 @@ export type AccountSettings_Serialize = {
 	kind: string,
 	/**  微软资料；离线账户为 null。 */
 	microsoft: MicrosoftProfile | null,
+	/**  已保存的离线档案；空列表时由 `profile.name` 派生。 */
+	offlineAccounts: OfflineProfile[],
+	/**  当前选中的离线档案 ID。 */
+	activeOfflineId: string | null,
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
@@ -213,28 +258,40 @@ export type AccountState = AccountState_Serialize | AccountState_Deserialize;
 export type AccountState_Deserialize = {
 	/**  `offline` / `microsoft`。 */
 	kind: string,
-	/**  显示名：微软账户为游戏 ID，离线为设置里的用户名。 */
+	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
 	name: string,
-	/**  微软账户的 UUID；离线账户为 null（由启动时派生）。 */
+	/**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
 	uuid?: string | null,
 	/**  微软登录是否可用（客户端 ID 是否已配置）。 */
 	microsoftAvailable: boolean,
 	/**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
 	credentialStoreEphemeral: boolean,
+	/**  已保存的离线档案。 */
+	offlineAccounts: OfflineProfile[],
+	/**  当前选中的离线档案 ID。 */
+	activeOfflineId?: string | null,
+	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
+	microsoftProfile?: MicrosoftProfile | null,
 };
 
 /**  当前登录态，前端据此渲染账户卡片。 */
 export type AccountState_Serialize = {
 	/**  `offline` / `microsoft`。 */
 	kind: string,
-	/**  显示名：微软账户为游戏 ID，离线为设置里的用户名。 */
+	/**  显示名：微软账户为游戏 ID，离线为当前档案的用户名。 */
 	name: string,
-	/**  微软账户的 UUID；离线账户为 null（由启动时派生）。 */
+	/**  当前账户的 UUID；离线档案也有（启动时直接使用）。 */
 	uuid: string | null,
 	/**  微软登录是否可用（客户端 ID 是否已配置）。 */
 	microsoftAvailable: boolean,
 	/**  凭据是否只保存在内存中（系统密钥库不可用，重启后需重新登录）。 */
 	credentialStoreEphemeral: boolean,
+	/**  已保存的离线档案。 */
+	offlineAccounts: OfflineProfile[],
+	/**  当前选中的离线档案 ID。 */
+	activeOfflineId: string | null,
+	/**  已登录过的微软资料（即使当前切到了离线档案也会保留）。 */
+	microsoftProfile: MicrosoftProfile | null,
 };
 
 export type AppInfo = {
@@ -245,7 +302,7 @@ export type AppInfo = {
 	os: string,
 };
 
-/**  应用就绪事件：前端首帧渲染完成后可监听。 */
+/**  应用就绪事件：主窗口已经显示、启动画面已关闭。 */
 export type AppReady = {
 	/**  启动器版本。 */
 	version: string,
@@ -348,6 +405,27 @@ export type CfFile_Serialize = {
 	fileDate: string | null,
 	/**  文件依赖：relationType = 3 表示必须安装。 */
 	dependencies: CfDependency_Serialize[],
+};
+
+/**
+ *  一次内容快照（`mods` / `config` / `resourcepacks` / `shaderpacks`）。
+ * 
+ *  与 [`WorldBackup`] 的区别：世界备份保的是玩家的**存档**，内容快照保的是
+ *  玩家的**模组与配置**。两者触发时机、体积、保留策略完全不同，不能合并。
+ */
+export type ContentSnapshot = {
+	/**  快照 ID（目录名），恢复 / 删除时原样传回。 */
+	id: string,
+	/**  触发原因：`manual` / `before-mod-change` / `before-loader-change`。 */
+	reason: string,
+	/**  Unix 时间戳（秒）。 */
+	createdAt: number,
+	/**  压缩包大小（字节）。 */
+	sizeBytes: number,
+	/**  快照内的文件数。 */
+	fileCount: number,
+	/**  手动标记为「保留」，不参与自动淘汰。 */
+	pinned: boolean,
 };
 
 /**  日志诊断结果。 */
@@ -684,6 +762,12 @@ export type InstanceMetadata_Deserialize = {
 	memoryMb?: number | null,
 	/**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
 	jvmArgs?: string[],
+	/**
+	 *  是否被用户「收藏」：列表里置顶显示。
+	 * 
+	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
+	 */
+	favorite?: boolean,
 };
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
@@ -712,6 +796,12 @@ export type InstanceMetadata_Serialize = {
 	memoryMb: number | null,
 	/**  实例专用附加 JVM 参数（一行一个，已去掉空行）。 */
 	jvmArgs: string[],
+	/**
+	 *  是否被用户「收藏」：列表里置顶显示。
+	 * 
+	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
+	 */
+	favorite: boolean,
 };
 
 /**  单个实例的磁盘占用。 */
@@ -1182,6 +1272,22 @@ export type ModpackInfo = {
 
 export type NativeLibrary = {
 	classifier: string,
+};
+
+/**
+ *  离线档案。
+ * 
+ *  UUID 在创建时固化，**不随用户名变化**：Minecraft 用它区分玩家数据，
+ *  同一个世界里的物品、进度都挂在 UUID 上。换名字如果重新派生 UUID，
+ *  就等于换了一个玩家，这也是「切账号后背包空了」的根源。
+ */
+export type OfflineProfile = {
+	/**  稳定 ID（创建时生成，切换/删除都用它）。 */
+	id: string,
+	/**  游戏内显示名。 */
+	name: string,
+	/**  启动时传给游戏的 UUID。 */
+	uuid: string,
 };
 
 export type OsSpec = OsSpec_Serialize | OsSpec_Deserialize;

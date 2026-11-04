@@ -44,14 +44,20 @@ export async function downloadResource(
   fileUrl: string,
   filename: string,
   sha1: string | null,
+  taskId: string,
   onProgress?: (progress: DownloadProgress) => void,
 ): Promise<void> {
   const channel = new Channel<DownloadProgress>();
   if (onProgress) channel.onmessage = onProgress;
 
   await callCommand(() =>
-    commands.downloadResource(instanceId, kind, fileUrl, filename, sha1, channel),
+    commands.downloadResource(instanceId, kind, fileUrl, filename, sha1, taskId, channel),
   );
+}
+
+/** 取消一个资源下载任务；返回后端是否真的找到了这个任务。 */
+export function cancelDownload(taskId: string): Promise<boolean> {
+  return callCommand(() => commands.cancelDownload(taskId));
 }
 
 /**

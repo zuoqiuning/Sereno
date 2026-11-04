@@ -54,7 +54,7 @@ withDefaults(
     <h2 class="mb-3 text-[22px] font-semibold tracking-wide text-ink">
       {{ title }}
     </h2>
-    <p v-if="description" class="max-w-[400px] text-[14px] leading-relaxed text-ink-muted">
+    <p v-if="description" class="max-w-[400px] text-body leading-relaxed text-ink-muted">
       {{ description }}
     </p>
 

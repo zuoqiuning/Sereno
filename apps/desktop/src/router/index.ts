@@ -1,9 +1,10 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
+import { updateNavDirection } from "@/composables/useNavDirection";
 import HomeView from "@/views/HomeView.vue";
 
 /*
- * 路由表：`/`、`/instances`、`/downloads`、`/accounts`、`/settings`。
+ * 路由表：`/`、`/instances`、`/downloads`、`/tasks`、`/settings`、`/more`。
  *
  * 用 `createWebHashHistory`：打包后没有服务端 rewrite，hash 路由刷新不会 404。
  *
@@ -39,10 +40,26 @@ export const router = createRouter({
       component: () => import("@/views/SettingsView.vue"),
       meta: { title: "设置" },
     },
+    {
+      path: "/more",
+      name: "more",
+      component: () => import("@/views/MoreView.vue"),
+      meta: { title: "更多" },
+    },
     // 404 兜底：用户手输 #/foobar 时回到主页，而不是白屏
     {
       path: "/:pathMatch(.*)*",
       redirect: "/",
     },
   ],
+});
+
+/*
+ * 记录切换方向：让页面过渡知道「从哪来」。
+ *
+ * 必须在 **beforeEach** 里更新：过渡名在渲染时就被求值，
+ * afterEach 已经晚于新页面开始渲染。
+ */
+router.beforeEach((to, from) => {
+  updateNavDirection(from.path, to.path);
 });

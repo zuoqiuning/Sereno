@@ -34,7 +34,30 @@ export default defineConfig({
   // 预览与生产构建
   build: {
     target: "esnext",
+    // 发布版不产出 sourcemap：没有它，别人拿到的只是压缩后的产物，
+    // 无法直接还原出可读的源码。这是成本最低、收益最直接的一层防护。
     sourcemap: false,
+    /*
+     * 混淆：terser 比 Vite 默认的 esbuild 更激进。
+     * - mangle：局部变量名全部打乱，逻辑结构保留但读不懂；
+     * - compress/drop_console：死代码消除。前端目前没有任何 console 调用，
+     *   所以可以安全地全部移除（构建后用 grep 复核）。
+     * 注意：`format.comments: "some"` 是有意保留 /*! 与 @license 注释——
+     * Lucide 等依赖的许可条款要求版权声明随产物一起分发，不能删。
+     */
+    minify: "terser",
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+        passes: 2,
+      },
+      // 不 mangle 顶层作用域：Vite 产物是 ESM，顶层名可能被外部引用
+      mangle: { toplevel: false },
+      format: {
+        comments: "some",
+      },
+    },
     chunkSizeWarningLimit: 1500,
     // 启动画面是独立窗口，需要单独产出 splash.html
     rollupOptions: {
@@ -43,6 +66,10 @@ export default defineConfig({
         splash: fileURLToPath(new URL("./splash.html", import.meta.url)),
       },
     },
+  },
+  define: {
+    // 发布版不挂 Vue DevTools 钩子
+    __VUE_PROD_DEVTOOLS__: false,
   },
   clearScreen: false,
 });

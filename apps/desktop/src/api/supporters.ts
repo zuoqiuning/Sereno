@@ -13,3 +13,8 @@ export async function openSupporterPage(target: SupporterTarget): Promise<void> 
 export async function openProjectRepo(): Promise<void> {
   await callCommand(() => commands.openProjectRepo());
 }
+
+/** 反馈页：直达 GitHub Issues。 */
+export async function openProjectIssues(): Promise<void> {
+  await callCommand(() => commands.openProjectIssues());
+}

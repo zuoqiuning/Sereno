@@ -12,41 +12,51 @@
 
 @import "tailwindcss";
 
-@theme {
+/*
+ * `static`：强制把本块里的所有令牌都输出到 :root。
+ * 默认行为会 tree-shake「没有被 Tailwind 类引用」的变量——
+ * 而排版/阴影令牌主要是在组件 scoped CSS 里以 `var(--x)` 消费的，
+ * 一旦被裁掉，`font-size: var(--text-hero)` 就会静默失效（回退到继承字号）。
+ */
+@theme static {
   /* =========================================================
-     1. 背景 —— 流光白 #FFFBEA 固定纯色，不叠任何渐变
+     1. 背景 —— 冷调中性灰（近白），不叠任何渐变
+     ----
+     曾经用暖白 #FFFBEA。实机截图里它和纯白卡片形成「黄底 + 白补丁」的强对比，
+     大面积暖色还会让长时间使用显疲劳。现在改成带极微品牌蓝的冷灰：
+     与纯白卡片是「同色系、不同明度」的关系，卡片自然浮起来，而不是贴在纸上。
      ========================================================= */
-  --color-canvas: #fffbea; /* 窗口底：流光白（固定纯色） */
-  --color-surface: #ffffff; /* 卡片 / 面板：纯白，压在流光白底上更干净 */
-  --color-surface-muted: #faf8ef; /* 次级块 */
+  --color-canvas: #f3f6fa; /* 窗口底：冷灰蓝 */
+  --color-surface: #ffffff; /* 卡片 / 面板：纯白 */
+  --color-surface-muted: #f5f7fa; /* 次级块 / 输入框底 */
   --color-glass: #ffffff; /* 半透明玻璃层 */
 
   /* =========================================================
      2. 文字
      ========================================================= */
-  --color-ink: #1f2329; /* 主文本，不用纯黑 */
-  --color-ink-soft: #4c5259; /* 次要文本 */
-  --color-ink-muted: #8b9098; /* 弱化信息 / 禁用 */
+  --color-ink: #1b2028; /* 主文本，不用纯黑 */
+  --color-ink-soft: #4a5361; /* 次要文本 */
+  --color-ink-muted: #868e9c; /* 弱化信息 / 禁用 */
 
   /* =========================================================
-     3. 描边 —— 中性偏暖，不再带黄
+     3. 描边 —— 冷调中性，弱到「只用来分隔，不参与构图」
      ========================================================= */
-  --color-line: #e5e2d6;
-  --color-line-soft: #f0eee3;
+  --color-line: #e3e8ef;
+  --color-line-soft: #eef1f6;
 
   /* =========================================================
      4. 状态色 —— 主色为鸢尾蓝 #0F64B5
      ========================================================= */
   --color-accent: #0f64b5; /* 鸢尾蓝：按钮等主色 */
-  --color-accent-soft: #e3edf8;
+  --color-accent-soft: #e6eefa;
   --color-success: #1f8a52;
-  --color-success-soft: #e6f4ec;
+  --color-success-soft: #e9f5ee;
   --color-warning: #a8720a;
-  --color-warning-soft: #fbf0da;
+  --color-warning-soft: #fdf4e4;
   --color-danger: #c0392f;
-  --color-danger-soft: #fbe9e7;
+  --color-danger-soft: #fdeeec;
   --color-info: #2c6fb5;
-  --color-info-soft: #e7eff8;
+  --color-info-soft: #e9f0fa;
 
   /* 品牌色与应用图标同色：鸢尾蓝 #0F64B5 */
   --color-brand-500: #0f64b5;
@@ -72,11 +82,25 @@
   --radius-round: 999px; /* 仅圆形头像、胶囊形标签 */
 
   /* =========================================================
-     7. 阴影系统 —— 柔和阴影比黑乎乎的阴影更适合桌面端
+     7. 阴影系统 —— 多层弥散，而不是一条生硬的投影
+     ----
+     单层小阴影在白色背景上几乎看不见，卡片就成了「大白板」。
+     这里统一用「近处贴地的薄影 + 远处大范围的低透明度扩散」组合，
+     让卡片看起来是浮在底色上，而不是画上去的。
+     深色主题在 theme.css 里覆盖为更黑、更收敛的版本。
      ========================================================= */
-  --shadow-sm: 0 1px 2px rgb(31 35 41 / 0.05);
-  --shadow-md: 0 4px 12px rgb(31 35 41 / 0.08);
-  --shadow-lg: 0 8px 24px rgb(31 35 41 / 0.12);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.03);
+  --shadow-md:
+    0 2px 6px -1px rgb(16 24 40 / 0.05), 0 10px 24px -8px rgb(16 24 40 / 0.1);
+  --shadow-lg:
+    0 4px 12px -2px rgb(16 24 40 / 0.06), 0 20px 44px -12px rgb(16 24 40 / 0.16);
+  /* 页面卡片专用：三层，最远一层铺得很开，形成"环境光"式的落地感 */
+  --shadow-card:
+    0 1px 2px rgb(16 24 40 / 0.03), 0 6px 20px -6px rgb(16 24 40 / 0.06),
+    0 14px 40px -12px rgb(16 24 40 / 0.05);
+  /* 浮层专用：比卡片更「悬空」，边缘更清晰 */
+  --shadow-float:
+    0 2px 6px -1px rgb(16 24 40 / 0.06), 0 14px 36px -10px rgb(16 24 40 / 0.22);
 
   /* =========================================================
      8. 字体 —— 昭源环方（可变字重 200–900）
@@ -90,9 +114,59 @@
   --font-mono: "Cascadia Mono", "Consolas", "JetBrains Mono", ui-monospace, monospace;
 
   /* =========================================================
-     9. 缓动
+     9. 缓动与时序
+     ----
+     动效是**反馈**，不是表演：时长 120–280ms、位移 ≤ 8px、
+     缓动统一「快起慢收」。超过 400ms 只在进度条追赶上使用。
      ========================================================= */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  /* 只给开关 thumb 这类「物理控件」用，过冲幅度极小 */
+  --ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --duration-instant: 90ms; /* 只用于「离开」 */
+  --duration-fast: 140ms; /* 微交互：按钮 / hover / 开关 */
+  --duration-base: 200ms; /* 容器：页面 / tab / 列表 */
+  --duration-slow: 280ms; /* 弹窗 / 路由 / 复杂过渡 */
+  --duration-sluggish: 400ms; /* 只用于进度条跟踪 */
+
+  --shift-xs: 2px; /* 按钮按下 / 卡片浮起 */
+  --shift-sm: 4px; /* 列表出现 / 骨架交接 */
+  --shift-md: 8px; /* 页面切换 */
+  --scale-press: 0.98;
+  --scale-hover: 1.01;
+
+  /* =========================================================
+     10. 排版层级
+     ----
+     所有页面只允许使用这 7 档，禁止再写 text-[13px] / text-lg 这类裸值。
+     ========================================================= */
+  --text-display: 26px;
+  --text-display--line-height: 1.2;
+  --text-display--letter-spacing: -0.02em;
+  /* 首页实例名：整屏最大的一个词，撑住视觉重心 */
+  --text-hero: 32px;
+  --text-hero--line-height: 1.15;
+  --text-hero--letter-spacing: -0.025em;
+  --text-page: 17px;
+  --text-page--line-height: 1.3;
+  /* 关键数值（下载百分比、速度）：比正文大两个量级，用来做「数据感」的视觉锚点 */
+  --text-metric: 30px;
+  --text-metric--line-height: 1.1;
+  --text-metric--letter-spacing: -0.02em;
+  --text-h1: 20px;
+  --text-h1--line-height: 1.3;
+  --text-h2: 15px;
+  --text-h2--line-height: 1.4;
+  --text-h3: 13px;
+  --text-h3--line-height: 1.4;
+  --text-body: 13px;
+  --text-body--line-height: 1.55;
+  --text-caption: 12px;
+  --text-caption--line-height: 1.5;
+  --text-micro: 11px;
+  --text-micro--line-height: 1.45;
 }
 
 /*
@@ -165,8 +239,8 @@ button {
 
 /* 滚动条：与整体视觉一致，不用系统默认的粗边框 */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -174,14 +248,14 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-ink-muted) 32%, transparent);
-  border: 3px solid transparent;
+  background: color-mix(in srgb, var(--color-ink-muted) 22%, transparent);
+  border: 2px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-ink-muted) 52%, transparent);
+  background: color-mix(in srgb, var(--color-ink-muted) 40%, transparent);
   background-clip: content-box;
 }
 
@@ -224,22 +298,53 @@ html.app-visible .sereno-window {
 
 /* =========================================================
    10.1 路由切换
-   out-in：旧页面先淡出，新页面再淡入。
-   只做透明度，不做位移——位移会让页面内容暂时超出滚动容器，
-   切换瞬间挤出一条滚动条，这正是“页面顿一下”的来源。
+   out-in：旧页面先让位，新页面再接管。
+   位移只有 8px——整屏平移会让人眼花；方向由主导航顺序决定
+   （见 composables/useNavDirection.ts）。离开比进入快，
+   让「点击 → 响应」的感知更即时。
    ========================================================= */
 
-.page-enter-active {
-  transition: opacity 180ms var(--ease-out-soft);
+.page-fade-enter-active,
+.page-fade-leave-active,
+.page-right-enter-active,
+.page-right-leave-active,
+.page-left-enter-active,
+.page-left-leave-active {
+  transition:
+    opacity var(--duration-base) var(--ease-out-soft),
+    transform var(--duration-base) var(--ease-out-soft);
 }
 
-.page-leave-active {
-  transition: opacity 90ms ease-out;
+.page-fade-leave-active,
+.page-right-leave-active,
+.page-left-leave-active {
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-in-soft);
 }
 
-.page-enter-from,
-.page-leave-to {
+.page-fade-enter-from,
+.page-fade-leave-to {
   opacity: 0;
+}
+
+/* 向右切页：新页从右侧推入 */
+.page-right-enter-from {
+  opacity: 0;
+  transform: translateX(var(--shift-md));
+}
+.page-right-leave-to {
+  opacity: 0;
+  transform: translateX(calc(var(--shift-md) * -1));
+}
+
+/* 向左切页 */
+.page-left-enter-from {
+  opacity: 0;
+  transform: translateX(calc(var(--shift-md) * -1));
+}
+.page-left-leave-to {
+  opacity: 0;
+  transform: translateX(var(--shift-md));
 }
 
 /* =========================================================
@@ -260,11 +365,11 @@ html.app-visible .sereno-window {
 /* 强玻璃：弹窗 / 浮层专用。底更实、模糊更深，保证文字对比度，
    同时保留背后的环境色，形成“悬浮在柔和光里”的层次。 */
 .sereno-glass-strong {
-  background: color-mix(in srgb, var(--color-glass) 88%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-line) 72%, transparent);
+  background: color-mix(in srgb, var(--color-glass) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
   backdrop-filter: blur(28px) saturate(1.08);
   -webkit-backdrop-filter: blur(28px) saturate(1.08);
-  box-shadow: 0 18px 48px rgb(31 35 41 / 0.18);
+  box-shadow: var(--shadow-float);
 }
 
 /* 玻璃卡片的悬停反馈：提亮 + 边框加深 + 阴影抬升 */
@@ -304,3 +409,202 @@ html.app-visible .sereno-window {
 }
 
 /* 胶囊徽标：已由 `components/common/AppBadge.vue` 承担，此处不再重复定义。 */
+
+/* =========================================================
+   11. 动效与交互工具类
+   组件里凡是「hover 变色 / 按下反馈 / 浮起 / 列表进出」，
+   一律用下面这些类，不再各写 transition-*。
+   ========================================================= */
+
+/* 语义透明度：只允许这四档，避免同一屏出现 /6 /8 /12 /[0.055] 的随机深浅 */
+:root {
+  --alpha-brand-4: color-mix(in srgb, var(--color-brand-500) 4%, transparent);
+  --alpha-brand-8: color-mix(in srgb, var(--color-brand-500) 8%, transparent);
+  --alpha-brand-12: color-mix(in srgb, var(--color-brand-500) 12%, transparent);
+  --alpha-brand-20: color-mix(in srgb, var(--color-brand-500) 20%, transparent);
+  --alpha-ink-4: color-mix(in srgb, var(--color-ink) 4%, transparent);
+  --alpha-ink-6: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  --alpha-ink-10: color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+.transition-fast {
+  transition:
+    background-color var(--duration-fast) var(--ease-out-soft),
+    border-color var(--duration-fast) var(--ease-out-soft),
+    color var(--duration-fast) var(--ease-out-soft),
+    box-shadow var(--duration-fast) var(--ease-out-soft),
+    transform var(--duration-fast) var(--ease-out-soft);
+}
+
+.transition-base {
+  transition:
+    background-color var(--duration-base) var(--ease-out-soft),
+    border-color var(--duration-base) var(--ease-out-soft),
+    color var(--duration-base) var(--ease-out-soft),
+    box-shadow var(--duration-base) var(--ease-out-soft),
+    transform var(--duration-base) var(--ease-out-soft);
+}
+
+/* 悬停浮起：2px 是「被轻轻托起」，8px 就变成「跳起来」了 */
+.lift-on-hover {
+  transition:
+    transform var(--duration-base) var(--ease-out-soft),
+    box-shadow var(--duration-base) var(--ease-out-soft),
+    border-color var(--duration-base) var(--ease-out-soft);
+}
+
+.lift-on-hover:hover {
+  transform: translateY(calc(var(--shift-xs) * -1));
+  box-shadow: var(--shadow-md);
+}
+
+.lift-on-hover:active {
+  transform: translateY(0) scale(0.995);
+  transition-duration: 80ms;
+}
+
+/* 按压缩放：只缩 0.98，按下瞬间用 80ms（比 hover 更快才有「被接收」的感觉） */
+.press-on-active {
+  transition:
+    background-color var(--duration-fast) var(--ease-out-soft),
+    border-color var(--duration-fast) var(--ease-out-soft),
+    color var(--duration-fast) var(--ease-out-soft),
+    box-shadow var(--duration-fast) var(--ease-out-soft),
+    transform var(--duration-fast) var(--ease-out-soft);
+}
+
+.press-on-active:active:not(:disabled) {
+  transform: scale(var(--scale-press));
+  transition-duration: 80ms;
+}
+
+/* =========================================================
+   12. 列表 / tab / 状态交接
+   ========================================================= */
+
+/* 列表进出：每项 30ms 依次出现（最多累计 8 项），引导视线自上而下 */
+.list-enter-active {
+  transition:
+    opacity var(--duration-base) var(--ease-out-soft),
+    transform var(--duration-base) var(--ease-out-soft);
+  transition-delay: var(--stagger, 0ms);
+}
+
+.list-leave-active {
+  /* 脱离文档流，后面的项立刻 FLIP 补位，删除不会「跳一下」 */
+  position: absolute;
+  transition:
+    opacity var(--duration-instant) var(--ease-in-soft),
+    transform var(--duration-instant) var(--ease-in-soft);
+}
+
+.list-move {
+  transition: transform var(--duration-base) var(--ease-out-soft);
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(var(--shift-sm));
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(calc(var(--shift-sm) * -1));
+}
+
+/* tab 内容：横向排列的 tab 只做交叉淡入，不做位移（避免两套横向运动打架） */
+.tab-enter-active {
+  transition: opacity var(--duration-base) var(--ease-out-soft);
+}
+
+.tab-leave-active {
+  transition: opacity var(--duration-instant) var(--ease-in-soft);
+}
+
+.tab-enter-from,
+.tab-leave-to {
+  opacity: 0;
+}
+
+/* 空状态 ↔ 列表、骨架屏 → 内容：内容从下方浮 4px 接管 */
+.swap-enter-active,
+.reveal-enter-active {
+  transition:
+    opacity var(--duration-base) var(--ease-out-soft),
+    transform var(--duration-base) var(--ease-out-soft);
+}
+
+.swap-leave-active,
+.reveal-leave-active {
+  transition: opacity var(--duration-instant) var(--ease-in-soft);
+}
+
+.swap-enter-from,
+.swap-leave-to,
+.reveal-leave-to {
+  opacity: 0;
+}
+
+.reveal-enter-from {
+  opacity: 0;
+  transform: translateY(var(--shift-sm));
+}
+
+/* =========================================================
+   13. 进度条「正在工作」的追光
+   只在运行中出现；完成 / 失败时立刻消失，不做淡出。
+   ========================================================= */
+
+.progress-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, white 38%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: progress-shine 1.6s var(--ease-in-out-soft) infinite;
+  pointer-events: none;
+}
+
+@keyframes progress-shine {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-shine::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* =========================================================
+   14. 主题切换：只在切换的 280ms 内给颜色加过渡
+   切换结束立刻移除类，否则所有 hover 都会被拖慢。
+   ========================================================= */
+
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color var(--duration-slow) var(--ease-out-soft),
+    border-color var(--duration-slow) var(--ease-out-soft),
+    color var(--duration-slow) var(--ease-out-soft),
+    fill var(--duration-slow) var(--ease-out-soft) !important;
+}
+
+/* 数字变化时宽度保持稳定，避免整行抖动 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

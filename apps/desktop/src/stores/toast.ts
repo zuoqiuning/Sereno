@@ -7,8 +7,6 @@ export interface ToastItem {
   title: string;
   message: string;
   tone: ToastTone;
-  /** 退场动画进行中：保留 DOM，避免卡片凭空消失。 */
-  leaving: boolean;
 }
 
 /** 定时器放在模块级 Map，避免被 Pinia 的响应式代理处理。 */
@@ -25,31 +23,29 @@ export const useToastStore = defineStore("toast", {
       options: { title: string; message?: string; tone?: ToastTone; duration?: number },
     ): number {
       const id = nextId++;
-      const item: ToastItem = {
+      this.items.push({
         id,
         title: options.title,
         message: options.message ?? "",
         tone: options.tone ?? "info",
-        leaving: false,
-      };
-      this.items.push(item);
-      this.schedule(id, options.duration ?? 4200);
+      });
+      this.schedule(id, options.duration ?? 3000);
       return id;
     },
 
-    success(title: string, message = "", duration = 3600): number {
+    success(title: string, message = "", duration = 2600): number {
       return this.push({ title, message, tone: "success", duration });
     },
 
-    error(title: string, message = "", duration = 6000): number {
+    error(title: string, message = "", duration = 5200): number {
       return this.push({ title, message, tone: "error", duration });
     },
 
-    warning(title: string, message = "", duration = 5000): number {
+    warning(title: string, message = "", duration = 4000): number {
       return this.push({ title, message, tone: "warning", duration });
     },
 
-    info(title: string, message = "", duration = 4200): number {
+    info(title: string, message = "", duration = 3000): number {
       return this.push({ title, message, tone: "info", duration });
     },
 
@@ -64,10 +60,10 @@ export const useToastStore = defineStore("toast", {
     },
 
     /**
-     * 标记退场，动画结束后再移除。
+     * 移除一条通知。
      *
-     * 关键：前一张卡片还在动画中时，后面的卡片通过 TransitionGroup 的
-     * `move` 过渡平滑上移，而不是瞬间跳位或凭空消失。
+     * 直接从列表移除即可：离场动画由 `TransitionGroup` 负责，
+     * 它会让还在排队的卡片平滑补位，不会出现空位或瞬间跳位。
      */
     dismiss(id: number): void {
       const timer = timers.get(id);
@@ -76,14 +72,8 @@ export const useToastStore = defineStore("toast", {
         timers.delete(id);
       }
 
-      const item = this.items.find((entry) => entry.id === id);
-      if (!item || item.leaving) return;
-      item.leaving = true;
-
-      window.setTimeout(() => {
-        const index = this.items.findIndex((entry) => entry.id === id);
-        if (index >= 0) this.items.splice(index, 1);
-      }, 240);
+      const index = this.items.findIndex((entry) => entry.id === id);
+      if (index >= 0) this.items.splice(index, 1);
     },
 
     dismissAll(): void {
