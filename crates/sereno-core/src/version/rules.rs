@@ -70,6 +70,34 @@ impl OsContext {
     }
 }
 
+/// 解析某个依赖库在当前系统上应使用的 natives 分类前缀。
+///
+/// 优先读官方 `natives` map（1.6–1.12.2 的形态，键为 `windows`/`osx`/`linux`）。
+/// map 存在但没有当前系统的条目，说明这个库本就不提供本平台的 natives，
+/// 应当返回 `None`——**不要回退**，否则会去找一个不存在的 classifier，
+/// 让用户看到「所有源都不可用」而不是「这个版本不支持你的系统」。
+///
+/// 少数库只写 `classifiers` 不写 `natives`，此时按平台默认前缀回退；
+/// macOS 在 LWJGL2 时代的前缀是 `natives-osx`（不是 `natives-macos`），
+/// 而恰好只有那个时代才用 classifiers，所以这里优先取 `natives-osx`。
+pub fn native_classifier(lib: &Library, os_ctx: &OsContext) -> Option<String> {
+    if let Some(map) = &lib.natives {
+        let raw = map.get(&os_ctx.name)?;
+        let arch = if os_ctx.arch.contains("64") {
+            "64"
+        } else {
+            "32"
+        };
+        return Some(raw.replace("${arch}", arch));
+    }
+
+    let fallback = match os_ctx.name.as_str() {
+        "osx" => "natives-osx",
+        _ => os_ctx.natives_classifier(),
+    };
+    Some(fallback.to_string())
+}
+
 /// 操作系统名，映射到 Mojang 的叫法。
 fn os_name() -> &'static str {
     match std::env::consts::OS {
@@ -199,6 +227,14 @@ fn os_matches(os: &OsSpec, ctx: &OsContext) -> bool {
 /// - **规则列表为空** → **允许**。没有规则的依赖库对所有系统生效
 ///   （Mojang 的官方启动器里就是 `rules == null || rules.isEmpty() → true`）；
 /// - **有规则但一条都没命中** → 不允许。
+///
+/// 「最后一条命中决定结果」是 Mojang 版本 JSON 依赖的顺序语义
+/// （白名单 + 黑名单）。真实例子（1.8 时代的 LWJGL 库规则）：
+/// `[{"action":"allow","os":{"name":"windows"}}, {"action":"disallow",
+/// "os":{"name":"windows","version":"^10\."}}]` ——
+/// Windows 10 上两条都命中，最终 disallow；Windows 7 上只有第一条
+/// 命中，最终 allow。因此实现必须是「顺序遍历、命中即覆盖」，
+/// 而不是「任一 allow 就放行」。
 pub fn evaluate_rules(rules: &[Rule], ctx: &OsContext) -> bool {
     // 空规则 = 对所有系统生效
     if rules.is_empty() {
@@ -400,5 +436,64 @@ mod tests {
             server: None,
         };
         assert!(!applies_to_client(&lib));
+    }
+
+    #[test]
+    fn natives_map_picks_current_os() {
+        // 1.6–1.12.2 的真实形态：natives 是 map，不是单字段结构体。
+        // 曾把它写成 `{ classifier: String }`，导致 1.8.9 / 1.12.2 的
+        // 版本 JSON 直接反序列化失败。
+        let json = r#"{
+            "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4",
+            "natives": {
+                "linux": "natives-linux",
+                "osx": "natives-osx",
+                "windows": "natives-windows"
+            }
+        }"#;
+        let lib: Library = serde_json::from_str(json).expect("natives map 必须能解析");
+
+        assert_eq!(
+            native_classifier(&lib, &OsContext::new("windows", "10.0", "x86_64")).as_deref(),
+            Some("natives-windows")
+        );
+        assert_eq!(
+            native_classifier(&lib, &OsContext::new("osx", "14.0", "arm64")).as_deref(),
+            Some("natives-osx")
+        );
+    }
+
+    #[test]
+    fn natives_map_expands_arch_placeholder() {
+        let json = r#"{
+            "name": "org.lwjgl:lwjgl:3.3.1",
+            "natives": { "windows": "natives-windows-${arch}" }
+        }"#;
+        let lib: Library = serde_json::from_str(json).unwrap();
+
+        assert_eq!(
+            native_classifier(&lib, &OsContext::new("windows", "10.0", "x86_64")).as_deref(),
+            Some("natives-windows-64")
+        );
+        assert_eq!(
+            native_classifier(&lib, &OsContext::new("windows", "10.0", "x86")).as_deref(),
+            Some("natives-windows-32")
+        );
+    }
+
+    #[test]
+    fn natives_map_without_current_os_is_rejected() {
+        // map 里没有本平台的条目 = 该库不提供本平台 natives。
+        // 此时必须返回 None，而不是回退到默认前缀去找一个不存在的构件。
+        let json = r#"{
+            "name": "x:y:1",
+            "natives": { "windows": "natives-windows" }
+        }"#;
+        let lib: Library = serde_json::from_str(json).unwrap();
+
+        assert!(
+            native_classifier(&lib, &OsContext::new("linux", "", "x86_64")).is_none(),
+            "缺少本平台条目时不得回退"
+        );
     }
 }

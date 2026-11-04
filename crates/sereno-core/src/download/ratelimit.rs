@@ -47,27 +47,34 @@ pub async fn throttle(bytes: usize) {
     let rate = kbps as f64 * 1024.0; // 每秒字节数
     // 桶容量 = 1 秒的量，避免瞬时大块数据把节奏打乱
     let capacity = rate.max(4096.0);
-    // 单块超过容量时，按容量处理（否则永远等不到足够令牌）
-    let want = (bytes as f64).min(capacity);
 
-    loop {
-        let wait = {
-            let mut bucket = BUCKET.lock().await;
-            let now = Instant::now();
-            let elapsed = now.duration_since(bucket.last).as_secs_f64();
-            bucket.tokens = (bucket.tokens + elapsed * rate).min(capacity);
-            bucket.last = now;
+    // **按容量分段计费**：一次读取往往是 64 KB，而桶最多只有 1 秒的量。
+    // 早期写法用 `want = min(bytes, capacity)`，一块 64 KB 只扣 16 KB 的令牌
+    // 就整块放行——限速 16 KB/s 时实际跑 64 KB/s（4 倍），设置项等于撒谎。
+    let mut remaining = bytes as f64;
+    while remaining > 0.0 {
+        let want = remaining.min(capacity);
+        remaining -= want;
 
-            if bucket.tokens >= want {
-                bucket.tokens -= want;
-                return;
-            }
+        'wait: loop {
+            let wait = {
+                let mut bucket = BUCKET.lock().await;
+                let now = Instant::now();
+                let elapsed = now.duration_since(bucket.last).as_secs_f64();
+                bucket.tokens = (bucket.tokens + elapsed * rate).min(capacity);
+                bucket.last = now;
 
-            let missing = want - bucket.tokens;
-            // 上限 250ms：让取消信号与进度推送仍然及时
-            Duration::from_secs_f64((missing / rate).min(0.25))
-        };
-        tokio::time::sleep(wait).await;
+                if bucket.tokens >= want {
+                    bucket.tokens -= want;
+                    break 'wait;
+                }
+
+                let missing = want - bucket.tokens;
+                // 上限 250ms：让取消信号与进度推送仍然及时
+                Duration::from_secs_f64((missing / rate).min(0.25))
+            };
+            tokio::time::sleep(wait).await;
+        }
     }
 }
 

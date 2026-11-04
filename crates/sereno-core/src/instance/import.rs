@@ -89,6 +89,7 @@ const COPY_DIRS: &[&str] = &[
     "kubejs",
     "scripts",
     "schematics",
+    "stats", // 玩家统计是目录（stats/*.json），此前误放在文件列表里永远不会被复制
 ];
 
 /// 会被搬运的用户数据文件（精确匹配）。
@@ -99,7 +100,6 @@ const COPY_FILES: &[&str] = &[
     "banned-players.json",
     "banned-ips.json",
     "whitelist.json",
-    "stats",
 ];
 
 /// 会被搬运的用户数据文件（按扩展名匹配）。

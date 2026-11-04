@@ -4,7 +4,7 @@ import { ArrowDownToLine, RefreshCw, X } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import { installAppUpdate, onUpdateProgress } from "@/api/update";
-import { isApiError } from "@/api/invoke";
+import { toMessage } from "@/utils/error";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
@@ -29,12 +29,6 @@ const toast = useToastStore();
 const update = useUpdateStore();
 
 const visible = computed(() => update.visible);
-
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
 
 /** 立即更新：下载 → 验签 → 启动安装器。 */
 async function install(): Promise<void> {
@@ -95,9 +89,7 @@ function formatSize(bytes: number): string {
               v{{ update.latestVersion }}
             </span>
           </div>
-          <p class="mt-0.5 text-caption text-ink-muted">
-            当前版本 v{{ update.currentVersion }}
-          </p>
+          <p class="mt-0.5 text-caption text-ink-muted">当前版本 v{{ update.currentVersion }}</p>
 
           <!-- 更新说明：只显示前几行，完整内容在设置页看 -->
           <p

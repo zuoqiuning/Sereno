@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { AlertTriangle, Info, Play, RefreshCw, ScrollText } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
+import { toMessage } from "@/utils/error";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import AppSelect from "@/components/common/AppSelect.vue";
@@ -69,7 +70,7 @@ async function load(): Promise<void> {
   try {
     logs.value = await getInstanceLogs(props.instance.id);
   } catch (err) {
-    error.value = `读取日志失败：${String(err)}`;
+    error.value = `读取日志失败：${toMessage(err)}`;
     void log.error(error.value, { component: "LogViewerModal", action: "read" });
   } finally {
     loading.value = false;
@@ -96,13 +97,7 @@ onMounted(() => {
           {{ running ? "游戏运行中，日志会继续写入" : "读取最近一次运行" }}
         </p>
       </div>
-      <AppButton
-        v-if="!running"
-        variant="soft"
-        size="sm"
-        :loading="restarting"
-        @click="restart"
-      >
+      <AppButton v-if="!running" variant="soft" size="sm" :loading="restarting" @click="restart">
         <Play v-if="!restarting" :size="14" />
         重启游戏
       </AppButton>
@@ -146,11 +141,7 @@ onMounted(() => {
         >
           <div class="mb-1.5 text-micro font-medium text-ink-muted">自动诊断</div>
           <div class="flex flex-col gap-2">
-            <div
-              v-for="(finding, index) in findings"
-              :key="index"
-              class="flex items-start gap-2"
-            >
+            <div v-for="(finding, index) in findings" :key="index" class="flex items-start gap-2">
               <AlertTriangle
                 v-if="finding.severity === 'error'"
                 :size="14"
@@ -181,7 +172,7 @@ onMounted(() => {
 
         <pre
           class="selectable min-h-0 flex-1 overflow-auto rounded-lg border border-line/50 bg-surface-muted/40 p-3 font-mono text-micro leading-5 whitespace-pre-wrap text-ink-soft"
-        >{{ content }}</pre>
+          >{{ content }}</pre>
       </template>
     </div>
   </AppModal>

@@ -17,7 +17,7 @@ use zip::{CompressionMethod, ZipWriter};
 
 use crate::models::java::JavaCandidate;
 use crate::models::settings::AppSettings;
-use crate::utils::redact::redact_line;
+use crate::utils::redact::{redact_line, redact_proxy};
 use crate::{APP_VERSION, LauncherError, Result};
 
 const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
@@ -324,6 +324,17 @@ fn build_java_info(java: Option<&JavaCandidate>) -> String {
 }
 
 fn build_settings_redacted(settings: &AppSettings) -> String {
+    // 逐字段挑出来，而不是把 `settings.http` 整份塞进去：
+    // 代理地址的常见形态是 `http://user:password@host:port`，
+    // 而这份 zip 的用途就是发给开发者排查问题。
+    let http = json!({
+        "connect_timeout_secs": settings.http.connect_timeout_secs,
+        "request_timeout_secs": settings.http.request_timeout_secs,
+        "read_timeout_secs": settings.http.read_timeout_secs,
+        "max_redirects": settings.http.max_redirects,
+        "proxy": settings.http.proxy.as_deref().map(redact_proxy),
+    });
+
     let summary = json!({
         "download": settings.download,
         "java": {
@@ -331,7 +342,7 @@ fn build_settings_redacted(settings: &AppSettings) -> String {
             "default_memory_mb": settings.java.default_memory_mb,
         },
         "logging": settings.logging,
-        "http": settings.http,
+        "http": http,
     });
     serde_json::to_string_pretty(&summary).unwrap_or_else(|_| "{}".to_string())
 }

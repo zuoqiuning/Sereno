@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  HeartPulse,
-  Info,
-  RefreshCw,
-  XCircle,
-} from "@lucide/vue";
+import { AlertTriangle, CheckCircle2, HeartPulse, Info, RefreshCw, XCircle } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import { checkInstanceHealth } from "@/api/health";
-import { isApiError } from "@/api/invoke";
+import { toMessage } from "@/utils/error";
 import { log } from "@/api/settings";
 import type { HealthCheck, HealthReport, InstanceMetadata } from "@/types";
 
@@ -46,12 +39,6 @@ const counts = computed(() => {
 });
 
 const modIssues = computed(() => report.value?.mods ?? null);
-
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
 
 function statusIcon(check: HealthCheck) {
   if (check.status === "error") return XCircle;
@@ -86,6 +73,8 @@ watch(
   (open) => {
     if (open) void load();
   },
+  // 父组件用 v-if + open 同帧置真，挂载时已是打开态，必须立即加载
+  { immediate: true },
 );
 
 function runAction(kind: string): void {
@@ -163,9 +152,7 @@ function runAction(kind: string): void {
       <div
         v-if="
           modIssues &&
-          (modIssues.duplicates.length ||
-            modIssues.missing.length ||
-            modIssues.mismatched.length)
+          (modIssues.duplicates.length || modIssues.missing.length || modIssues.mismatched.length)
         "
         class="rounded-lg border border-line/50 bg-surface/50 px-3 py-2.5"
       >
@@ -265,7 +252,10 @@ function runAction(kind: string): void {
             <div class="min-w-0">
               <div class="text-caption font-medium leading-4 text-ink">
                 {{ finding.title }}
-                <span v-if="finding.confidence !== 'high'" class="text-micro font-normal text-ink-muted">
+                <span
+                  v-if="finding.confidence !== 'high'"
+                  class="text-micro font-normal text-ink-muted"
+                >
                   可能有其它原因
                 </span>
               </div>

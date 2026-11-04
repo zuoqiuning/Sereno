@@ -74,12 +74,31 @@
      6. 圆角系统 —— 微圆角到中圆角，拒绝 0px 直角与夸张胶囊
      内圆角 = 外圆角 - 内边距（嵌套圆角公式）
      ========================================================= */
-  --radius-xs: 4px; /* 复选框 / 徽标 / 提示气泡 */
-  --radius-sm: 6px; /* 输入框 / 下拉项 / 小按钮 */
-  --radius-md: 8px; /* 常规按钮 / 导航选中态 */
-  --radius-lg: 12px; /* 模态框 / 面板 / 卡片 */
-  --radius-xl: 16px; /* 外层大容器 */
-  --radius-round: 999px; /* 仅圆形头像、胶囊形标签 */
+  /*
+   * 「硬朗专业风」圆角档位（锁死四档，全项目禁止越档）：
+   *   xs=2px  标签 / 徽标 / 复选框——像代码块一样克制
+   *   sm=4px  交互控件（按钮 / 输入框 / 下拉）——专业感的来源
+   *   md=4px  与 sm 同档：交互控件不因尺寸变大而变圆
+   *   lg=8px  卡片 / 面板 / 下拉面板
+   *   xl=10px 模态框 / 外层大容器（上限，再大就会重新变「软」）
+   */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-round: 999px; /* 仅圆形头像 */
+
+  /*
+   * 层级系统（z-index）——只允许出现这四个值，新浮层从表里取，
+   * 禁止再写「z-[60]」「z-[80]」这类随机数字：
+   *   select=70  下拉面板（高于模态内容）
+   *   menu=80    右键 / 上下文菜单
+   *   toast=100  全局通知，永远最顶层（模态框里选 Java 时 Toast 不能被盖住）
+   */
+  --z-select: 70;
+  --z-menu: 80;
+  --z-toast: 100;
 
   /* =========================================================
      7. 阴影系统 —— 多层弥散，而不是一条生硬的投影
@@ -89,25 +108,25 @@
      让卡片看起来是浮在底色上，而不是画上去的。
      深色主题在 theme.css 里覆盖为更黑、更收敛的版本。
      ========================================================= */
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.03);
-  --shadow-md:
-    0 2px 6px -1px rgb(16 24 40 / 0.05), 0 10px 24px -8px rgb(16 24 40 / 0.1);
-  --shadow-lg:
-    0 4px 12px -2px rgb(16 24 40 / 0.06), 0 20px 44px -12px rgb(16 24 40 / 0.16);
-  /* 页面卡片专用：三层，最远一层铺得很开，形成"环境光"式的落地感 */
-  --shadow-card:
-    0 1px 2px rgb(16 24 40 / 0.03), 0 6px 20px -6px rgb(16 24 40 / 0.06),
-    0 14px 40px -12px rgb(16 24 40 / 0.05);
-  /* 浮层专用：比卡片更「悬空」，边缘更清晰 */
-  --shadow-float:
-    0 2px 6px -1px rgb(16 24 40 / 0.06), 0 14px 36px -10px rgb(16 24 40 / 0.22);
+  /*
+   * 「硬朗专业风」阴影系统：边界交给 1px 边框，阴影只留一丁点底纹去锯齿。
+   * 弥散大阴影会让界面显得轻飘；专业工具（GitHub / VS Code 系）全部
+   * 靠边框划分区域，阴影近乎为零。
+   */
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.03);
+  --shadow-md: 0 1px 3px rgb(16 24 40 / 0.05);
+  --shadow-lg: 0 2px 8px -2px rgb(16 24 40 / 0.08);
+  /* 页面卡片专用：只留贴地薄影 */
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.03);
+  /* 浮层（模态 / 下拉）比卡片略悬空，但依然收敛 */
+  --shadow-float: 0 4px 12px -4px rgb(16 24 40 / 0.14), 0 2px 4px rgb(16 24 40 / 0.05);
 
   /* =========================================================
-     8. 字体 —— 昭源环方（可变字重 200–900）
+     8. 字体 —— 正文用系统无衬线（工具软件的清晰硬朗），
+        圆体（昭源环方）只保留给 display：主标题 / Logo 的「性格」
      ========================================================= */
   --font-sans:
-    "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
-    sans-serif;
+    "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   --font-display:
     "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
     sans-serif;
@@ -183,10 +202,10 @@
   --space-xl: 32px;
   --space-xxl: 48px;
 
-  /* 应用级字体变量：等宽永远是 Cascadia Mono → Consolas */
+  /* 应用级字体变量：等宽永远是 Cascadia Mono → Consolas；
+     正文走系统无衬线——圆体大篇幅渲染正文/数字会显得「散、虚」 */
   --font-app:
-    "Chiron GoRound TC Variable", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", system-ui,
-    sans-serif;
+    "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
 }
 
 /* ---------------- 基础 ---------------- */

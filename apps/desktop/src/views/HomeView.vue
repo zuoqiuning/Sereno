@@ -41,6 +41,8 @@ const javas = ref<JavaCandidate[]>([]);
 const runningIds = ref<string[]>([]);
 const account = ref<AccountState | null>(null);
 const launchingId = ref<string | null>(null);
+/** 本会话内各实例的启动时刻（秒退检测用）。 */
+const launchStartedAt = new Map<string, number>();
 const errorMessage = ref("");
 let unlistenExit: (() => void) | null = null;
 
@@ -88,9 +90,7 @@ const launchLabel = computed(() => {
 const taskSummary = computed(() => {
   if (runningTasks.value.length === 0) return "暂无进行中的任务";
   const task = runningTasks.value[0];
-  const files = task.summary
-    ? `${task.summary.doneFiles}/${task.summary.totalFiles}`
-    : "准备中";
+  const files = task.summary ? `${task.summary.doneFiles}/${task.summary.totalFiles}` : "准备中";
   return `${task.name} · ${files}`;
 });
 
@@ -158,6 +158,9 @@ async function handleLaunch(inst: InstanceMetadata): Promise<void> {
   errorMessage.value = "";
   try {
     await launchGame(inst.id);
+    // 记录启动时刻：1 秒内崩溃（秒退）时用户只会看到按钮变回「启动」，
+    // 必须主动弹警告，否则用户完全意识不到游戏已经崩了
+    launchStartedAt.set(inst.id, Date.now());
     toast.success("游戏已启动", `${inst.displayName} · ${inst.gameVersion}`);
     void log.info(`游戏已启动: ${inst.id}`, {
       component: "HomeView",
@@ -182,7 +185,19 @@ async function handleLaunch(inst: InstanceMetadata): Promise<void> {
 onMounted(() => {
   void loadDashboard();
   // 游戏退出后刷新运行状态与游玩时长（首页没有这个监听就会一直显示“运行中”）
-  void onGameExited(() => {
+  void onGameExited((payload) => {
+    // 秒退检测：非零退出码 + 启动后 10 秒内退出 = 大概率崩溃（Java 版本错、
+    // 显卡驱动、内存不足等），弹警告并给「去看日志」的入口
+    const startedAt = launchStartedAt.get(payload.instanceId);
+    launchStartedAt.delete(payload.instanceId);
+    if (startedAt && (payload.exitCode ?? 1) !== 0 && Date.now() - startedAt < 10_000) {
+      const inst = instances.value.find((item) => item.id === payload.instanceId);
+      toast.warning(
+        `${inst?.displayName ?? "游戏"} 启动后立刻退出了`,
+        "游戏大概率已崩溃——请到实例的「日志与崩溃」里查看原因",
+        6500,
+      );
+    }
     void loadDashboard();
   }).then((unlisten) => {
     unlistenExit = unlisten;
@@ -277,20 +292,21 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- 底部数据条：把原来「标题下方到按钮之间」的空白换成可读信息 -->
-        <div class="relative grid grid-cols-3 gap-3 border-t border-line/60 pt-4">
-          <div class="min-w-0 rounded-md bg-surface-muted px-3 py-2.5">
+        <!-- 数据条：融进卡片白底，用竖线分隔（专业工具的元信息排法） -->
+        <div class="relative grid grid-cols-3 border-t border-line/60 pt-4">
+          <div class="min-w-0 px-1">
             <p class="text-micro text-ink-muted">上次游玩</p>
             <p class="mt-0.5 truncate text-h3 font-semibold text-ink tabular">
               {{ latest.lastPlayedAt ? formatRelativeTime(latest.lastPlayedAt) : "尚未启动" }}
             </p>
           </div>
-          <div class="min-w-0 rounded-md bg-surface-muted px-3 py-2.5">
+          <div class="min-w-0 border-l border-line/60 px-4">
             <p class="text-micro text-ink-muted">累计时长</p>
             <p class="mt-0.5 truncate text-h3 font-semibold text-ink tabular">
               {{ playtimeLabel(latest) || "不足 1 分钟" }}
             </p>
           </div>
-          <div class="min-w-0 rounded-md bg-surface-muted px-3 py-2.5">
+          <div class="min-w-0 border-l border-line/60 px-4">
             <p class="text-micro text-ink-muted">创建于</p>
             <p class="mt-0.5 truncate text-h3 font-semibold text-ink tabular">
               {{ formatRelativeTime(latest.createdAt) }}
@@ -346,7 +362,9 @@ onBeforeUnmount(() => {
             <div class="min-w-0 flex-1">
               <p class="text-micro text-ink-muted">Java 环境</p>
               <p class="truncate text-h2 font-semibold text-ink">
-                {{ javas.length > 0 ? `${javas.length} 个 · 最高 Java ${bestJava}` : "未检测到 Java" }}
+                {{
+                  javas.length > 0 ? `${javas.length} 个 · 最高 Java ${bestJava}` : "未检测到 Java"
+                }}
               </p>
             </div>
           </div>
@@ -367,7 +385,7 @@ onBeforeUnmount(() => {
             </div>
             <span
               v-if="runningTasks.length"
-              class="shrink-0 rounded-round bg-surface-muted px-1.5 py-0.5 text-micro font-medium text-ink-soft"
+              class="shrink-0 rounded-xs bg-surface-muted px-1.5 py-0.5 text-micro font-medium text-ink-soft"
             >
               {{ runningTasks.length }}
             </span>
@@ -413,7 +431,8 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
   font-size: var(--text-hero);
   line-height: var(--text-hero--line-height);
-  letter-spacing: var(--text-hero--letter-spacing);
-  font-weight: 600;
+  /* 大字号配紧字距 = 力量感（专业工具标题的通用排法） */
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }
 </style>

@@ -87,7 +87,10 @@ pub struct CfManifestFile {
     #[serde(rename = "fileID", default)]
     pub file_id: u32,
     /// 是否必需。`false` 的文件多为服务端专用或可选组件。
-    #[serde(default)]
+    // 缺省 true：官方导出每项都显式写 required，但手写 / 第三方工具生成的
+    // manifest 可能省略——「文件清单默认全部要装」才是符合直觉的语义，
+    // 缺省 false 会让整个整合包装完是空的。
+    #[serde(default = "default_true")]
     pub required: bool,
 }
 
@@ -181,6 +184,10 @@ pub fn loader_of(manifest: &CfManifest) -> Option<(String, String)> {
 }
 
 /// 客户端需要下载的文件数（不含可选文件）。
+fn default_true() -> bool {
+    true
+}
+
 pub fn required_file_count(manifest: &CfManifest) -> u32 {
     manifest.files.iter().filter(|file| file.required).count() as u32
 }
@@ -466,6 +473,14 @@ pub fn cache_path(project_id: u32, file_id: u32) -> Result<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn missing_required_field_means_install() {
+        let json = r#"{"files":[{"projectID":1,"fileID":2}]}"#;
+        let manifest: CfManifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.files[0].required, "缺省 required 应视为需要安装");
+    }
+
     use super::*;
 
     const SAMPLE: &str = r#"{

@@ -4,7 +4,6 @@
 //! 不含「实例该不该允许删除」这类业务判断——
 //! 判断在 `instance::lifecycle`，`storage` 只执行写入。
 
-pub mod cache;
 pub mod instance;
 pub mod settings;
 pub mod usage;

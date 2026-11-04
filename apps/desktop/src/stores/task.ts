@@ -84,7 +84,9 @@ export const useTaskStore = defineStore("task", {
       const dt = (now - task._lastTime) / 1000;
       if (dt >= 0.4) {
         const db = current.downloadedBytes - task._lastBytes;
-        const instant = db / dt;
+        // 防御：后端重试/分片重置可能给出负数或极端瞬时值，
+        // 平滑前先夹紧——负数截 0，上限 1 GB/s（现实中不可能更快）
+        const instant = Math.min(Math.max(db / dt, 0), 1024 * 1024 * 1024);
         task.speedBps = task.speedBps > 0 ? task.speedBps * 0.3 + instant * 0.7 : instant;
         task._lastBytes = current.downloadedBytes;
         task._lastTime = now;

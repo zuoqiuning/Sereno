@@ -27,6 +27,7 @@ macro_rules! all_commands {
             crate::commands::instance::select_java_executable,
             crate::commands::instance::update_instance_options,
             crate::commands::instance::set_instance_favorite,
+            crate::commands::instance::set_instance_group,
             crate::commands::instance::read_instance_logs,
             crate::commands::instance::scan_import_candidates,
             crate::commands::instance::select_import_directory,
@@ -76,6 +77,11 @@ macro_rules! all_commands {
             crate::commands::modpack::install_cf_modpack,
             crate::commands::modpack::export_instance_modpack,
             crate::commands::launch::launch_game,
+            crate::commands::multiplayer::host_multiplayer,
+            crate::commands::multiplayer::join_multiplayer,
+            crate::commands::multiplayer::stop_multiplayer,
+            crate::commands::multiplayer::get_multiplayer_status,
+            crate::commands::multiplayer::detect_world_port,
             crate::commands::account::get_account_state,
             crate::commands::account::start_microsoft_login,
             crate::commands::account::complete_microsoft_login,
@@ -118,6 +124,7 @@ pub mod launch;
 pub mod links;
 pub mod loader;
 pub mod modpack;
+pub mod multiplayer;
 pub mod resource;
 pub mod settings;
 pub mod storage;

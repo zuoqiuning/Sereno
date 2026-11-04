@@ -17,7 +17,9 @@ import { dragging } from "@/composables/useFileDrop";
       <div
         class="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-brand-500/45 bg-surface px-10 py-8 shadow-lg"
       >
-        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/10 text-brand-500">
+        <div
+          class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/10 text-brand-500"
+        >
           <Download :size="22" />
         </div>
         <p class="text-body font-semibold text-ink">松开以导入</p>

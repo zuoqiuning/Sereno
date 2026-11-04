@@ -165,7 +165,7 @@ const panelClass = computed(() => [
           :aria-label="ariaLabel"
           tabindex="-1"
         >
-          <header class="flex shrink-0 items-center gap-3 border-b border-line/50 px-5 py-3">
+          <header class="flex shrink-0 items-center gap-3 border-b border-line/50 px-5 py-4">
             <slot name="header" />
             <AppIconButton label="关闭" size="sm" @click="emit('close')">
               <X :size="16" />
@@ -183,7 +183,7 @@ const panelClass = computed(() => [
             <slot />
           </div>
 
-          <footer v-if="$slots.footer" class="shrink-0 border-t border-line/50 px-5 py-3">
+          <footer v-if="$slots.footer" class="shrink-0 border-t border-line/50 px-5 py-4">
             <slot name="footer" />
           </footer>
         </div>

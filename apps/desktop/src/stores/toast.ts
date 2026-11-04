@@ -19,9 +19,12 @@ export const useToastStore = defineStore("toast", {
   }),
 
   actions: {
-    push(
-      options: { title: string; message?: string; tone?: ToastTone; duration?: number },
-    ): number {
+    push(options: {
+      title: string;
+      message?: string;
+      tone?: ToastTone;
+      duration?: number;
+    }): number {
       const id = nextId++;
       this.items.push({
         id,

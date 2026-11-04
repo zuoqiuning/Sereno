@@ -9,6 +9,8 @@ import { getAccountState } from "@/api/account";
 import { useWindowControls } from "@/composables/useWindowControls";
 import type { AccountState } from "@/types";
 
+// 最大化按钮：**产品决策关闭**（2026-11-04 用户确认不需要最大化；
+// 审计 S5 曾建议开启，实测后按用户偏好收回）。窗口仍可拖拽调整大小。
 const showMaximize = false;
 const { minimize, toggleMaximize, close, syncMaximized, bindResizeListener } = useWindowControls();
 

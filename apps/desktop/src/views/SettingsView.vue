@@ -28,7 +28,7 @@ import { installJavaRuntime } from "@/api/java";
 import { clearStorageCache, getStorageUsage } from "@/api/storage";
 import { checkAppUpdate, setUpdateAutoCheck } from "@/api/update";
 import { setOfflineAccount } from "@/api/account";
-import { isApiError } from "@/api/invoke";
+import { toMessage } from "@/utils/error";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
 import { formatBytes } from "@/utils/format";
@@ -47,13 +47,6 @@ const sections: SideNavItem[] = [
 const route = useRoute();
 const toast = useToastStore();
 const updateStore = useUpdateStore();
-
-/** 把任意抛出物转成可读文案。 */
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
 
 /** 当前分区：支持命令面板用 `?section=launch` 直接跳进来。 */
 const activeSection = ref<SectionId>(
@@ -339,366 +332,372 @@ onMounted(() => {
         -->
         <Transition v-else name="tab" mode="out-in">
           <div :key="activeSection" class="flex flex-col gap-4">
-                <!-- 通用 -->
-                <template v-if="activeSection === 'general'">
-                <AppCard title="下载与网络" padding="lg">
-                  <template #icon>
-                    <Download :size="16" class="text-brand-500" />
-                  </template>
-
-                  <SettingsRow
-                    title="最大下载线程数"
-                    description="范围 1–32，默认 8。线程数过高反而会触发镜像限流。"
-                  >
-                    <div class="flex w-62 items-center gap-3">
-                      <AppSlider
-                        :model-value="settings.download.maxConcurrent"
-                        :min="1"
-                        :max="32"
-                        label="最大下载线程数"
-                        class="flex-1"
-                        @update:model-value="(value) => (settings!.download.maxConcurrent = value)"
-                        @change="saveSettings"
-                      />
-                      <span class="value-chip">{{ settings.download.maxConcurrent }}</span>
-                    </div>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title="下载限速"
-                    description="整个启动器的总带宽上限，0 表示不限。"
-                  >
-                    <div class="flex w-62 items-center gap-3">
-                      <AppSlider
-                        :model-value="limitMbps"
-                        :min="0"
-                        :max="20"
-                        :step="0.5"
-                        label="下载限速"
-                        class="flex-1"
-                        @update:model-value="(value) => (limitMbps = value)"
-                        @change="saveSettings"
-                      />
-                      <span class="value-chip">
-                        {{ limitMbps > 0 ? `${limitMbps} MB/s` : "不限" }}
-                      </span>
-                    </div>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    id="setting-memory"
-                    title="最大内存"
-                    description="启动时传给 Java 的 -Xmx，大型整合包建议 4096 以上。"
-                  >
-                    <div class="flex w-62 items-center gap-3">
-                      <AppSlider
-                        :model-value="memoryMb"
-                        :min="512"
-                        :max="8192"
-                        :step="512"
-                        label="最大内存"
-                        class="flex-1"
-                        @update:model-value="(value) => (memoryMb = value)"
-                        @change="saveSettings"
-                      />
-                      <span class="value-chip">{{ memoryMb }} MB</span>
-                    </div>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title="优先使用国内镜像"
-                    description="游戏与加载器走 BMCLAPI，Mod 搜索走 MCIM；关闭后回退官方源。"
-                    orientation="inline"
-                  >
-                    <AppSwitch
-                      :model-value="settings.download.preferMirror"
-                      label="优先使用国内镜像"
-                      @update:model-value="
-                        (value) => {
-                          settings!.download.preferMirror = value;
-                          saveSettings();
-                        }
-                      "
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow title="深色主题" description="立即生效，不需要重启。">
-                    <AppSwitch
-                      :model-value="settings.theme === 'dark'"
-                      label="深色主题"
-                      @update:model-value="setTheme"
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title="网络代理"
-                    description="支持 http:// 与 socks5://，留空表示直连。修改后下一次请求生效。"
-                    orientation="stack"
-                  >
-                    <AppInput
-                      v-model="proxy"
-                      placeholder="例如 http://127.0.0.1:7890"
-                      @change="saveSettings"
-                    />
-                  </SettingsRow>
-                </AppCard>
-
-                <AppCard title="存储路径" padding="lg">
-                  <template #icon>
-                    <FolderOpen :size="16" class="text-brand-500" />
-                  </template>
-
-                  <SettingsRow
-                    id="setting-storage"
-                    title="实例存放位置"
-                    description="游戏文件、Mod、存档都会下载到这里。"
-                    orientation="stack"
-                  >
-                    <div class="flex items-center gap-2">
-                      <div
-                        class="flex-1 truncate rounded-md border border-line/60 bg-surface-muted px-3 py-2 font-mono text-caption text-ink"
-                        :title="settings!.instancesRoot || '默认文档目录'"
-                      >
-                        {{ settings!.instancesRoot || "默认文档目录" }}
-                      </div>
-                      <AppButton variant="secondary" size="sm" @click="selectDir">更改</AppButton>
-                    </div>
-                  </SettingsRow>
-                </AppCard>
-
-                <AppCard title="磁盘占用" padding="lg">
-                  <template #icon>
-                    <HardDrive :size="16" class="text-brand-500" />
-                  </template>
-
-                  <div v-if="!storage" class="py-4 text-caption text-ink-muted">正在统计…</div>
-                  <div v-else class="flex flex-col gap-4">
-                    <div class="grid grid-cols-3 gap-3 text-center">
-                      <div class="rounded-md bg-surface-muted py-3">
-                        <div class="font-mono text-h2 text-ink tabular">
-                          {{ formatBytes(storage.instanceBytes) }}
-                        </div>
-                        <div class="mt-1 text-micro text-ink-muted">实例</div>
-                      </div>
-                      <div class="rounded-md bg-surface-muted py-3">
-                        <div class="font-mono text-h2 text-ink tabular">
-                          {{ formatBytes(storage.cacheBytes) }}
-                        </div>
-                        <div class="mt-1 text-micro text-ink-muted">缓存</div>
-                      </div>
-                      <div class="rounded-md bg-surface-muted py-3">
-                        <div class="font-mono text-h2 text-ink tabular">
-                          {{ formatBytes(storage.logBytes) }}
-                        </div>
-                        <div class="mt-1 text-micro text-ink-muted">日志</div>
-                      </div>
-                    </div>
-
-                    <div v-if="storage.instances.length" class="flex flex-col divide-y divide-line/50">
-                      <div
-                        v-for="item in storage.instances.slice(0, 5)"
-                        :key="item.id"
-                        class="flex items-center justify-between py-1.5 text-caption"
-                      >
-                        <span class="truncate text-ink-soft">{{ item.name }}</span>
-                        <span class="shrink-0 font-mono text-ink-muted tabular">
-                          {{ formatBytes(item.bytes) }}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-3 border-t border-line/50 pt-3">
-                      <p class="text-micro text-ink-muted">
-                        缓存只存搜索页与版本列表，清理不会影响实例与存档。
-                      </p>
-                      <AppButton
-                        variant="secondary"
-                        size="sm"
-                        :loading="clearingCache"
-                        @click="clearCache"
-                      >
-                        清理缓存
-                      </AppButton>
-                    </div>
-                  </div>
-                </AppCard>
+            <!-- 通用 -->
+            <template v-if="activeSection === 'general'">
+              <AppCard title="下载与网络" padding="lg">
+                <template #icon>
+                  <Download :size="16" class="text-brand-500" />
                 </template>
 
-                <!-- 启动 -->
-                <template v-else-if="activeSection === 'launch'">
-                <AppCard title="游戏启动设置" padding="lg">
-                  <template #icon>
-                    <Gamepad2 :size="16" class="text-brand-500" />
-                  </template>
-
-                  <SettingsRow
-                    title="离线用户名"
-                    description="进入游戏后显示的名字（3–16 位字母 / 数字 / 下划线）。"
-                  >
-                    <div class="flex items-center gap-2">
-                      <AppInput
-                        v-model="offlineName"
-                        placeholder="Player"
-                        class="w-40"
-                        :invalid="offlineName.length > 0 && !offlineNameValid"
-                        @submit="applyOfflineName"
-                      />
-                      <AppButton
-                        variant="secondary"
-                        size="sm"
-                        :disabled="!offlineNameValid || !!switchingOffline"
-                        :loading="switchingOffline"
-                        @click="applyOfflineName"
-                      >
-                        应用
-                      </AppButton>
-                    </div>
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title="自动设置为简体中文"
-                    description="启动时追加 --lang zh_cn，并把 options.txt 的语言改好。"
-                  >
-                    <AppSwitch
-                      :model-value="settings!.logging.autoLanguageChinese"
-                      label="自动设置为简体中文"
-                      @update:model-value="
-                        (value) => {
-                          settings!.logging.autoLanguageChinese = value;
-                          saveSettings();
-                        }
-                      "
+                <SettingsRow
+                  title="最大下载线程数"
+                  description="范围 1–64，默认 32。线程过高可能触发镜像限流（429/503），到不了更快反而更慢。"
+                >
+                  <div class="flex w-62 items-center gap-3">
+                    <AppSlider
+                      :model-value="settings.download.maxConcurrent"
+                      :min="1"
+                      :max="64"
+                      label="最大下载线程数"
+                      class="flex-1"
+                      @update:model-value="(value) => (settings!.download.maxConcurrent = value)"
+                      @change="saveSettings"
                     />
-                  </SettingsRow>
-                </AppCard>
+                    <span class="value-chip">{{ settings.download.maxConcurrent }}</span>
+                  </div>
+                </SettingsRow>
 
-                <AppCard id="setting-java" title="Java 运行环境" padding="lg">
-                  <template #icon>
-                    <Coffee :size="16" class="text-brand-500" />
-                  </template>
+                <SettingsRow title="下载限速" description="整个启动器的总带宽上限，0 表示不限。">
+                  <div class="flex w-62 items-center gap-3">
+                    <AppSlider
+                      :model-value="limitMbps"
+                      :min="0"
+                      :max="20"
+                      :step="0.5"
+                      label="下载限速"
+                      class="flex-1"
+                      @update:model-value="(value) => (limitMbps = value)"
+                      @change="saveSettings"
+                    />
+                    <span class="value-chip">
+                      {{ limitMbps > 0 ? `${limitMbps} MB/s` : "不限" }}
+                    </span>
+                  </div>
+                </SettingsRow>
 
-                  <div class="flex items-center justify-between pb-3">
-                    <p class="text-caption text-ink-muted">
-                      启动游戏需要匹配的 Java 主版本，Sereno 会自动挑选。
-                    </p>
-                    <AppButton variant="secondary" size="sm" :loading="loading" @click="scanJava">
-                      <RefreshCw :size="14" :class="{ 'animate-spin': loading }" />
-                      重新扫描
-                    </AppButton>
+                <SettingsRow
+                  id="setting-memory"
+                  title="最大内存"
+                  description="启动时传给 Java 的 -Xmx，大型整合包建议 4096 以上。"
+                >
+                  <div class="flex w-62 items-center gap-3">
+                    <AppSlider
+                      :model-value="memoryMb"
+                      :min="512"
+                      :max="8192"
+                      :step="512"
+                      label="最大内存"
+                      class="flex-1"
+                      @update:model-value="(value) => (memoryMb = value)"
+                      @change="saveSettings"
+                    />
+                    <span class="value-chip">{{ memoryMb }} MB</span>
+                  </div>
+                </SettingsRow>
+
+                <SettingsRow
+                  title="优先使用国内镜像"
+                  description="游戏与加载器走 BMCLAPI，Mod 搜索走 MCIM；关闭后回退官方源。"
+                  orientation="inline"
+                >
+                  <AppSwitch
+                    :model-value="settings.download.preferMirror"
+                    label="优先使用国内镜像"
+                    @update:model-value="
+                      (value) => {
+                        settings!.download.preferMirror = value;
+                        saveSettings();
+                      }
+                    "
+                  />
+                </SettingsRow>
+
+                <SettingsRow title="深色主题" description="立即生效，不需要重启。">
+                  <AppSwitch
+                    :model-value="settings.theme === 'dark'"
+                    label="深色主题"
+                    @update:model-value="setTheme"
+                  />
+                </SettingsRow>
+
+                <SettingsRow
+                  title="网络代理"
+                  description="支持 http:// 与 socks5://，留空表示直连。修改后下一次请求生效。"
+                  orientation="stack"
+                >
+                  <AppInput
+                    v-model="proxy"
+                    placeholder="例如 http://127.0.0.1:7890"
+                    @change="saveSettings"
+                  />
+                </SettingsRow>
+              </AppCard>
+
+              <AppCard title="存储路径" padding="lg">
+                <template #icon>
+                  <FolderOpen :size="16" class="text-brand-500" />
+                </template>
+
+                <SettingsRow
+                  id="setting-storage"
+                  title="实例存放位置"
+                  description="游戏文件、Mod、存档都会下载到这里。"
+                  orientation="stack"
+                >
+                  <div class="flex items-center gap-2">
+                    <div
+                      class="flex-1 truncate rounded-md border border-line/60 bg-surface-muted px-3 py-2 font-mono text-caption text-ink"
+                      :title="settings!.instancesRoot || '默认文档目录'"
+                    >
+                      {{ settings!.instancesRoot || "默认文档目录" }}
+                    </div>
+                    <AppButton variant="secondary" size="sm" @click="selectDir">更改</AppButton>
+                  </div>
+                </SettingsRow>
+              </AppCard>
+
+              <AppCard title="磁盘占用" padding="lg">
+                <template #icon>
+                  <HardDrive :size="16" class="text-brand-500" />
+                </template>
+
+                <div v-if="!storage" class="py-4 text-caption text-ink-muted">正在统计…</div>
+                <div v-else class="flex flex-col gap-4">
+                  <div class="grid grid-cols-3 gap-3 text-center">
+                    <div class="rounded-md bg-surface-muted py-3">
+                      <div class="font-mono text-h2 text-ink tabular">
+                        {{ formatBytes(storage.instanceBytes) }}
+                      </div>
+                      <div class="mt-1 text-micro text-ink-muted">实例</div>
+                    </div>
+                    <div class="rounded-md bg-surface-muted py-3">
+                      <div class="font-mono text-h2 text-ink tabular">
+                        {{ formatBytes(storage.cacheBytes) }}
+                      </div>
+                      <div class="mt-1 text-micro text-ink-muted">缓存</div>
+                    </div>
+                    <div class="rounded-md bg-surface-muted py-3">
+                      <div class="font-mono text-h2 text-ink tabular">
+                        {{ formatBytes(storage.logBytes) }}
+                      </div>
+                      <div class="mt-1 text-micro text-ink-muted">日志</div>
+                    </div>
                   </div>
 
                   <div
-                    v-if="missingJavaMajors.length"
-                    class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed border-line/70 px-3 py-2"
+                    v-if="storage.instances.length"
+                    class="flex flex-col divide-y divide-line/50"
                   >
-                    <span class="text-micro text-ink-muted">缺少运行时，可自动下载：</span>
-                    <AppButton
-                      v-for="major in missingJavaMajors"
-                      :key="major"
-                      variant="secondary"
-                      size="xs"
-                      :loading="downloadingJava === major"
-                      :disabled="downloadingJava !== null"
-                      @click="installJava(major)"
+                    <div
+                      v-for="item in storage.instances.slice(0, 5)"
+                      :key="item.id"
+                      class="flex items-center justify-between py-1.5 text-caption"
                     >
-                      Java {{ major }}
-                    </AppButton>
+                      <span class="truncate text-ink-soft">{{ item.name }}</span>
+                      <span class="shrink-0 font-mono text-ink-muted tabular">
+                        {{ formatBytes(item.bytes) }}
+                      </span>
+                    </div>
                   </div>
 
-                  <p v-if="javaError" class="mb-3 text-caption text-danger">{{ javaError }}</p>
+                  <div class="flex items-center justify-between gap-3 border-t border-line/50 pt-3">
+                    <p class="text-caption text-ink-soft">
+                      缓存只存搜索页与版本列表，清理不会影响实例与存档。
+                    </p>
+                    <AppButton
+                      variant="secondary"
+                      size="sm"
+                      :loading="clearingCache"
+                      @click="clearCache"
+                    >
+                      清理缓存
+                    </AppButton>
+                  </div>
+                </div>
+              </AppCard>
+            </template>
 
-                  <p
-                    v-if="javas.length === 0 && !loading"
-                    class="rounded-md border border-dashed border-line/70 py-6 text-center text-caption text-ink-muted"
-                  >
-                    未找到 Java 环境，可以先自动下载，或在实例设置里手动指定路径。
+            <!-- 启动 -->
+            <template v-else-if="activeSection === 'launch'">
+              <AppCard title="游戏启动设置" padding="lg">
+                <template #icon>
+                  <Gamepad2 :size="16" class="text-brand-500" />
+                </template>
+
+                <SettingsRow
+                  title="离线用户名"
+                  description="进入游戏后显示的名字（3–16 位字母 / 数字 / 下划线）。"
+                >
+                  <div class="flex items-center gap-2">
+                    <AppInput
+                      v-model="offlineName"
+                      placeholder="Player"
+                      class="w-40"
+                      :invalid="offlineName.length > 0 && !offlineNameValid"
+                      @submit="applyOfflineName"
+                    />
+                    <AppButton
+                      variant="secondary"
+                      size="sm"
+                      :disabled="!offlineNameValid || !!switchingOffline"
+                      :loading="switchingOffline"
+                      @click="applyOfflineName"
+                    >
+                      应用
+                    </AppButton>
+                  </div>
+                </SettingsRow>
+
+                <SettingsRow
+                  title="自动设置为简体中文"
+                  description="启动时追加 --lang zh_cn，并把 options.txt 的语言改好。"
+                >
+                  <AppSwitch
+                    :model-value="settings!.logging.autoLanguageChinese"
+                    label="自动设置为简体中文"
+                    @update:model-value="
+                      (value) => {
+                        settings!.logging.autoLanguageChinese = value;
+                        saveSettings();
+                      }
+                    "
+                  />
+                </SettingsRow>
+              </AppCard>
+
+              <AppCard id="setting-java" title="Java 运行环境" padding="lg">
+                <template #icon>
+                  <Coffee :size="16" class="text-brand-500" />
+                </template>
+
+                <div class="flex items-center justify-between pb-3">
+                  <p class="text-caption text-ink-muted">
+                    启动游戏需要匹配的 Java 主版本，Sereno 会自动挑选。
                   </p>
+                  <AppButton variant="secondary" size="sm" :loading="loading" @click="scanJava">
+                    <RefreshCw :size="14" :class="{ 'animate-spin': loading }" />
+                    重新扫描
+                  </AppButton>
+                </div>
 
-                  <!--
+                <div
+                  v-if="missingJavaMajors.length"
+                  class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed border-line/70 px-3 py-2"
+                >
+                  <span class="text-caption text-ink-soft">缺少运行时，可自动下载：</span>
+                  <AppButton
+                    v-for="major in missingJavaMajors"
+                    :key="major"
+                    variant="secondary"
+                    size="xs"
+                    :loading="downloadingJava === major"
+                    :disabled="downloadingJava !== null"
+                    @click="installJava(major)"
+                  >
+                    Java {{ major }}
+                  </AppButton>
+                </div>
+
+                <p v-if="javaError" class="mb-3 text-caption text-danger">{{ javaError }}</p>
+
+                <p
+                  v-if="javas.length === 0 && !loading"
+                  class="rounded-md border border-dashed border-line/70 py-6 text-center text-caption text-ink-muted"
+                >
+                  未找到 Java 环境，可以先自动下载，或在实例设置里手动指定路径。
+                </p>
+
+                <!--
                     这里用完整的 v-if 而不是 v-else：
                     上面隔着 `<p v-if="javaError">`，v-else 必须紧邻前一个兄弟元素才成立。
                     （而且加上更新分区后，顶层也需要一条完整的 v-if / v-else-if 链。）
                   -->
+                <div
+                  v-if="javas.length > 0 || loading"
+                  class="flex flex-col divide-y divide-line/50"
+                >
                   <div
-                    v-if="javas.length > 0 || loading"
-                    class="flex flex-col divide-y divide-line/50"
+                    v-for="j in javas"
+                    :key="j.path"
+                    class="flex items-center justify-between gap-3 py-2.5"
                   >
-                    <div
-                      v-for="j in javas"
-                      :key="j.path"
-                      class="flex items-center justify-between gap-3 py-2.5"
-                    >
-                      <div class="flex min-w-0 flex-col">
-                        <div class="flex items-center gap-2">
-                          <span class="font-mono text-h3 font-medium text-ink">
-                            {{ j.versionString }}
-                          </span>
-                          <AppBadge variant="success" size="sm">Java {{ j.majorVersion }}</AppBadge>
-                          <AppBadge variant="default" size="sm" outline>{{ j.arch }}</AppBadge>
-                        </div>
-                        <span class="truncate text-micro text-ink-muted" :title="j.path">{{ j.path }}</span>
+                    <div class="flex min-w-0 flex-col">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-h3 font-medium text-ink">
+                          {{ j.versionString }}
+                        </span>
+                        <AppBadge variant="success" size="sm">Java {{ j.majorVersion }}</AppBadge>
+                        <AppBadge variant="default" size="sm" outline>{{ j.arch }}</AppBadge>
                       </div>
-                      <AppButton
-                        :variant="settings!.java.customPath === j.path ? 'ghost' : 'secondary'"
-                        size="sm"
-                        :disabled="settings!.java.customPath === j.path"
-                        @click="useJava(j)"
-                      >
-                        {{ settings!.java.customPath === j.path ? "当前使用" : "使用" }}
-                      </AppButton>
+                      <span class="truncate text-micro text-ink-muted" :title="j.path">{{
+                        j.path
+                      }}</span>
                     </div>
-                  </div>
-                </AppCard>
-                </template>
-
-                <!-- 更新 -->
-                <template v-else>
-                <AppCard title="启动器更新" padding="lg">
-                  <template #icon>
-                    <RefreshCw :size="16" class="text-brand-500" />
-                  </template>
-
-                  <SettingsRow
-                    title="启动时自动检查更新"
-                    description="启动器打开时自动检查一次有没有新版本。只发一个请求，不影响启动速度。"
-                  >
-                    <AppSwitch
-                      :model-value="settings!.update.autoCheck"
-                      label="启动时自动检查更新"
-                      @update:model-value="onToggleAutoCheck"
-                    />
-                  </SettingsRow>
-
-                  <SettingsRow
-                    title="检查更新"
-                    description="手动检查一次。更新包必须通过数字签名校验，验签不通过不会被安装。"
-                  >
-                    <AppButton variant="secondary" size="sm" :loading="checkingUpdate" @click="checkNow">
-                      <RefreshCw :size="13" :class="{ 'animate-spin': checkingUpdate }" />
-                      检查更新
+                    <AppButton
+                      :variant="settings!.java.customPath === j.path ? 'ghost' : 'secondary'"
+                      size="sm"
+                      :disabled="settings!.java.customPath === j.path"
+                      @click="useJava(j)"
+                    >
+                      {{ settings!.java.customPath === j.path ? "当前使用" : "使用" }}
                     </AppButton>
-                  </SettingsRow>
-                </AppCard>
-
-                <AppCard title="更新通道" padding="lg">
-                  <template #icon>
-                    <ShieldCheck :size="16" class="text-brand-500" />
-                  </template>
-
-                  <div class="flex flex-col gap-2 text-caption leading-6 text-ink-muted">
-                    <p>
-                      更新包从官方渠道下载，并用内置的 minisign
-                      公钥验签——签名不匹配的更新包不会被安装。
-                    </p>
-                    <p>
-                      下载优先走腾讯云 COS，失败时自动回落到 GitHub Release；
-                      两个端点都不可用时会明确报错，不会静默失败。
-                    </p>
                   </div>
+                </div>
+              </AppCard>
+            </template>
 
-                </AppCard>
+            <!-- 更新 -->
+            <template v-else>
+              <AppCard title="启动器更新" padding="lg">
+                <template #icon>
+                  <RefreshCw :size="16" class="text-brand-500" />
                 </template>
-              </div>
+
+                <SettingsRow
+                  title="启动时自动检查更新"
+                  description="启动器打开时自动检查一次有没有新版本。只发一个请求，不影响启动速度。"
+                >
+                  <AppSwitch
+                    :model-value="settings!.update.autoCheck"
+                    label="启动时自动检查更新"
+                    @update:model-value="onToggleAutoCheck"
+                  />
+                </SettingsRow>
+
+                <SettingsRow
+                  title="检查更新"
+                  description="手动检查一次。更新包必须通过数字签名校验，验签不通过不会被安装。"
+                >
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    :loading="checkingUpdate"
+                    @click="checkNow"
+                  >
+                    <RefreshCw :size="13" :class="{ 'animate-spin': checkingUpdate }" />
+                    检查更新
+                  </AppButton>
+                </SettingsRow>
+              </AppCard>
+
+              <AppCard title="更新通道" padding="lg">
+                <template #icon>
+                  <ShieldCheck :size="16" class="text-brand-500" />
+                </template>
+
+                <div class="flex flex-col gap-2 text-caption leading-6 text-ink-muted">
+                  <p>
+                    更新包从官方渠道下载，并用内置的 minisign
+                    公钥验签——签名不匹配的更新包不会被安装。
+                  </p>
+                  <p>
+                    下载优先走腾讯云 COS，失败时自动回落到 GitHub Release；
+                    两个端点都不可用时会明确报错，不会静默失败。
+                  </p>
+                </div>
+              </AppCard>
+            </template>
+          </div>
         </Transition>
       </div>
     </div>

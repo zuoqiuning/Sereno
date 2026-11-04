@@ -147,7 +147,9 @@ onMounted(() => {
         <div v-if="otherFiles.length" class="flex items-start gap-2.5">
           <Package :size="15" class="mt-0.5 shrink-0 text-ink-muted" />
           <div class="min-w-0 flex-1">
-            <p class="text-caption font-medium text-ink">不支持的文件（{ otherFiles.length }} 个）</p>
+            <p class="text-caption font-medium text-ink">
+              不支持的文件（{ otherFiles.length }} 个）
+            </p>
             <p class="mt-0.5 truncate text-micro text-ink-muted">
               {{ otherFiles.map(baseName).join("、") }}
             </p>

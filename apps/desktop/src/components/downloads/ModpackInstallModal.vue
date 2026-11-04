@@ -9,12 +9,7 @@ import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import { createInstance } from "@/api/instance";
 import { isApiError } from "@/api/invoke";
-import {
-  getCfModpackInfo,
-  getModpackInfo,
-  installCfModpack,
-  installModpack,
-} from "@/api/modpack";
+import { getCfModpackInfo, getModpackInfo, installCfModpack, installModpack } from "@/api/modpack";
 import { log } from "@/api/settings";
 import { useTaskStore } from "@/stores/task";
 import type { DownloadProgress, ModProject, ModpackInfo } from "@/types";

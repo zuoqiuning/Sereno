@@ -54,9 +54,7 @@ export function setUpdateAutoCheck(autoCheck: boolean): Promise<null> {
  * 用事件而不是 Channel：Windows 上安装器启动后进程立刻退出，
  * Channel 的发送端会随命令一起被 drop，最后一个进度事件可能送不到。
  */
-export function onUpdateProgress(
-  handler: (progress: UpdateProgress) => void,
-): () => void {
+export function onUpdateProgress(handler: (progress: UpdateProgress) => void): () => void {
   const unlisten = events.updateProgress.listen((event) => {
     handler(event.payload);
   });

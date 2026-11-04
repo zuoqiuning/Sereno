@@ -71,6 +71,14 @@ export function setInstanceFavorite(
   return callCommand(() => commands.setInstanceFavorite(instanceId, favorite));
 }
 
+/** 设置 / 清除实例分组。传 `null` 或空串表示移出分组。 */
+export function setInstanceGroup(
+  instanceId: string,
+  group: string | null,
+): Promise<InstanceMetadata> {
+  return callCommand(() => commands.setInstanceGroup(instanceId, group));
+}
+
 /**
  * 扫描外部目录，找出可导入的实例候选。
  *

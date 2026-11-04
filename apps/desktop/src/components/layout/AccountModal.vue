@@ -33,6 +33,7 @@ import {
   switchOfflineAccount,
 } from "@/api/account";
 import { isApiError } from "@/api/invoke";
+import { toMessage } from "@/utils/error";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
 import { askConfirm } from "@/composables/useConfirm";
@@ -129,12 +130,6 @@ const otherAccounts = computed(() => {
   }
   return offlineAccounts.value;
 });
-
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -250,11 +245,7 @@ async function login(): Promise<void> {
     }
     void openMicrosoftLogin(info.verificationUri).catch(() => {});
 
-    state.value = await completeMicrosoftLogin(
-      info.deviceCode,
-      info.interval,
-      info.expiresIn,
-    );
+    state.value = await completeMicrosoftLogin(info.deviceCode, info.interval, info.expiresIn);
     toast.success("微软登录成功", state.value.name);
     newName.value = "";
   } catch (err) {
@@ -506,17 +497,15 @@ function removeAuthlib(id: string, name: string): void {
             </AppButton>
           </div>
           <p class="text-micro leading-5 text-ink-muted">
-            档案创建时会固化一个 UUID。切换档案会切换到对应的玩家数据；想保留存档里的物品，请切回原来的档案。
+            档案创建时会固化一个
+            UUID。切换档案会切换到对应的玩家数据；想保留存档里的物品，请切回原来的档案。
           </p>
         </div>
       </div>
 
       <!-- ================= 微软正版 ================= -->
       <div v-else-if="activeTab === 'microsoft'" class="flex flex-col gap-4">
-        <p
-          v-if="ephemeral"
-          class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
-        >
+        <p v-if="ephemeral" class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning">
           系统凭据管理器不可用，登录令牌只在本次运行内有效，重启后需要重新登录。
         </p>
 
@@ -569,9 +558,7 @@ function removeAuthlib(id: string, name: string): void {
             v-else-if="deviceCode"
             class="flex flex-col items-center gap-2 rounded-lg border border-line bg-surface-muted/50 px-3 py-4"
           >
-            <p class="text-caption text-ink-muted">
-              浏览器已打开，输入下面的代码即可完成授权
-            </p>
+            <p class="text-caption text-ink-muted">浏览器已打开，输入下面的代码即可完成授权</p>
             <div class="flex items-center gap-2">
               <span class="font-mono text-[22px] font-semibold tracking-[0.14em] text-ink">
                 {{ deviceCode }}
@@ -604,9 +591,7 @@ function removeAuthlib(id: string, name: string): void {
           </div>
 
           <div v-else class="flex flex-col items-center gap-3 py-2 text-center">
-            <p class="text-caption text-ink-muted">
-              登录正版账户，即可使用官方皮肤与联机服务。
-            </p>
+            <p class="text-caption text-ink-muted">登录正版账户，即可使用官方皮肤与联机服务。</p>
             <AppButton
               variant="primary"
               :loading="busy === 'login'"
@@ -622,10 +607,7 @@ function removeAuthlib(id: string, name: string): void {
 
       <!-- ================= 第三方登录 ================= -->
       <div v-else class="flex flex-col gap-4">
-        <p
-          v-if="ephemeral"
-          class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning"
-        >
+        <p v-if="ephemeral" class="rounded-md bg-warning-soft px-3 py-2 text-caption text-warning">
           系统凭据管理器不可用，登录令牌只在本次运行内有效，重启后需要重新登录。
         </p>
 
@@ -761,15 +743,19 @@ function removeAuthlib(id: string, name: string): void {
           <AppButton
             variant="primary"
             :loading="busy === 'authlib-login'"
-            :disabled="!!busy || !authlibForm.apiRoot.trim() || !authlibForm.username.trim() || !authlibForm.password"
+            :disabled="
+              !!busy ||
+              !authlibForm.apiRoot.trim() ||
+              !authlibForm.username.trim() ||
+              !authlibForm.password
+            "
             @click="loginAuthlib"
           >
             登录
           </AppButton>
 
           <p class="text-micro leading-5 text-ink-muted">
-            密码只用于换取登录令牌，不会保存。令牌存在系统凭据管理器里，
-            重启后仍可自动续期。
+            密码只用于换取登录令牌，不会保存。令牌存在系统凭据管理器里， 重启后仍可自动续期。
           </p>
         </div>
       </div>

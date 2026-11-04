@@ -2,7 +2,8 @@
 
 > [!WARNING]
 > **本项目仅供个人学习、研究与非商业交流使用，严禁任何形式的商业售卖、套壳私服盈利、植入广告或捆绑商业插件。**
-> Sereno 是一款完全免费、无广告、无遥测、不联机验证的单机启动器。
+> Sereno 是一款完全免费、无广告、无遥测、不强制联网验证的启动器；
+> 联机为**可选的点对点房间码模式**（无大厅、无自建服务端、无账号体系）。
 > 欢迎随意参考与借鉴本项目的代码与架构设计；若能注明「参考自 Sereno」，不胜感激。
 
 ![version](https://img.shields.io/badge/version-0.1.0-0F64B5?style=flat-square)
@@ -42,6 +43,9 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
   把 Mod、配置与存档一并搬过来
 - 实例健康检查：Java、内存、磁盘、文件完整性、Mod 依赖与最近崩溃一次说清
 - 世界备份、日志查看、崩溃自动诊断与诊断包导出
+- **联机（EasyTier 房间码）**：房主一键开房发码，房客免权限加入；
+  世界端口自动检测，游戏内直接连接即可，无需输入 IP
+- 实例分组：可折叠分区整理多实例，不改变目录结构
 - 下载限速、镜像优先、断点续传与增量校验
 - **启动器自身的更新**：更新包经 minisign 数字签名校验，验签不过绝不安装
 
@@ -58,6 +62,9 @@ Sereno 只做启动器该做的事：把游戏装好、把 Mod 管好、出问�
 - **Import existing instances** from PCL, HMCL, MultiMC, Prism, or the official launcher — mods, configs and saves come along.
 - Instance health checks: Java, memory, disk space, file integrity, mod dependencies, and recent crash diagnostics.
 - World backups, log viewer, crash diagnostics, and diagnostic package export.
+- **Multiplayer via EasyTier room codes** — host opens a room with one click,
+  guests join with zero permissions; world ports are auto-detected, no IP typing needed.
+- Instance groups: collapsible sections to organize many instances, without touching directories.
 - Download speed limiting, mirror preference, resumable downloads, and incremental verification.
 - **In-app updates** — update bundles are signed with minisign and verified with a public key embedded
   in the app. A bundle that fails verification is never installed.

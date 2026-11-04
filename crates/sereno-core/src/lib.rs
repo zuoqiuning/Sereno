@@ -25,6 +25,7 @@ pub mod launch;
 pub mod loader;
 pub mod models;
 pub mod modpack;
+pub mod multiplayer;
 pub mod resource;
 pub mod storage;
 pub mod utils;

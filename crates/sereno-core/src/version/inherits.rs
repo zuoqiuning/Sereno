@@ -348,9 +348,10 @@ mod tests {
         let mut parent_lib = lib("a:b:1");
         parent_lib.natives = None;
         let mut child_lib = lib("a:b:1");
-        child_lib.natives = Some(crate::models::version::NativeLibrary {
-            classifier: "natives-windows".into(),
-        });
+        child_lib.natives = Some(std::collections::BTreeMap::from([(
+            "windows".to_string(),
+            "natives-windows".to_string(),
+        )]));
 
         let merged = merge_libraries(&[parent_lib], &[child_lib]);
         assert_eq!(merged.len(), 1, "同坐标不应重复");

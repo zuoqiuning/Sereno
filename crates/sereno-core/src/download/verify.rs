@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::UNIX_EPOCH;
 
@@ -23,11 +23,16 @@ use crate::download::task::Checksum;
 use crate::{LauncherError, Result};
 
 /// 缓存条目：大小 + 修改时间（毫秒）足以识别一次文件替换。
+///
+/// `fingerprint` 是 CurseForge 的 MurmurHash2 指纹（可选，旧缓存条目
+/// 没有——指纹查询未命中时连同 sha1 一起重算一次即可）。
 #[derive(Clone, Serialize, Deserialize)]
 struct CacheEntry {
     size: u64,
     mtime_ms: u64,
     sha1: String,
+    #[serde(default)]
+    fingerprint: Option<u32>,
 }
 
 /// 未落盘的写入次数；攒够一批再写，避免每个文件都重写整份 JSON。
@@ -36,6 +41,36 @@ const SAVE_INTERVAL: u32 = 32;
 static CACHE: LazyLock<Mutex<HashMap<String, CacheEntry>>> =
     LazyLock::new(|| Mutex::new(load_cache()));
 static PENDING: AtomicU32 = AtomicU32::new(0);
+
+/// 缓存命中统计：每 256 次查询输出一次命中率。
+///
+/// 「缓存生效」要能被观测——只看代码永远不知道真实命中率。
+struct HashStats {
+    queries: AtomicU64,
+    hits: AtomicU64,
+}
+impl HashStats {
+    const REPORT_EVERY: u64 = 256;
+    fn hit_or_miss(&self) {
+        let queries = self.queries.fetch_add(1, Ordering::Relaxed) + 1;
+        if queries.is_multiple_of(Self::REPORT_EVERY) {
+            let hits = self.hits.load(Ordering::Relaxed);
+            tracing::debug!(
+                queries,
+                hits,
+                hit_rate = format!("{:.0}%", hits as f64 / queries as f64 * 100.0),
+                "本地资源哈希缓存命中率"
+            );
+        }
+    }
+    fn mark_hit(&self) {
+        self.hits.fetch_add(1, Ordering::Relaxed);
+    }
+}
+static HASH_STATS: HashStats = HashStats {
+    queries: AtomicU64::new(0),
+    hits: AtomicU64::new(0),
+};
 
 fn cache_file() -> Option<PathBuf> {
     crate::utils::paths::cache_dir()
@@ -193,12 +228,55 @@ fn cached_sha1(path: &Path, meta: &std::fs::Metadata) -> String {
                 size,
                 mtime_ms: mtime,
                 sha1: sha1.clone(),
+                fingerprint: None,
             },
         );
     }
     save_cache_if_needed();
 
     sha1
+}
+
+/// 取（SHA-1, CurseForge 指纹），带「路径 → size+mtime」缓存。
+///
+/// 供本地 Mod 扫描使用：缓存命中时**完全不读文件**——200 个 Mod 的
+/// 整合包二次扫描从数秒降到毫秒级。`compute` 只在缓存未命中时调用，
+/// 负责读文件并计算两个摘要。
+pub fn cached_hashes(
+    path: &Path,
+    meta: &std::fs::Metadata,
+    compute: impl FnOnce() -> (String, u32),
+) -> (String, u32) {
+    HASH_STATS.hit_or_miss();
+    let key = path.to_string_lossy().to_string();
+    let size = meta.len();
+    let mtime = mtime_ms(meta);
+
+    if let Ok(map) = CACHE.lock()
+        && let Some(entry) = map.get(&key)
+        && entry.size == size
+        && entry.mtime_ms == mtime
+        && let Some(fingerprint) = entry.fingerprint
+    {
+        HASH_STATS.mark_hit();
+        return (entry.sha1.clone(), fingerprint);
+    }
+
+    let (sha1, fingerprint) = compute();
+
+    if let Ok(mut map) = CACHE.lock() {
+        map.insert(
+            key,
+            CacheEntry {
+                size,
+                mtime_ms: mtime,
+                sha1: sha1.clone(),
+                fingerprint: Some(fingerprint),
+            },
+        );
+    }
+    save_cache_if_needed();
+    (sha1, fingerprint)
 }
 
 /// 计算文件的 SHA-1。

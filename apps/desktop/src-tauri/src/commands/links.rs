@@ -22,6 +22,9 @@ pub fn open_supporter_page(target: String) -> Result<()> {
         // 是本项目能免 API Key 访问 CurseForge 的前提。
         "mcim" => sereno_core::resource::mcim::MCIM_SPONSOR_URL,
         "sereno" => "https://ifdian.net/a/Sereno",
+        // EasyTier：联机模块的组网内核，官方预编译二进制的来源。
+        // 鸣谢页给出其赞助入口，符合开源礼仪也方便用户支持上游。
+        "easytier" => "https://www.easytier.cn/#sponsor",
         _ => {
             return Err(LauncherError::InvalidConfig {
                 key: "target".into(),

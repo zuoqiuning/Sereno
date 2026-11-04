@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import {
-  AlertCircle,
-  CheckCircle2,
-  FileDown,
-  ListTodo,
-  Loader2,
-  XCircle,
-} from "@lucide/vue";
+import { AlertCircle, CheckCircle2, FileDown, ListTodo, Loader2, XCircle } from "@lucide/vue";
 
 import AppBadge from "@/components/common/AppBadge.vue";
 import AppButton from "@/components/common/AppButton.vue";
@@ -146,7 +139,11 @@ async function retryTask(task: TaskItem): Promise<void> {
               :size="14"
               class="shrink-0 animate-spin text-brand-500"
             />
-            <CheckCircle2 v-else-if="task.status === 'done'" :size="14" class="shrink-0 text-success" />
+            <CheckCircle2
+              v-else-if="task.status === 'done'"
+              :size="14"
+              class="shrink-0 text-success"
+            />
             <XCircle
               v-else-if="task.status === 'cancelled'"
               :size="14"
@@ -218,9 +215,7 @@ async function retryTask(task: TaskItem): Promise<void> {
               </p>
             </div>
 
-            <div class="metric shrink-0 text-brand-500">
-              {{ percentOf(active) }}<span>%</span>
-            </div>
+            <div class="metric shrink-0 text-brand-500">{{ percentOf(active) }}<span>%</span></div>
           </div>
 
           <!-- 粗壮的主进度条 -->
@@ -232,15 +227,15 @@ async function retryTask(task: TaskItem): Promise<void> {
             />
           </div>
 
-          <!-- 仪表盘数据区 -->
-          <div class="grid grid-cols-3 gap-3">
-            <div class="metric-tile">
+          <!-- 仪表盘数据区：完成后速度/剩余毫无意义（0 B/s、-），只留文件数 -->
+          <div class="grid gap-3" :class="active.status === 'done' ? 'grid-cols-1' : 'grid-cols-3'">
+            <div v-if="active.status !== 'done'" class="metric-tile">
               <span class="text-micro text-ink-muted">实时速度</span>
               <div class="mt-1 font-mono text-h1 font-semibold text-ink tabular">
                 {{ formatSpeed(active.speedBps) }}
               </div>
             </div>
-            <div class="metric-tile">
+            <div v-if="active.status !== 'done'" class="metric-tile">
               <span class="text-micro text-ink-muted">预计剩余</span>
               <div class="mt-1 font-mono text-h1 font-semibold text-ink tabular">
                 {{ remainingLabel(active) }}
@@ -306,17 +301,16 @@ async function retryTask(task: TaskItem): Promise<void> {
               任务已取消，回到对应页面重新发起即可（已下载的分片会续传）。
             </div>
 
-            <div
+            <p
               v-else-if="active.status === 'done'"
-              class="flex items-center gap-2 rounded-md bg-success-soft px-4 py-3 text-caption text-success"
+              class="flex items-center gap-1.5 text-caption text-success"
             >
-              <CheckCircle2 :size="15" class="shrink-0" />
-              任务已完成，可以关闭这个页面。
-            </div>
-
-            <p v-else class="text-micro text-ink-muted">
-              可以离开此页面，任务会在后台继续进行。
+              <CheckCircle2 :size="14" class="shrink-0" />
+              安装完成：{{ active.summary?.doneFiles ?? 0 }} 个文件 ·
+              {{ formatBytes(active.summary?.downloadedBytes ?? 0) }}——可以离开此页。
             </p>
+
+            <p v-else class="text-micro text-ink-muted">可以离开此页面，任务会在后台继续进行。</p>
 
             <div v-if="active.status === 'running'" class="flex justify-end">
               <AppButton

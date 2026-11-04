@@ -153,6 +153,50 @@ pub(crate) async fn run_installer(
 /// 国内经常超时（这正是 NeoForge 安装失败与“太慢”的主因）。
 /// 这里按 PCL 的做法先从 `install_profile.json` + `version.json` 收集依赖，
 /// 用启动器自己的多线程 + 镜像下载器拉齐，再让安装器只做本地处理器工作。
+/// 快照 `versions/` 下的版本目录名集合（安装器失败时用于回滚）。
+pub(crate) fn snapshot_versions(instance_dir: &Path) -> std::collections::HashSet<String> {
+    std::fs::read_dir(instance_dir.join("versions"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 安装失败回滚：删除快照之后**新出现**的版本目录（安装器的半成品）。
+///
+/// 只删新增、不碰既有——用户已装好的其它加载器版本绝不能被误删。
+/// libraries/ 下的残留不在此处理：我们自己的预下载带校验，安装器
+/// 自己写的库由它重试时校验；半成品库的路径内容寻址，重装会覆盖。
+pub(crate) fn rollback_new_versions(
+    instance_dir: &Path,
+    before: &std::collections::HashSet<String>,
+) {
+    let Ok(entries) = std::fs::read_dir(instance_dir.join("versions")) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let Some(name) = entry.file_name().into_string().ok() else {
+            continue;
+        };
+        if !before.contains(&name) {
+            tracing::warn!(
+                version_dir = %entry.path().display(),
+                "加载器安装失败，删除安装器留下的半成品版本目录"
+            );
+            if let Err(error) = std::fs::remove_dir_all(entry.path()) {
+                tracing::error!(%error, "半成品版本目录删除失败，请用户手动清理");
+            }
+        }
+    }
+}
+
 pub(crate) async fn preinstall_libraries(
     client: &reqwest::Client,
     installer: &Path,
@@ -265,8 +309,11 @@ pub(crate) async fn preinstall_libraries(
 
     let queue = std::sync::Arc::new(DownloadQueue::new(
         client.clone(),
-        // 小文件并发 8 足够；并发过高会被 BMCL 以 503 限流
-        (settings.download.max_concurrent as usize).min(8),
+        // 直接跟随用户设置的并发（上限 64）：
+        // Forge/NeoForge 安装器动辄 100+ 个支持库，卡在 8 会让加载器
+        // 安装阶段比原版下载还慢（PCL 就是全并发跑这一段）。
+        // BMCLAPI 的 503 限流由镜像源失败自动回退 + 重试策略兜底。
+        settings.download.max_concurrent as usize,
     ));
 
     tracing::info!(

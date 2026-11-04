@@ -210,32 +210,48 @@ pub fn import(
     ensure_dir(&folder)?;
 
     let mut imported = 0usize;
-    for source in sources {
-        if !source.is_file() {
-            continue;
+    // 事务性：记录本次已写入的文件，任一失败时全部回滚——
+    // 批量导入 10 个 Mod 在第 5 个失败时，不能留下前 4 个半成品
+    let mut written: Vec<PathBuf> = Vec::new();
+    let result = (|| -> Result<usize> {
+        for source in sources {
+            if !source.is_file() {
+                continue;
+            }
+            let Some(raw_name) = source.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let file_name = crate::utils::fs::sanitize_file_name(raw_name);
+            let (base, _) = split_name(&file_name);
+            if !is_allowed(kind, &base) {
+                return Err(LauncherError::InvalidConfig {
+                    key: "file".into(),
+                    message: format!("不支持的文件类型：{raw_name}"),
+                });
+            }
+            let dest = folder.join(&file_name);
+            if dest.exists() {
+                return Err(LauncherError::InvalidConfig {
+                    key: "file".into(),
+                    message: format!("同名资源已存在：{raw_name}"),
+                });
+            }
+            std::fs::copy(source, &dest).map_err(|e| LauncherError::Io {
+                message: format!("导入资源失败 {}: {e}", source.display()),
+            })?;
+            written.push(dest);
+            imported += 1;
         }
-        let Some(raw_name) = source.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let file_name = crate::utils::fs::sanitize_file_name(raw_name);
-        let (base, _) = split_name(&file_name);
-        if !is_allowed(kind, &base) {
-            return Err(LauncherError::InvalidConfig {
-                key: "file".into(),
-                message: format!("不支持的文件类型：{raw_name}"),
-            });
+        Ok(imported)
+    })();
+
+    if let Err(error) = result {
+        for path in &written {
+            if let Err(remove_error) = std::fs::remove_file(path) {
+                tracing::warn!(path = %path.display(), %remove_error, "回滚导入时删除失败");
+            }
         }
-        let dest = folder.join(&file_name);
-        if dest.exists() {
-            return Err(LauncherError::InvalidConfig {
-                key: "file".into(),
-                message: format!("同名资源已存在：{raw_name}"),
-            });
-        }
-        std::fs::copy(source, &dest).map_err(|e| LauncherError::Io {
-            message: format!("导入资源失败 {}: {e}", source.display()),
-        })?;
-        imported += 1;
+        return Err(error);
     }
 
     Ok(imported)
@@ -255,16 +271,30 @@ fn scan_hashed(folder: &Path, kind: LocalResourceKind) -> Result<Vec<HashedFile>
 
     for resource in resources {
         let path = folder.join(&resource.file_name);
-        let Ok(bytes) = std::fs::read(&path) else {
-            tracing::warn!(path = %path.display(), "读取本地资源失败，跳过更新检查");
+        // 走全局哈希缓存（键 = 路径 + size + mtime）：命中时完全不读文件。
+        // 200 个 Mod 的整合包二次扫描从数秒降到毫秒级。
+        let Ok(meta) = std::fs::metadata(&path) else {
+            tracing::warn!(path = %path.display(), "读取本地资源元数据失败，跳过更新检查");
             continue;
         };
-        let sha1 = format!("{:x}", Sha1::digest(&bytes));
+        let (sha1, fingerprint) = crate::download::verify::cached_hashes(&path, &meta, || {
+            let Ok(bytes) = std::fs::read(&path) else {
+                tracing::warn!(path = %path.display(), "读取本地资源失败，跳过更新检查");
+                return (String::new(), 0);
+            };
+            (
+                format!("{:x}", Sha1::digest(&bytes)),
+                curseforge_fingerprint(&bytes),
+            )
+        });
+        if sha1.is_empty() {
+            continue;
+        }
         result.push(HashedFile {
             file_name: resource.file_name,
             display_name: resource.display_name,
             sha1,
-            fingerprint: curseforge_fingerprint(&bytes),
+            fingerprint,
         });
     }
 
@@ -272,6 +302,10 @@ fn scan_hashed(folder: &Path, kind: LocalResourceKind) -> Result<Vec<HashedFile>
 }
 
 /// CurseForge 使用的 MurmurHash2（忽略空白字节，种子为 1）。
+///
+/// 「忽略空白字节」不是实现细节而是**协议要求**：Mod 文件被解压 /
+/// 重打包后换行与缩进可能变化，但逻辑内容不变；CF 用这种方式让
+/// 指纹对打包差异不敏感，同一个 Mod 无论谁打包都能命中同一个 ID。
 fn curseforge_fingerprint(bytes: &[u8]) -> u32 {
     let filtered: Vec<u8> = bytes
         .iter()

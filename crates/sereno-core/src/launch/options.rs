@@ -36,7 +36,21 @@ pub fn ensure_chinese(game_dir: &Path, mc_version: &str) -> Result<()> {
         "zh_cn"
     };
 
-    let existing = std::fs::read_to_string(&target).unwrap_or_default();
+    // 读失败**不能**当成「文件是空的」：`unwrap_or_default()` 之后再把
+    // 结果写回去，等于把用户的按键、音量、视角、渲染距离全部清空，
+    // 只留一行 `lang:`。文件被游戏或杀软占用时这会稳定复现。
+    let existing = match std::fs::read_to_string(&target) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            tracing::warn!(
+                target = %target.display(),
+                %error,
+                "无法读取 options.txt，跳过语言修正（不覆盖用户设置）"
+            );
+            return Ok(());
+        }
+    };
     let updated = set_lang_line(&existing, target_lang);
 
     if existing == updated {

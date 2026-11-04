@@ -59,3 +59,10 @@ desktop.ini
 
 # 空的 workspace 占位目录
 /packages/
+
+# EasyTier 内核构建期产物（scripts/fetch-easytier.mjs 生成，不入库；README 占位入库）
+apps/desktop/src-tauri/resources/easytier/*
+!apps/desktop/src-tauri/resources/easytier/README.md
+
+# Tauri 更新签名私钥（绝不能入库！公钥在 tauri.conf.json）
+/tauri-keys/

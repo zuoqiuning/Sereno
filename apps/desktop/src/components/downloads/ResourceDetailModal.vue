@@ -456,10 +456,12 @@ function rawFromCf(file: CfFile): RawVersion {
     // CurseForge 的整合包以「文件」形式分发：每个文件就是一份整合包 zip，
     // 文件 ID 就是后端解析 `manifest.json` 需要的 `fileId`。
     // Modrinth 用的是版本 ID，两者语义不同，因此这里带上来源前缀由上层区分。
-    sourceVersionId:
-      props.kind === "modpack" ? `cf:${file.id}` : null,
+    sourceVersionId: props.kind === "modpack" ? `cf:${file.id}` : null,
     dependencies: (file.dependencies ?? [])
-      .filter((dependency) => (dependency.relationType ?? 0) === 3 || (dependency.relationType ?? 0) === 2)
+      .filter(
+        (dependency) =>
+          (dependency.relationType ?? 0) === 3 || (dependency.relationType ?? 0) === 2,
+      )
       .map((dependency) => ({
         id: String(dependency.modId),
         versionId: null,
@@ -1051,9 +1053,9 @@ async function loadVersions(): Promise<void> {
 
     rawVersions.value =
       props.item.source === "modrinth"
-        ? (
-            await getModVersions(props.item.id, initialScope(), instanceLoader.value)
-          ).map(rawFromModrinth)
+        ? (await getModVersions(props.item.id, initialScope(), instanceLoader.value)).map(
+            rawFromModrinth,
+          )
         : (await getCfModVersions(props.item.id, "", "")).map(rawFromCf);
 
     // 记录已经拿到的具体版本，避免补全时重复查询。
@@ -1211,7 +1213,7 @@ watch(activePrefix, (prefix) => {
           v-for="group in filteredGroups"
           :key="group.key"
           :data-group-key="group.key"
-          class="overflow-hidden rounded-lg border border-line/50 bg-surface-muted/25"
+          class="overflow-hidden rounded-lg border border-line/50 bg-surface"
         >
           <button
             type="button"
@@ -1233,7 +1235,7 @@ watch(activePrefix, (prefix) => {
             <!-- 前置资源：与 PCL 一致，展开后先看到需要一起装的前置 MOD -->
             <div
               v-if="groupDependencies(group).length"
-              class="border-b border-line/30 bg-ink/2 px-4 py-2.5"
+              class="border-b border-line/30 px-4 py-2.5"
             >
               <div class="mb-1.5 text-micro font-medium text-ink-muted">前置资源</div>
               <div class="flex flex-col gap-2">
@@ -1402,9 +1404,7 @@ watch(activePrefix, (prefix) => {
           <AppButton variant="secondary" @click="dependencyDialog.manual = true">
             手动选择前置
           </AppButton>
-          <AppButton variant="ghost" @click="downloadWithoutDependencies">
-            仅下载本体
-          </AppButton>
+          <AppButton variant="ghost" @click="downloadWithoutDependencies"> 仅下载本体 </AppButton>
         </div>
       </template>
 

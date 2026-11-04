@@ -113,11 +113,11 @@ pub async fn get_loader_versions(
             }
         }
         LoaderType::Forge => {
-            let url = format!(
-                "https://bmclapi2.bangbang93.com/forge/minecraft/{}",
-                mc_version
-            );
-            if let Ok(resp) = client.get(&url).send().await
+            // 主源：BMCLAPI（国内快）。回退源：Forge 官方 maven-metadata.xml
+            // （BMCLAPI 临时故障时不至于无法安装 Forge——官方 XML 慢但稳定）。
+            let bmclapi = format!("https://bmclapi2.bangbang93.com/forge/minecraft/{mc_version}");
+            let mut fetched = false;
+            if let Ok(resp) = client.get(&bmclapi).send().await
                 && let Ok(json) =
                     sereno_core::utils::http::read_json_limited::<Value>(resp, MAX_METADATA_BYTES)
                         .await
@@ -129,6 +129,12 @@ pub async fn get_loader_versions(
                         versions.push(ver.to_string());
                     }
                 }
+                fetched = !versions.is_empty();
+            }
+            if !fetched {
+                tracing::warn!("Forge 版本列表 BMCLAPI 失败，回退官方 maven-metadata");
+                versions = sereno_core::loader::forge::list_versions_official(&client, &mc_version)
+                    .await?;
             }
             versions.reverse();
         }

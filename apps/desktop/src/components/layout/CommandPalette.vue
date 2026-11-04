@@ -175,7 +175,11 @@ function run(command: Command): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "ArrowDown") {
+  if (event.key === "Escape") {
+    // AppModal 的 Esc capture 对输入框放行（留给组件自处理），这里必须自己关
+    event.preventDefault();
+    close();
+  } else if (event.key === "ArrowDown") {
     event.preventDefault();
     activeIndex.value = Math.min(filtered.value.length - 1, activeIndex.value + 1);
   } else if (event.key === "ArrowUp") {
@@ -221,7 +225,9 @@ onBeforeUnmount(() => window.removeEventListener(PALETTE_EVENT, openPalette));
       >
         <component :is="command.icon" :size="15" class="shrink-0" />
         <span class="flex-1 truncate text-caption">{{ command.label }}</span>
-        <span v-if="command.hint" class="shrink-0 text-micro text-ink-muted">{{ command.hint }}</span>
+        <span v-if="command.hint" class="shrink-0 text-micro text-ink-muted">{{
+          command.hint
+        }}</span>
       </button>
 
       <p v-if="filtered.length === 0" class="px-3 py-8 text-center text-caption text-ink-muted">

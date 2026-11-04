@@ -186,9 +186,12 @@ pub fn restore(settings: &AppSettings, instance_id: &str, snapshot_id: &str) -> 
         let parked = game_dir.join(format!(".{name}.rollback-{stamp}"));
         if let Err(error) = std::fs::rename(&current, &parked) {
             // 移不动（多半是被游戏占用）→ 立刻恢复已移动的，避免半回滚
-            restore_moved(&moved);
+            let failed = restore_moved(&moved);
             return Err(LauncherError::Io {
-                message: format!("无法暂存 {name} 目录（可能被占用）: {error}"),
+                message: format!(
+                    "无法暂存 {name} 目录（可能被占用）: {error}{}",
+                    rollback_hint(&failed)
+                ),
             });
         }
         moved.push((current, parked));
@@ -268,13 +271,45 @@ fn prune(root: &Path, index: &mut SnapshotIndex) -> Result<()> {
     Ok(())
 }
 
-fn restore_moved(moved: &[(PathBuf, PathBuf)]) {
+/// 回滚「暂存」动作：把移到一边的目录换回原位。
+///
+/// 返回**未能恢复**的目录列表。早期实现两步都用 `let _ =`，
+/// 换回去失败时代码认为一切正常，而用户看到的是「回滚后 Mod 全没了」。
+/// 这类失败必须冒泡到 UI，并告诉用户内容还在哪个目录里。
+fn restore_moved(moved: &[(PathBuf, PathBuf)]) -> Vec<PathBuf> {
+    let mut failed = Vec::new();
     for (original, parked) in moved {
-        if parked.exists() {
+        if !parked.exists() {
+            continue;
+        }
+        // 原位置必须先空出来，否则 Windows 上 rename 必然失败
+        if original.exists() {
             let _ = std::fs::remove_dir_all(original);
-            let _ = std::fs::rename(parked, original);
+        }
+        if let Err(error) = std::fs::rename(parked, original) {
+            tracing::error!(
+                original = %original.display(),
+                parked = %parked.display(),
+                %error,
+                "回滚暂存目录失败，内容仍保留在 .rollback-* 目录中"
+            );
+            failed.push(parked.clone());
         }
     }
+    failed
+}
+
+/// 为回滚失败（未能移回原位）的暂存目录生成用户可读的补救提示。
+fn rollback_hint(failed: &[PathBuf]) -> String {
+    if failed.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = failed.iter().map(|p| p.display().to_string()).collect();
+    format!(
+        "；另有 {} 个目录未能恢复原位，内容保留在：{}，请关闭游戏后手动移回",
+        failed.len(),
+        names.join("、")
+    )
 }
 
 /// 把内容目录写进 ZIP，返回文件数。

@@ -58,7 +58,11 @@ static CHUNK_SLOTS: LazyLock<StdMutex<(usize, Arc<Semaphore>)>> =
     LazyLock::new(|| StdMutex::new((0, Arc::new(Semaphore::new(1)))));
 
 fn shared_chunk_semaphore(max_concurrent: usize) -> Arc<Semaphore> {
-    let max = max_concurrent.max(1);
+    // 分片许可放宽为并发的 2 倍：大文件（客户端 jar / 库）的分片是
+    // 短促的高并发请求，与「任务数」共用一层许可时，8 个大文件会把
+    // 许可占满，导致并发小文件（assets）全部排队——这正是
+    // 「下载原版慢」的元凶之一。放宽后总量仍在带宽层面受用户限速约束。
+    let max = (max_concurrent.max(1)).saturating_mul(2);
     let mut guard = CHUNK_SLOTS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -690,14 +694,25 @@ async fn download_chunk(job: ChunkJob) -> Result<u64> {
 }
 
 /// 极度宽容的重命名：给杀毒软件留足时间
+/// rename 是否值得重试：文件不存在 / 权限拒绝 / 共享冲突 / 锁冲突。
+fn is_retryable_rename_error(code: Option<i32>) -> bool {
+    matches!(code, Some(2) | Some(5) | Some(32) | Some(33))
+}
+
 async fn rename_with_retry(from: &Path, to: &Path) -> Result<()> {
     let mut retries = 0;
     loop {
         match tokio::fs::rename(from, to).await {
             Ok(_) => return Ok(()),
             Err(e) => {
-                let is_os_error = e.raw_os_error() == Some(2) || e.raw_os_error() == Some(5);
-                if is_os_error && retries < 30 {
+                // Windows 实测的可重试错误码：
+                //   2  ERROR_FILE_NOT_FOUND（瞬时可见性）
+                //   5  ERROR_ACCESS_DENIED（权限/占用抖动）
+                //   32 ERROR_SHARING_VIOLATION（杀毒/索引器正打开文件——最常见）
+                //   33 ERROR_LOCK_VIOLATION（字节范围锁，同上）
+                // 杀毒软件扫描下载文件时锁住的是 32/33 而不是 5，
+                // 漏掉它们会让大文件下载在最后一步「重命名失败」。
+                if is_retryable_rename_error(e.raw_os_error()) && retries < 30 {
                     retries += 1;
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                     continue;
@@ -746,6 +761,16 @@ fn write_all_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> std::i
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn retryable_rename_error_codes_cover_antivirus_locks() {
+        assert!(is_retryable_rename_error(Some(2)));
+        assert!(is_retryable_rename_error(Some(5)));
+        assert!(is_retryable_rename_error(Some(32))); // 共享冲突（杀毒最常见）
+        assert!(is_retryable_rename_error(Some(33))); // 锁冲突
+        assert!(!is_retryable_rename_error(Some(3))); // 路径不存在，重试无意义
+        assert!(!is_retryable_rename_error(None)); // 非 OS 错误
+    }
     use super::*;
 
     #[test]

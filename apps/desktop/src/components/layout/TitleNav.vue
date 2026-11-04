@@ -73,7 +73,10 @@ onMounted(async () => {
   });
 });
 
-watch(() => route.path, () => void nextTick(syncIndicator));
+watch(
+  () => route.path,
+  () => void nextTick(syncIndicator),
+);
 
 // 窗口尺寸变化时重新对齐（无边框窗口可自由缩放）
 let observer: ResizeObserver | null = null;

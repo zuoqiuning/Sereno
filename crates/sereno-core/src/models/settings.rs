@@ -130,7 +130,9 @@ impl AppSettings {
     /// **读到与写入前都要过一遍**：旧配置或手改文件里可能是 0 / 999，
     /// 0 会让下载器的信号量永远拿不到许可，直接表现为安装卡死。
     pub fn normalized(mut self) -> Self {
-        self.download.max_concurrent = self.download.max_concurrent.clamp(1, 32);
+        // 上限 64：与 PCL 默认水平对齐。更高会触发镜像限流，
+        // 得到的不是更快而是更多 429/503。
+        self.download.max_concurrent = self.download.max_concurrent.clamp(1, 64);
         self.download.retry_times = self.download.retry_times.clamp(0, 5);
         // 上限 100 MB/s：再高就没有意义的，还容易把 u64 运算边界撑爆
         if let Some(kbps) = self.download.speed_limit_kbps {
@@ -297,7 +299,7 @@ pub struct UpdateSettings {
 }
 
 fn default_max_concurrent() -> u32 {
-    8
+    32
 }
 fn default_true() -> bool {
     true
@@ -362,7 +364,7 @@ mod tests {
     fn defaults_are_sane() {
         let s = AppSettings::default();
         assert_eq!(s.schema_version, SCHEMA_VERSION);
-        assert_eq!(s.download.max_concurrent, 8);
+        assert_eq!(s.download.max_concurrent, 32);
         assert_eq!(s.theme, "light");
         assert!(s.logging.auto_language_chinese);
     }

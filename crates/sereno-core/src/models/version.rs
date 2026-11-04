@@ -163,11 +163,19 @@ pub struct LibraryDownloads {
     pub classifiers: Option<BTreeMap<String, DownloadInfo>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeLibrary {
-    pub classifier: String,
-}
+/// 旧版（≤1.12.2）的 `natives` 声明。
+///
+/// 官方 JSON 里它是一个 **map**，键是操作系统名，值是构件分类前缀：
+///
+/// ```json
+/// "natives": { "linux": "natives-linux", "osx": "natives-osx", "windows": "natives-windows" }
+/// ```
+///
+/// 历史上这里被写成单字段结构体 `{ classifier: String }`，于是
+/// 1.7.10 / 1.8.9 / 1.12.2 这些**整合包最常用**的版本在反序列化时
+/// 直接报 `missing field 'classifier'`，整个版本 JSON 解析失败、
+/// 游戏装不上。改为 map 之后与官方结构一致。
+pub type NativesMap = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -190,7 +198,7 @@ pub struct Library {
     #[serde(default)]
     pub rules: Vec<Rule>,
     #[serde(default)]
-    pub natives: Option<NativeLibrary>,
+    pub natives: Option<NativesMap>,
     #[serde(default)]
     pub extract: Option<Extract>,
     #[serde(default)]

@@ -34,6 +34,13 @@ export const commands = {
 	 */
 	updateInstanceOptions: (instanceId: string, javaPath: string | null, memoryMb: number | null, jvmArgs: string[]) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("update_instance_options", { instanceId, javaPath, memoryMb, jvmArgs })),
 	setInstanceFavorite: (instanceId: string, favorite: boolean) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_favorite", { instanceId, favorite })),
+	/**
+	 *  设置 / 清除实例分组。
+	 * 
+	 *  归一化：首尾空白去掉；空串 = 移出分组（`None`）；上限 32 字符；
+	 *  禁止控制字符。分组只是展示元数据，不参与目录结构，无需迁移。
+	 */
+	setInstanceGroup: (instanceId: string, group: string | null) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_group", { instanceId, group })),
 	readInstanceLogs: (instanceId: string) => typedError<InstanceLogs_Serialize, LauncherError>(__TAURI_INVOKE("read_instance_logs", { instanceId })),
 	/**
 	 *  扫描外部目录，找出可导入的实例候选。
@@ -203,6 +210,31 @@ export const commands = {
 	 */
 	exportInstanceModpack: (instanceId: string) => typedError<string, LauncherError>(__TAURI_INVOKE("export_instance_modpack", { instanceId })),
 	launchGame: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_game", { instanceId })),
+	/**
+	 *  房主开房。
+	 * 
+	 *  `room_code` 可为空：为空时生成新房间码。
+	 *  `mc_port`：游戏世界端口（专用服务端 25565；单人世界「对局域网开放」
+	 *  后聊天栏显示的随机端口）。
+	 */
+	hostMultiplayer: (roomCode: string | null, mcPort: number) => typedError<MultiplayerStatus_Serialize, LauncherError>(__TAURI_INVOKE("host_multiplayer", { roomCode, mcPort })),
+	/**
+	 *  房客加入房间。
+	 * 
+	 *  `room_code` 必填（支持小写 / 混淆字符 / 缺分隔符，核心会纠偏）。
+	 */
+	joinMultiplayer: (roomCode: string, mcPort: number) => typedError<MultiplayerStatus_Serialize, LauncherError>(__TAURI_INVOKE("join_multiplayer", { roomCode, mcPort })),
+	/**  停止当前联机会话。 */
+	stopMultiplayer: () => typedError<null, LauncherError>(__TAURI_INVOKE("stop_multiplayer")),
+	/**  查询联机状态（前端 1–2 秒轮询一次）。 */
+	getMultiplayerStatus: () => __TAURI_INVOKE<MultiplayerStatus_Serialize>("get_multiplayer_status"),
+	/**
+	 *  自动探测本机游戏世界端口。
+	 * 
+	 *  枚举 Java 进程的监听端口并逐个做 MC 状态探测；命中即返回端口与世界信息。
+	 *  游戏未开 / 未「对局域网开放」时返回 `None`，前端保持手动输入兜底。
+	 */
+	detectWorldPort: () => typedError<DetectedWorld | null, LauncherError>(__TAURI_INVOKE("detect_world_port")),
 	/**  当前登录态。 */
 	getAccountState: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),
 	/**  微软登录第一步：申请设备码，前端把短码与链接展示给用户。 */
@@ -753,6 +785,16 @@ export type CrashFinding_Serialize = {
 	actionLabel: string | null,
 };
 
+/**  探测结果：端口 + 世界信息（给 UI 确认用）。 */
+export type DetectedWorld = {
+	/**  世界监听端口。 */
+	port: number,
+	/**  MOTD（通常是世界名）。 */
+	motd: string,
+	/**  游戏版本。 */
+	version: string,
+};
+
 /**  设备码登录的第一步返回。 */
 export type DeviceCodeInfo = {
 	/**  用户在浏览器里输入的短码。 */
@@ -1074,8 +1116,14 @@ export type InstanceMetadata = InstanceMetadata_Serialize | InstanceMetadata_Des
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
 export type InstanceMetadata_Deserialize = {
-	/**  schema 版本。 */
-	schemaVersion: number,
+	/**
+	 *  schema 版本。
+	 * 
+	 *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
+	 *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
+	 *  迁移根本没机会跑。default 返回 1（初始 schema）。
+	 */
+	schemaVersion?: number,
 	/**  稳定 ID（目录名）。 */
 	id: string,
 	/**  显示名称。 */
@@ -1104,11 +1152,23 @@ export type InstanceMetadata_Deserialize = {
 	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
 	 */
 	favorite?: boolean,
+	/**
+	 *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
+	 * 
+	 *  老实例同样靠 `default` 兼容。
+	 */
+	group?: string | null,
 };
 
 /**  实例元数据（对应 `.launcher/instance.json`）。 */
 export type InstanceMetadata_Serialize = {
-	/**  schema 版本。 */
+	/**
+	 *  schema 版本。
+	 * 
+	 *  必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
+	 *  旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
+	 *  迁移根本没机会跑。default 返回 1（初始 schema）。
+	 */
 	schemaVersion: number,
 	/**  稳定 ID（目录名）。 */
 	id: string,
@@ -1138,6 +1198,12 @@ export type InstanceMetadata_Serialize = {
 	 *  老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
 	 */
 	favorite: boolean,
+	/**
+	 *  分组名；`None` = 未分组。纯展示用元数据，不参与路径。
+	 * 
+	 *  老实例同样靠 `default` 兼容。
+	 */
+	group: string | null,
 };
 
 /**  单个实例的磁盘占用。 */
@@ -1238,7 +1304,7 @@ export type Library_Deserialize = {
 	url?: string | null,
 	downloads?: LibraryDownloads_Deserialize | null,
 	rules?: Rule_Deserialize[],
-	natives?: NativeLibrary | null,
+	natives?: { [key in string]: string } | null,
 	extract?: Extract_Deserialize | null,
 	client?: boolean | null,
 	server?: boolean | null,
@@ -1250,7 +1316,7 @@ export type Library_Serialize = {
 	url: string | null,
 	downloads: LibraryDownloads_Serialize | null,
 	rules: Rule_Serialize[],
-	natives: NativeLibrary | null,
+	natives: { [key in string]: string } | null,
 	extract: Extract_Serialize | null,
 	client: boolean | null,
 	server: boolean | null,
@@ -1622,8 +1688,47 @@ export type ModpackInfo = {
 	fileCount: number,
 };
 
-export type NativeLibrary = {
-	classifier: string,
+/**  联机状态快照（供 UI）。 */
+export type MultiplayerStatus = MultiplayerStatus_Serialize | MultiplayerStatus_Deserialize;
+
+/**  联机状态快照（供 UI）。 */
+export type MultiplayerStatus_Deserialize = {
+	/**  当前角色；无会话时为空。 */
+	role?: Role | null,
+	/**  当前阶段。 */
+	phase: Phase,
+	/**  房间码（规范格式）。 */
+	roomCode?: string | null,
+	/**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
+	localAddr?: string | null,
+	/**  MC 端口（房主为局域网端口，房客为对端端口）。 */
+	mcPort: number,
+	/**  世界 MOTD（已连接时）。 */
+	motd: string,
+	/**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
+	detail: string,
+	/**  内核最近日志（排障用，最多 8 行）。 */
+	lastLog: string[],
+};
+
+/**  联机状态快照（供 UI）。 */
+export type MultiplayerStatus_Serialize = {
+	/**  当前角色；无会话时为空。 */
+	role: Role | null,
+	/**  当前阶段。 */
+	phase: Phase,
+	/**  房间码（规范格式）。 */
+	roomCode: string | null,
+	/**  房客的游戏连接地址（`127.0.0.1:<port>`）。 */
+	localAddr: string | null,
+	/**  MC 端口（房主为局域网端口，房客为对端端口）。 */
+	mcPort: number,
+	/**  世界 MOTD（已连接时）。 */
+	motd: string,
+	/**  面向用户的一句话说明（错误原因 / 下一步提示）。 */
+	detail: string,
+	/**  内核最近日志（排障用，最多 8 行）。 */
+	lastLog: string[],
 };
 
 /**
@@ -1655,6 +1760,19 @@ export type OsSpec_Serialize = {
 	version: string | null,
 	arch: string | null,
 };
+
+/**  会话阶段。 */
+export type Phase = 
+/**  内核启动中（下载 / 拉起进程 / 等待组网）。 */
+"starting" | 
+/**  内核已运行，等待游戏世界开放（房主）或房主加入（房客）。 */
+"waitingPeer" | 
+/**  世界可达（MC 状态探测通过）。 */
+"connected" | 
+/**  出错（进程退出 / 授权被拒 / 世界不可达）。 */
+"error" | 
+/**  用户主动停止。 */
+"stopped";
 
 /**  离线账户设置。 */
 export type ProfileSettings = ProfileSettings_Serialize | ProfileSettings_Deserialize;
@@ -1768,6 +1886,13 @@ export type ResourceSort = "downloads" | "updated";
 
 /**  资源来源。`aggregate` 只出现在搜索请求里，条目本身只会是后两者之一。 */
 export type ResourceSource = "aggregate" | "modrinth" | "curseforge";
+
+/**  联机角色。 */
+export type Role = 
+/**  房主。 */
+"host" | 
+/**  房客。 */
+"guest";
 
 export type Rule = Rule_Serialize | Rule_Deserialize;
 

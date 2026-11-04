@@ -30,9 +30,7 @@ export function setLocalResourcesEnabled(
   fileNames: string[],
   enabled: boolean,
 ): Promise<number> {
-  return callCommand(() =>
-    commands.setLocalResourcesEnabled(instanceId, kind, fileNames, enabled),
-  );
+  return callCommand(() => commands.setLocalResourcesEnabled(instanceId, kind, fileNames, enabled));
 }
 
 /** 删除本地资源（单个或批量），返回实际删除数量。 */

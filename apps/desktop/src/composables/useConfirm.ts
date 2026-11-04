@@ -44,8 +44,7 @@ export function askConfirm(options: ConfirmOptions | string): Promise<boolean> {
   // 上一个还没结算就被新请求覆盖时，按「取消」结算，避免 Promise 永远挂着
   state.resolve?.(false);
 
-  const normalized: ConfirmOptions =
-    typeof options === "string" ? { title: options } : options;
+  const normalized: ConfirmOptions = typeof options === "string" ? { title: options } : options;
 
   state.title = normalized.title;
   state.message = normalized.message ?? "";

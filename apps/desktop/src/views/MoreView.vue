@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import {
-  CircleHelp,
-  Heart,
-  Info,
-  HeartHandshake,
-  MessageSquare,
-  RefreshCw,
-} from "@lucide/vue";
+import { CircleHelp, Heart, Info, HeartHandshake, MessageSquare, RefreshCw } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppCard from "@/components/common/AppCard.vue";
@@ -17,9 +10,14 @@ import SideNav from "@/components/layout/SideNav.vue";
 import type { SideNavItem } from "@/components/layout/SideNav.vue";
 import { APP_AUTHOR, APP_NAME, APP_VERSION } from "@/constants/app";
 import { log } from "@/api/settings";
-import { openProjectIssues, openProjectRepo, openSupporterPage, type SupporterTarget } from "@/api/supporters";
+import {
+  openProjectIssues,
+  openProjectRepo,
+  openSupporterPage,
+  type SupporterTarget,
+} from "@/api/supporters";
 import { checkAppUpdate } from "@/api/update";
-import { isApiError } from "@/api/invoke";
+import { toMessage } from "@/utils/error";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
 
@@ -39,13 +37,6 @@ const activeSection = ref<SectionId>("about");
 const checkingUpdate = ref(false);
 const toast = useToastStore();
 const updateStore = useUpdateStore();
-
-/** 把任意抛出物转成可读文案。 */
-function toMessage(value: unknown): string {
-  if (isApiError(value)) return value.message;
-  if (value instanceof Error) return value.message;
-  return String(value);
-}
 
 /** 跳到更新页。 */
 /**
@@ -104,6 +95,11 @@ const acknowledgements: Acknowledgement[] = [
     name: "PCL2",
     desc: "加载器离线安装、镜像优先与实例资源管理的思路参考了其设计。",
     supporter: "pcl",
+  },
+  {
+    name: "EasyTier",
+    desc: "联机模块的组网内核：去中心化 P2P 组网、NAT 穿透与中继由它完成，官方内核以子进程方式托管。",
+    supporter: "easytier",
   },
 ];
 
@@ -200,7 +196,12 @@ function openIssues(): void {
 
               <div class="mt-5 flex items-center gap-2">
                 <AppButton variant="secondary" size="sm" @click="openRepo">
-                  <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 16 16"
+                    class="h-3.5 w-3.5"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
                     <path
                       d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
                     />
@@ -219,14 +220,16 @@ function openIssues(): void {
                 「免费、无广告、不联机」是承诺，也是边界。
               -->
               <div class="mt-8 flex flex-col items-center gap-3 border-t border-line/60 pt-5">
-                <div
-                  class="flex max-w-xl flex-col gap-1.5 text-center text-micro leading-5 text-ink-muted"
-                >
+                <div class="flex max-w-xl flex-col gap-2 text-caption leading-7 text-ink-muted">
                   <p>
                     本项目基于
-                    <strong class="font-semibold text-ink-soft">PolyForm Noncommercial License</strong>
+                    <strong class="font-semibold text-ink-soft"
+                      >PolyForm Noncommercial License</strong
+                    >
                     开源，
-                    <strong class="font-semibold text-ink-soft">严禁任何形式的商业倒卖与盈利行为</strong>
+                    <strong class="font-semibold text-ink-soft"
+                      >严禁任何形式的商业倒卖与盈利行为</strong
+                    >
                     （包括但不限于套壳售卖、绑定私服充值、投放商业广告、捆绑付费插件）。
                   </p>
                   <p>
@@ -234,20 +237,15 @@ function openIssues(): void {
                     一切以学习、研究与非商业交流为目的的二次开发都被鼓励。
                   </p>
                   <p class="opacity-80">
-                    Sereno 是一款完全免费、无广告、无遥测的第三方启动器。
-                    本软件与 Mojang Studios、Microsoft 或网易公司无关。
+                    Sereno 是一款完全免费、无广告、无遥测的第三方启动器。 本软件与 Mojang
+                    Studios、Microsoft 或网易公司无关。
                   </p>
                 </div>
               </div>
 
               <!-- 更新入口：更新功能有自己的页面，这里只给一个跳转 -->
               <div class="mt-5 w-full max-w-xl">
-                <AppButton
-                  variant="soft"
-                  size="sm"
-                  :loading="checkingUpdate"
-                  @click="checkUpdate"
-                >
+                <AppButton variant="soft" size="sm" :loading="checkingUpdate" @click="checkUpdate">
                   <RefreshCw :size="13" />
                   检查更新
                 </AppButton>
@@ -256,7 +254,12 @@ function openIssues(): void {
           </AppCard>
 
           <!-- 鸣谢 -->
-          <AppCard v-else-if="activeSection === 'credits'" key="credits" title="特别鸣谢" padding="lg">
+          <AppCard
+            v-else-if="activeSection === 'credits'"
+            key="credits"
+            title="特别鸣谢"
+            padding="lg"
+          >
             <template #icon>
               <HeartHandshake :size="16" class="text-brand-500" />
             </template>
@@ -352,7 +355,9 @@ function openIssues(): void {
               </div>
 
               <p class="text-micro leading-5 text-ink-muted">
-                反馈前建议先在「实例 → 备份与日志」导出诊断包，并附上版本号 v{{ APP_VERSION }}、复现步骤与截图。
+                反馈前建议先在「实例 → 备份与日志」导出诊断包，并附上版本号 v{{
+                  APP_VERSION
+                }}、复现步骤与截图。
               </p>
             </div>
           </AppCard>
@@ -370,5 +375,4 @@ function openIssues(): void {
   align-items: center;
   justify-content: center;
 }
-
 </style>

@@ -54,33 +54,53 @@ pub fn extract_natives(
 /// 收集当前平台上需要解压的 natives jar。
 fn native_jars(libraries: &[crate::models::version::Library], instance_dir: &Path) -> Vec<PathBuf> {
     let os_ctx = OsContext::current();
-    let natives_key = os_ctx.natives_classifier();
     let mut jars = Vec::new();
 
     for lib in filter_libraries(libraries, &os_ctx) {
         let Some(classifiers) = lib.downloads.as_ref().and_then(|d| d.classifiers.as_ref()) else {
             continue;
         };
-        if !classifiers.contains_key(natives_key) {
+        let Some(natives_key) = crate::version::rules::native_classifier(lib, &os_ctx) else {
             continue;
-        }
-
-        let parts: Vec<&str> = lib.name.split(':').collect();
-        if parts.len() != 3 {
+        };
+        let Some(native_artifact) = classifiers.get(&natives_key) else {
             continue;
-        }
+        };
 
-        let group = parts[0].replace('.', "/");
-        let file_name = format!("{}-{}-{}.jar", parts[1], parts[2], natives_key);
-        let jar_path = instance_dir
-            .join("libraries")
-            .join(&group)
-            .join(parts[1])
-            .join(parts[2])
-            .join(&file_name);
+        // 优先用 JSON 里的真实路径：natives jar 的文件名并不总是
+        // `artifact-version-classifier.jar`，按坐标硬拼会漏。
+        let relative = native_artifact
+            .path
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                let parts: Vec<&str> = lib.name.split(':').collect();
+                if parts.len() != 3 {
+                    return None;
+                }
+                Some(
+                    PathBuf::from(parts[0].replace('.', "/"))
+                        .join(parts[1])
+                        .join(parts[2])
+                        .join(format!("{}-{}-{}.jar", parts[1], parts[2], natives_key)),
+                )
+            });
+
+        let Some(relative) = relative else {
+            continue;
+        };
+        let jar_path = instance_dir.join("libraries").join(&relative);
 
         if jar_path.exists() {
             jars.push(jar_path);
+        } else {
+            // 缺 natives 会在启动后表现为 UnsatisfiedLinkError，
+            // 提前一条 warn 比让用户对着崩溃日志猜要好。
+            tracing::warn!(
+                lib = %lib.name,
+                path = %jar_path.display(),
+                "natives jar 不存在，跳过解压；请重新修复实例"
+            );
         }
     }
 
@@ -142,7 +162,7 @@ mod tests {
     use super::*;
 
     fn setup(tmp: &Path, classifier: &str) -> Vec<crate::models::version::Library> {
-        use crate::models::version::{DownloadInfo, Library, LibraryDownloads, NativeLibrary};
+        use crate::models::version::{DownloadInfo, Library, LibraryDownloads};
         use std::collections::BTreeMap;
 
         let mut classifiers = BTreeMap::new();
@@ -155,6 +175,14 @@ mod tests {
                 path: None,
             },
         );
+        // 按 classifier 反推系统键，保证在任何平台上跑这份测试都能命中
+        let os_key = if classifier.contains("osx") || classifier.contains("macos") {
+            "osx"
+        } else if classifier.contains("linux") {
+            "linux"
+        } else {
+            "windows"
+        };
         let library = Library {
             name: "org.lwjgl:lwjgl:2.9.4".into(),
             url: None,
@@ -163,9 +191,10 @@ mod tests {
                 classifiers: Some(classifiers),
             }),
             rules: vec![],
-            natives: Some(NativeLibrary {
-                classifier: classifier.to_string(),
-            }),
+            natives: Some(BTreeMap::from([(
+                os_key.to_string(),
+                classifier.to_string(),
+            )])),
             extract: None,
             client: None,
             server: None,

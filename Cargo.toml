@@ -6,8 +6,8 @@ members = ["apps/desktop/src-tauri", "crates/sereno-core"]
 edition = "2024"
 rust-version = "1.99"
 version = "0.1.0"
-# 开源许可证：MIT，全文见仓库根的 LICENSE。
-license = "MIT"
+# 开源许可证：PolyForm Noncommercial 1.0.0，全文见仓库根的 LICENSE。
+license = "PolyForm-Noncommercial-1.0.0"
 
 [workspace.dependencies]
 # 所有成员共用的版本在这里声明一次，成员用 { workspace = true } 引用
@@ -25,6 +25,7 @@ tokio = { version = "1", features = [
 tokio-util = { version = "0.7", features = ["rt"] }
 thiserror = "2"
 tracing = "0.1"
+rand = "0.10"
 
 # ---------- 编译速度优化 ----------
 # dev profile 的三个杠杆：

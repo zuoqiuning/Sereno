@@ -200,6 +200,17 @@ fn candidate_roots() -> Vec<PathBuf> {
         }
     }
 
+    // 3.4b CurseForge / FTB App 的运行时（装在用户主目录的隐藏目录里）
+    if let Some(home) = dirs::home_dir() {
+        for sub in [
+            ".curseforge\\runtime",
+            ".ftbapp\\runtime",
+            ".ftba\\bin\\java",
+        ] {
+            roots.push(home.join(sub));
+        }
+    }
+
     // 3.5 开发工具链目录
     if let Some(home) = home {
         for sub in [".jdks", ".sdkman\\candidates\\java", ".gradle\\jdks"] {

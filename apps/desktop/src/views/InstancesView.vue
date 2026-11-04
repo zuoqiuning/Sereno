@@ -4,8 +4,10 @@ import {
   Archive,
   Boxes,
   FileText,
+  ChevronDown,
   Folder,
   HeartPulse,
+  Users,
   Import,
   Package,
   Play,
@@ -34,6 +36,7 @@ import PageShell from "@/components/layout/PageShell.vue";
 import type { MenuItem } from "@/components/common/menu";
 import InstanceResourceModal from "@/components/downloads/InstanceResourceModal.vue";
 import WorldBackupModal from "@/components/instances/WorldBackupModal.vue";
+import LanModal from "@/components/instances/LanModal.vue";
 import LogViewerModal from "@/components/instances/LogViewerModal.vue";
 import HealthModal from "@/components/instances/HealthModal.vue";
 import InstanceSettingsModal from "@/components/instances/InstanceSettingsModal.vue";
@@ -45,6 +48,7 @@ import {
   onGameExited,
   setInstanceFavorite,
 } from "@/api/instance";
+import { setInstanceGroup } from "@/api/instance";
 import { launchGame } from "@/api/launch";
 import { installGame, repairInstance } from "@/api/install";
 import { exportInstanceModpack } from "@/api/modpack";
@@ -75,6 +79,7 @@ const resourceModal = useModalState<InstanceMetadata>();
 const backupModal = useModalState<InstanceMetadata>();
 const logModal = useModalState<InstanceMetadata>();
 const healthModal = useModalState<InstanceMetadata>();
+const lanModal = useModalState<InstanceMetadata>();
 const settingsModal = useModalState<InstanceMetadata>();
 /** 导入外部实例弹窗。 */
 const importModalVisible = ref(false);
@@ -133,6 +138,80 @@ const visibleInstances = computed(() => {
   });
   return filtered;
 });
+
+/**
+ * 分组分区：按 `group` 字段聚合；具名组按中文字典序，未分组固定最后。
+ * 每个分区内部沿用 `visibleInstances` 的排序（收藏置顶 + 排序键）。
+ */
+const visibleSections = computed(() => {
+  const map = new Map<
+    string,
+    { key: string; label: string; total: number; items: InstanceMetadata[] }
+  >();
+  for (const inst of visibleInstances.value) {
+    const key = inst.group ?? "__ungrouped__";
+    let section = map.get(key);
+    if (!section) {
+      section = { key, label: inst.group ?? "未分组", total: 0, items: [] };
+      map.set(key, section);
+    }
+    section.total += 1;
+    section.items.push(inst);
+  }
+  const sections = [...map.values()];
+  sections.sort((a, b) => {
+    if (a.key === "__ungrouped__") return 1;
+    if (b.key === "__ungrouped__") return -1;
+    return a.label.localeCompare(b.label, "zh-CN");
+  });
+  return sections.map((section) => ({
+    ...section,
+    items: collapsedGroups.value.has(section.key) ? [] : section.items,
+  }));
+});
+
+/** 只有一个（未分组）分区时不渲染组头，保持无分组用户看到的老布局。 */
+const showGroupHeaders = computed(() => visibleSections.value.length > 1);
+
+const collapsedGroups = ref<Set<string>>(new Set());
+
+function toggleGroup(key: string): void {
+  const next = new Set(collapsedGroups.value);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  collapsedGroups.value = next;
+}
+
+/** 现有分组名（供「移动到分组」快选）。 */
+const knownGroups = computed(() =>
+  [...new Set(instances.value.map((item) => item.group).filter((g): g is string => !!g))].sort(
+    (a, b) => a.localeCompare(b, "zh-CN"),
+  ),
+);
+
+/** 分组选择弹窗：instance = null 时关闭。 */
+const groupModal = ref<InstanceMetadata | null>(null);
+const groupNameInput = ref("");
+
+function openGroupPicker(inst: InstanceMetadata): void {
+  groupModal.value = inst;
+  groupNameInput.value = inst.group ?? "";
+}
+
+async function applyGroup(group: string | null): Promise<void> {
+  const inst = groupModal.value;
+  if (!inst) return;
+  try {
+    const updated = await setInstanceGroup(inst.id, group);
+    onInstanceSaved(updated);
+    groupModal.value = null;
+  } catch (error) {
+    notifyError("分组失败", error);
+  }
+}
 
 /** 保存实例设置后就地更新卡片，不必整表重载。 */
 function onInstanceSaved(updated: InstanceMetadata): void {
@@ -242,7 +321,8 @@ async function toggleFavorite(instance: InstanceMetadata): Promise<void> {
 }
 
 async function handleLaunch(inst: InstanceMetadata): Promise<void> {
-  if (launchingId.value) return;
+  // 只拦同一实例的重复点击；不同实例允许并行启动（后端注册表本就是集合）
+  if (launchingId.value === inst.id) return;
   launchingId.value = inst.id;
   try {
     await launchGame(inst.id);
@@ -556,7 +636,9 @@ async function handleDelete(instanceId: string, displayName: string): Promise<vo
 function actionsFor(inst: InstanceMetadata): MenuItem[] {
   const running = isRunning(inst.id);
   const ready = inst.status === "ready";
-  const busy = !!deletingId.value || !!launchingId.value || repairingId.value !== null;
+  // 忙碌按实例判定：A 实例启动中不该把 B 实例的菜单也锁死
+  const busy =
+    deletingId.value === inst.id || launchingId.value === inst.id || repairingId.value === inst.id;
   const destructiveBlocked = busy || running;
 
   return [
@@ -564,7 +646,7 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       id: "folder",
       label: "打开游戏目录",
       icon: Folder,
-      disabled: !!deletingId.value || launchingId.value !== null,
+      disabled: deletingId.value === inst.id,
     },
     {
       id: "settings",
@@ -573,11 +655,12 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       disabled: destructiveBlocked,
     },
     { id: "health", label: "健康检查", icon: HeartPulse },
+    { id: "lan", label: "联机", icon: Users },
     {
       id: "resources",
       label: "管理 Mod / 资源包",
       icon: Puzzle,
-      disabled: !!deletingId.value || launchingId.value !== null,
+      disabled: deletingId.value === inst.id || launchingId.value === inst.id,
     },
     {
       id: "backup",
@@ -617,6 +700,11 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       icon: Star,
     },
     {
+      id: "group",
+      label: "移动到分组…",
+      icon: Folder,
+    },
+    {
       id: "delete",
       label: "删除实例",
       icon: Trash2,
@@ -637,6 +725,9 @@ function runAction(id: string, inst: InstanceMetadata): void {
       break;
     case "health":
       healthModal.open(inst);
+      break;
+    case "lan":
+      lanModal.open(inst);
       break;
     case "resources":
       resourceModal.open(inst);
@@ -662,6 +753,9 @@ function runAction(id: string, inst: InstanceMetadata): void {
     case "favorite":
       void toggleFavorite(inst);
       break;
+    case "group":
+      openGroupPicker(inst);
+      break;
     case "delete":
       void handleDelete(inst.id, inst.displayName);
       break;
@@ -674,7 +768,9 @@ onMounted(() => {
     void loadInstances();
     // 非零退出码 = 大概率崩了。此时**主动**把崩溃分析推给用户，
     // 而不是等他自己想起来去点「日志」。
-    if (payload.exitCode !== undefined && payload.exitCode !== 0) {
+    // 注意：后端 exit_code 是 Option<i32>，用户手动停止/进程被杀时是
+    // null——那不算崩溃，不能弹警告。
+    if (typeof payload.exitCode === "number" && payload.exitCode !== 0) {
       const instance = instances.value.find((item) => item.id === payload.instanceId);
       toast.warning("游戏非正常退出", `退出码 ${payload.exitCode}，已为你打开崩溃分析`, 6000);
       if (instance) {
@@ -788,100 +884,180 @@ function formatPlaytime(secs: number): string {
         @action="keyword = ''"
       />
 
-      <TransitionGroup v-else name="list" tag="div" class="grid grid-cols-2 gap-4 pb-4">
-        <AppCard
-          v-for="(inst, index) in visibleInstances"
-          :key="inst.id"
-          hoverable
-          padding="md"
-          :style="{ '--stagger': `${Math.min(index, 8) * 30}ms` }"
-        >
-          <div class="flex h-full items-center gap-4">
-            <!-- 封面位：64px 方块 + 极淡品牌渐变，让卡片有「物品栏」的识别度，
+      <template v-else>
+        <div v-for="section in visibleSections" :key="section.key" class="pb-2">
+          <button
+            v-if="showGroupHeaders"
+            type="button"
+            class="mb-3 flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-caption font-medium text-ink-soft transition-colors hover:text-ink"
+            @click="toggleGroup(section.key)"
+          >
+            <ChevronDown
+              :size="14"
+              class="transition-transform"
+              :class="collapsedGroups.has(section.key) ? '-rotate-90' : ''"
+            />
+            {{ section.label }}
+            <span class="text-ink-muted">· {{ section.total }}</span>
+          </button>
+          <TransitionGroup
+            v-show="!collapsedGroups.has(section.key)"
+            name="list"
+            tag="div"
+            class="grid grid-cols-2 gap-4"
+          >
+            <AppCard
+              v-for="(inst, index) in section.items"
+              :key="inst.id"
+              hoverable
+              padding="md"
+              :style="{ '--stagger': `${Math.min(index, 8) * 30}ms` }"
+            >
+              <div class="flex h-full items-center gap-4">
+                <!-- 封面位：64px 方块 + 极淡品牌渐变，让卡片有「物品栏」的识别度，
                  而不是一排长得完全一样的白框 -->
-            <div class="instance-cover" :class="{ 'is-running': isRunning(inst.id) }">
-              <Boxes :size="26" :stroke-width="1.6" />
-            </div>
+                <div class="instance-cover" :class="{ 'is-running': isRunning(inst.id) }">
+                  <Boxes :size="26" :stroke-width="1.6" />
+                </div>
 
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="flex min-w-0 items-center gap-1">
-                <h3 class="truncate text-h2 font-semibold text-ink">{{ inst.displayName }}</h3>
-                <AppIconButton
-                  size="sm"
-                  class="-ml-1"
-                  :label="inst.favorite ? '取消收藏' : '收藏（置顶）'"
-                  @click="toggleFavorite(inst)"
-                >
-                  <Star
-                    :size="13"
-                    :class="inst.favorite ? 'fill-warning text-warning' : 'text-ink-muted/50'"
+                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <div class="flex min-w-0 items-center gap-1">
+                    <h3 class="truncate text-h2 font-semibold text-ink">{{ inst.displayName }}</h3>
+                    <AppIconButton
+                      size="sm"
+                      class="-ml-1"
+                      :label="inst.favorite ? '取消收藏' : '收藏（置顶）'"
+                      @click="toggleFavorite(inst)"
+                    >
+                      <Star
+                        :size="13"
+                        :class="inst.favorite ? 'fill-warning text-warning' : 'text-ink-muted/50'"
+                      />
+                    </AppIconButton>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <AppBadge variant="brand" size="sm">{{ inst.gameVersion }}</AppBadge>
+                    <AppBadge variant="default" size="sm" outline>{{
+                      loaderLabel(inst.loader.type)
+                    }}</AppBadge>
+                    <AppBadge v-if="isRunning(inst.id)" variant="success" size="sm" pulse>
+                      运行中
+                    </AppBadge>
+                    <AppBadge v-else-if="inst.status !== 'ready'" variant="warning" size="sm">
+                      未安装完成
+                    </AppBadge>
+                  </div>
+
+                  <p
+                    class="truncate text-micro text-ink-muted"
+                    :title="`创建于 ${formatAbsoluteDate(new Date(Number(inst.createdAt) * 1000))}`"
+                  >
+                    <template v-if="inst.lastPlayedAt">
+                      上次游玩 {{ formatRelativeTime(inst.lastPlayedAt) }}
+                    </template>
+                    <template v-else>尚未启动过</template>
+                    · 共 {{ formatPlaytime(inst.playtimeSecs ?? 0) }} ·
+                    {{ formatRelativeTime(inst.createdAt) }}创建
+                  </p>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <AppMenu
+                    :items="actionsFor(inst)"
+                    :disabled="deletingId === inst.id || launchingId === inst.id"
+                    @select="(action) => runAction(action, inst)"
                   />
-                </AppIconButton>
+                  <AppButton
+                    v-if="inst.status === 'ready'"
+                    variant="primary"
+                    size="sm"
+                    :loading="launchingId === inst.id"
+                    :disabled="
+                      launchingId === inst.id ||
+                      deletingId === inst.id ||
+                      repairingId === inst.id ||
+                      isRunning(inst.id)
+                    "
+                    @click="handleLaunch(inst)"
+                  >
+                    <Play v-if="launchingId !== inst.id && !isRunning(inst.id)" :size="14" />
+                    {{
+                      isRunning(inst.id) ? "运行中" : launchingId === inst.id ? "启动中" : "启动"
+                    }}
+                  </AppButton>
+                  <AppButton
+                    v-else
+                    variant="primary"
+                    size="sm"
+                    :loading="installingId === inst.id"
+                    :disabled="
+                      !!installingId ||
+                      deletingId !== null ||
+                      repairingId !== null ||
+                      isRunning(inst.id)
+                    "
+                    @click="handleInstall(inst)"
+                  >
+                    <RefreshCw v-if="installingId !== inst.id" :size="14" />
+                    {{ inst.status === "installing" ? "继续安装" : "安装" }}
+                  </AppButton>
+                </div>
               </div>
-
-              <div class="flex flex-wrap items-center gap-1.5">
-                <AppBadge variant="brand" size="sm">{{ inst.gameVersion }}</AppBadge>
-                <AppBadge variant="default" size="sm" outline>{{
-                  loaderLabel(inst.loader.type)
-                }}</AppBadge>
-                <AppBadge v-if="isRunning(inst.id)" variant="success" size="sm" pulse>
-                  运行中
-                </AppBadge>
-                <AppBadge v-else-if="inst.status !== 'ready'" variant="warning" size="sm">
-                  未安装完成
-                </AppBadge>
-              </div>
-
-              <p
-                class="truncate text-micro text-ink-muted"
-                :title="`创建于 ${formatAbsoluteDate(new Date(Number(inst.createdAt) * 1000))}`"
-              >
-                <template v-if="inst.lastPlayedAt">
-                  上次游玩 {{ formatRelativeTime(inst.lastPlayedAt) }}
-                </template>
-                <template v-else>尚未启动过</template>
-                · 共 {{ formatPlaytime(inst.playtimeSecs ?? 0) }}
-                · {{ formatRelativeTime(inst.createdAt) }}创建
-              </p>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-1.5">
-              <AppMenu
-                :items="actionsFor(inst)"
-                :disabled="deletingId === inst.id || launchingId === inst.id"
-                @select="(action) => runAction(action, inst)"
-              />
-              <AppButton
-                v-if="inst.status === 'ready'"
-                variant="primary"
-                size="sm"
-                :loading="launchingId === inst.id"
-                :disabled="
-                  !!launchingId || deletingId !== null || repairingId !== null || isRunning(inst.id)
-                "
-                @click="handleLaunch(inst)"
-              >
-                <Play v-if="launchingId !== inst.id && !isRunning(inst.id)" :size="14" />
-                {{ isRunning(inst.id) ? "运行中" : launchingId === inst.id ? "启动中" : "启动" }}
-              </AppButton>
-              <AppButton
-                v-else
-                variant="primary"
-                size="sm"
-                :loading="installingId === inst.id"
-                :disabled="
-                  !!installingId || deletingId !== null || repairingId !== null || isRunning(inst.id)
-                "
-                @click="handleInstall(inst)"
-              >
-                <RefreshCw v-if="installingId !== inst.id" :size="14" />
-                {{ inst.status === "installing" ? "继续安装" : "安装" }}
-              </AppButton>
-            </div>
-          </div>
-        </AppCard>
-      </TransitionGroup>
+            </AppCard>
+          </TransitionGroup>
+        </div>
+      </template>
     </div>
+
+    <!-- 移动到分组弹窗 -->
+    <AppModal :open="groupModal !== null" width="sm" @close="groupModal = null">
+      <template #header>
+        <div
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft"
+        >
+          <Folder :size="18" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <h2 class="text-h2 font-semibold leading-5 text-ink">移动到分组</h2>
+          <p class="truncate text-micro text-ink-muted">
+            {{ groupModal?.displayName }}
+          </p>
+        </div>
+      </template>
+
+      <div class="flex flex-col gap-3">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-caption text-ink-soft">分组名（留空 = 移出分组）</span>
+          <input
+            v-model="groupNameInput"
+            type="text"
+            maxlength="32"
+            placeholder="例如：生存、整合包、模组测试"
+            class="h-9 rounded-md border border-line/80 bg-surface px-3 text-body text-ink outline-none placeholder:text-ink-muted/50 focus:border-brand-500"
+          />
+        </label>
+
+        <div v-if="knownGroups.length" class="flex flex-wrap gap-1.5">
+          <button
+            v-for="group in knownGroups"
+            :key="group"
+            type="button"
+            class="rounded-full border border-line/80 px-2.5 py-1 text-micro text-ink-soft transition-colors hover:border-brand-500 hover:text-ink"
+            @click="groupNameInput = group"
+          >
+            {{ group }}
+          </button>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <AppButton v-if="groupModal?.group" variant="secondary" @click="applyGroup(null)">
+            移出分组
+          </AppButton>
+          <AppButton variant="primary" @click="applyGroup(groupNameInput)"> 确定 </AppButton>
+        </div>
+      </div>
+    </AppModal>
 
     <!-- 加载器安装弹窗 -->
     <AppModal :open="loaderVisible" width="sm" @close="closeLoaderDialog">
@@ -974,6 +1150,13 @@ function formatPlaytime(secs: number): string {
       :open="healthModal.visible"
       @close="healthModal.close"
       @action="handleHealthAction"
+    />
+
+    <LanModal
+      v-if="lanModal.item"
+      :instance="lanModal.item"
+      :open="lanModal.visible"
+      @close="lanModal.close"
     />
 
     <LogViewerModal

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::LauncherError;
 use crate::Result;
 use crate::models::version::{Rule, VersionDetail, VersionType};
 use crate::version::rules::{OsContext, evaluate_rules};
@@ -240,6 +241,8 @@ pub fn build_args(
         game_args.push("zh_cn".to_string());
     }
 
+    reject_unknown_placeholders(&game_args, "游戏参数")?;
+
     Ok(LaunchArgs {
         jvm_args,
         game_args,
@@ -313,6 +316,32 @@ fn replace_placeholders(s: &str, ctx: &HashMap<&str, &str>) -> String {
         result = result.replace(&format!("${{{}}}", k), v);
     }
     result
+}
+
+/// 校验替换后的参数里不再残留未知占位符。
+///
+/// 版本 JSON 里出现 `${xxx}` 而 ctx 没有对应键时（加载器注入的新占位符、
+/// 官方新字段），原样传给 Java 会在启动后段报难以定位的英文异常。
+/// 这里在参数装配完成后统一兜底，把问题提前到启动前并给出可读文案。
+fn reject_unknown_placeholders(args: &[String], stage: &str) -> Result<()> {
+    let unknown: Vec<&str> = args
+        .iter()
+        .filter_map(|arg| {
+            // 每个参数可能含多个占位符；取第一个报告即可
+            let start = arg.find("${")?;
+            let end = arg[start..].find('}')? + start;
+            Some(&arg[start..=end])
+        })
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    Err(LauncherError::InvalidConfig {
+        key: "launchArguments".into(),
+        message: format!(
+            "版本 JSON 含未识别的占位符 {unknown:?}（{stage}），可能是启动器尚未支持的加载器或官方新字段，请反馈给开发者"
+        ),
+    })
 }
 
 /// 删掉 `-cp <value>` 对，避免与启动器自己的 classpath 重复。

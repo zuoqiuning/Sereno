@@ -32,6 +32,10 @@ tokio-util = { workspace = true }
 futures-util = "0.3.34"
 urlencoding = "2.1.3"
 bytes = "1.12.1"
+# 房间码生成（已在依赖树中，无新增编译成本）
+rand = { workspace = true }
+# PowerShell EncodedCommand（联机提权包装）
+base64 = "0.22"
 
 # ---- 网络 ----
 # rustls 而非 native-tls：避免引入 OpenSSL 的 C 依赖与额外安装步骤

@@ -134,6 +134,45 @@ pub fn set_instance_favorite(
     Ok(metadata)
 }
 
+/// 设置 / 清除实例分组。
+///
+/// 归一化：首尾空白去掉；空串 = 移出分组（`None`）；上限 32 字符；
+/// 禁止控制字符。分组只是展示元数据，不参与目录结构，无需迁移。
+#[tauri::command]
+#[specta::specta]
+pub fn set_instance_group(
+    instance_id: String,
+    group: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<InstanceMetadata> {
+    let normalized = match group.map(|g| g.trim().to_string()) {
+        None => None,
+        Some(g) if g.is_empty() => None,
+        Some(g) => {
+            if g.chars().count() > 32 {
+                return Err(sereno_core::LauncherError::InvalidConfig {
+                    key: "group".into(),
+                    message: "分组名最长 32 个字符".into(),
+                });
+            }
+            if g.chars().any(|c| c.is_control()) {
+                return Err(sereno_core::LauncherError::InvalidConfig {
+                    key: "group".into(),
+                    message: "分组名不能包含控制字符".into(),
+                });
+            }
+            Some(g)
+        }
+    };
+
+    let settings = state.snapshot_settings()?;
+    let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
+    let mut metadata = read_metadata(&inst_dir)?;
+    metadata.group = normalized;
+    write_metadata(&inst_dir, &metadata)?;
+    Ok(metadata)
+}
+
 /// 更新实例级启动配置：Java、内存与附加 JVM 参数。
 ///
 /// 传 `null` / 空列表表示“回落到全局设置”。Java 路径会先探测一次，

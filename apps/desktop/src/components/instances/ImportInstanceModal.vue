@@ -189,8 +189,8 @@ watch(
           </AppButton>
         </div>
         <p class="text-micro text-ink-muted">
-          支持官方启动器 / PCL / HMCL（含 <code>versions/</code>）与
-          MultiMC / Prism（含 <code>.minecraft/</code>）。
+          支持官方启动器 / PCL / HMCL（含 <code>versions/</code>）与 MultiMC / Prism（含
+          <code>.minecraft/</code>）。
         </p>
       </div>
 
@@ -199,11 +199,7 @@ watch(
 
       <div v-else-if="scan" class="flex flex-col gap-1.5">
         <span class="text-caption font-medium text-ink">找到的版本</span>
-        <AppSelect
-          v-model="selected"
-          :options="candidateOptions"
-          placeholder="没有识别到版本"
-        />
+        <AppSelect v-model="selected" :options="candidateOptions" placeholder="没有识别到版本" />
         <p v-if="candidates.length === 0" class="text-micro text-ink-muted">
           没有识别出版本信息，你仍然可以手动指定版本后导入存档与配置。
         </p>
@@ -235,12 +231,7 @@ watch(
     <template #footer>
       <div class="flex justify-end gap-2">
         <AppButton variant="secondary" :disabled="importing" @click="emit('close')">取消</AppButton>
-        <AppButton
-          variant="primary"
-          :loading="importing"
-          :disabled="!canImport"
-          @click="doImport"
-        >
+        <AppButton variant="primary" :loading="importing" :disabled="!canImport" @click="doImport">
           开始导入
         </AppButton>
       </div>

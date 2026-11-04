@@ -74,7 +74,7 @@ function clear(): void {
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
-      class="app-input h-9 w-full rounded-md border text-body text-ink placeholder:text-ink-muted/60 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted"
+      class="app-input h-9 w-full rounded-md border border-line/80 bg-surface text-body text-ink transition-colors placeholder:text-ink-muted/60 hover:border-brand-500/40 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted"
       :class="[
         /*
           水平内边距必须**始终**有值。

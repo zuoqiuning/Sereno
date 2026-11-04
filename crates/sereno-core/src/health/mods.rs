@@ -327,6 +327,11 @@ fn parse_quilt(text: &str) -> Option<RawMod> {
 ///
 /// 只需要 `[[mods]]` 的 id 与 `[[dependencies.<自身 id>]]` 的区间，
 /// 因此用一个很小的块解析器，而不是引入完整 TOML 依赖。
+///
+/// 已知限制：逐行解析不识别 TOML 多行字符串（`"""..."""`），
+/// 字符串字面量里恰好出现 `modId = ...` 形态的行会被误认。
+/// 真实的 mods.toml 极少这么写，且误判后果轻（多报一个不存在的依赖），
+/// 引入完整 TOML 解析器不值得。
 fn parse_mods_toml(text: &str) -> Option<RawMod> {
     #[derive(PartialEq)]
     enum Section {

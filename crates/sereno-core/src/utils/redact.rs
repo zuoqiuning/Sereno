@@ -47,7 +47,23 @@ const MASK: &str = "***";
 /// 2. `Authorization: Bearer xxx` / `Bearer xxx`
 /// 3. 邮箱
 /// 4. 用户目录前缀
-/// 5. 最后断言一次：不含 `eyJ`（JWT 头）
+/// 5. JWT（`eyJ` 开头的 base64url 段）
+/// 6. 代理地址里的认证信息，只保留 `scheme://***@host:port`
+///
+/// 诊断包会把 HTTP 设置原样导出，而用户在代理里填的常见形态是
+/// `http://user:password@host:port`——那份 zip 是要发给别人看的。
+pub fn redact_proxy(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return redact_line(trimmed);
+    };
+    // 密码里可能含 `@`，所以取最后一个
+    let Some(at) = rest.rfind('@') else {
+        return trimmed.to_string();
+    };
+    format!("{scheme}://***@{}", &rest[at + 1..])
+}
+
 pub fn redact_line(line: &str) -> String {
     let mut out = redact_key_values(line);
     out = redact_bearer(&out);
@@ -58,6 +74,17 @@ pub fn redact_line(line: &str) -> String {
 }
 
 /// 形如 `key=value` / `key: value` / `"key":"value"` 的键值对。
+///
+/// 三步走：
+/// 1. 按 `SENSITIVE_KEYS` 在整行里找敏感键出现的位置；
+/// 2. 看键后面跟的是什么分隔符（`=` / `:` / `"`)，确定是三种形态中的哪一种
+///    ——`accessToken=xxx`（命令行）、`"accessToken":"xxx"`（JSON）、
+///    `--accessToken xxx`（MC 启动参数，无分隔符，单独处理）；
+/// 3. 值可能是引号字符串（到闭引号为止）或裸 token（到空白为止），取到边界。
+///
+/// 已知的保守取舍：整行查找意味着 URL 里恰好包含敏感词子串时
+/// （如 `.../accessToken-helper/...`）整段会被误打码。这是**有意的**——
+/// 诊断包宁可多脱敏也不漏脱敏，误伤只损失一点可读性。
 fn redact_key_values(line: &str) -> String {
     let mut result = String::with_capacity(line.len());
     let lower = line.to_ascii_lowercase();
@@ -197,16 +224,21 @@ fn redact_bearer(line: &str) -> String {
 }
 
 /// 邮箱打码：`a***@example.com`。
+///
+/// 用「已写入位置 `cursor` + 最终一次性拼接」的方式推进，
+/// 不能像早期那样在命中时 `result = chars[..start].collect()` 回退重写——
+/// 那会把**前一个**已打码的邮箱还原成明文（多邮箱日志必现）。
 fn redact_emails(line: &str) -> String {
     let chars: Vec<char> = line.chars().collect();
     let mut result = String::with_capacity(line.len());
+    let mut cursor = 0usize;
     let mut i = 0usize;
 
     while i < chars.len() {
         if chars[i] == '@' {
-            // 向前找本地部分，向后找域名
+            // 向前找本地部分，但不得越过已输出的内容
             let mut start = i;
-            while start > 0 && is_email_local_char(chars[start - 1]) {
+            while start > cursor && is_email_local_char(chars[start - 1]) {
                 start -= 1;
             }
             let mut end = i + 1;
@@ -214,23 +246,23 @@ fn redact_emails(line: &str) -> String {
                 end += 1;
             }
 
-            let local: String = chars[start..i].iter().collect();
             let domain: String = chars[i..end].iter().collect();
+            let local_len = i - start;
 
-            if !local.is_empty() && domain.contains('.') && local.chars().count() >= 2 {
-                // `result` 此时与 `chars[..start]` 一一对应，回退到本地部分之前
-                result = chars[..start].iter().collect();
-                result.push(local.chars().next().unwrap());
+            if local_len >= 2 && domain.contains('.') {
+                result.extend(chars[cursor..start].iter());
+                result.push(chars[start]);
                 result.push_str(MASK);
                 result.push_str(&domain);
+                cursor = end;
                 i = end;
                 continue;
             }
         }
-        result.push(chars[i]);
         i += 1;
     }
 
+    result.extend(chars[cursor..].iter());
     result
 }
 
@@ -273,46 +305,48 @@ fn redact_user_profile(line: &str) -> String {
 /// JWT 的 payload 以 `eyJ` 开头。日志里不应该出现完整 JWT，
 /// 出现就说明上游把 token 塞进了别的地方。
 fn redact_jwt(line: &str) -> String {
+    let bytes = line.as_bytes();
     let mut result = String::with_capacity(line.len());
     let mut cursor = 0usize;
 
     while let Some(pos) = line[cursor..].find("eyJ") {
         let abs = cursor + pos;
-        result.push_str(&line[cursor..abs]);
-        result.push_str(MASK);
 
-        // 跳过 JWT 本体：base64url 字符集，连续 3 段（签名段必须一起吞掉）
+        // 先判断这到底是不是 JWT：
+        //  1. 前面不能紧贴字母数字——`keyJson` / `keyJarPath` 里的 `eyJ`
+        //     只是普通标识符的一部分，早期版本会把它们整段抹成 `***`；
+        //  2. 必须能扫出 `header.payload.signature` 的 3 段结构。
+        let boundary_ok = abs == 0 || !is_b64url_byte(bytes[abs - 1]);
         let mut end = abs;
-        let mut dots = 0;
-        while end < line.len() {
-            let c = line.as_bytes()[end];
-            if c == b'.' {
+        let mut dots = 0usize;
+        while end < bytes.len() {
+            let b = bytes[end];
+            if b == b'.' {
                 dots += 1;
-                end += 1;
-                if dots >= 2 {
-                    while end < line.len() {
-                        let b = line.as_bytes()[end];
-                        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
-                            end += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    break;
-                }
-                continue;
-            }
-            let ok = c.is_ascii_alphanumeric() || c == b'-' || c == b'_';
-            if !ok {
+            } else if !is_b64url_byte(b) {
                 break;
             }
             end += 1;
         }
+
+        if !boundary_ok || dots < 2 {
+            // 不是 JWT：原样保留这三个字符，继续往后找
+            result.push_str(&line[cursor..abs + 3]);
+            cursor = abs + 3;
+            continue;
+        }
+
+        result.push_str(&line[cursor..abs]);
+        result.push_str(MASK);
         cursor = end;
     }
 
     result.push_str(&line[cursor..]);
     result
+}
+
+fn is_b64url_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
 }
 
 #[cfg(test)]
@@ -415,5 +449,51 @@ mod tests {
     fn keeps_benign_text() {
         let out = redact_line("下载会话 session-1 开始，共 42 个文件");
         assert_eq!(out, "下载会话 session-1 开始，共 42 个文件");
+    }
+
+    #[test]
+    fn masks_every_email_not_just_the_last() {
+        // 早期实现每命中一次就 `result = chars[..start].collect()` 回退重写，
+        // 第二个邮箱会把第一个邮箱的明文还原回来。
+        let out = redact_line("alice@example.com 与 bob@example.com 都是账号");
+        assert!(
+            !out.contains("alice@example.com"),
+            "第一个邮箱未脱敏: {out}"
+        );
+        assert!(!out.contains("bob@example.com"), "第二个邮箱未脱敏: {out}");
+        assert!(out.contains("example.com"), "域名应保留: {out}");
+    }
+
+    #[test]
+    fn does_not_mistake_identifiers_for_jwt() {
+        // `keyJson` / `keyJarPath` 里含有 `eyJ`，但并不是 JWT
+        let out = redact_line("config keyJson loaded, keyJarPath=/x/y.jar");
+        assert!(out.contains("keyJson"), "普通标识符被误伤: {out}");
+        assert!(out.contains("keyJarPath"), "普通标识符被误伤: {out}");
+    }
+
+    #[test]
+    fn masks_real_jwt() {
+        let token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2lnbmF0dXJl";
+        let out = redact_line(&format!("Authorization: {token}"));
+        assert!(!out.contains("eyJhbGciOiJIUzI1NiJ9"), "JWT 未脱敏: {out}");
+        assert!(!out.contains("c2lnbmF0dXJl"), "JWT 签名段未脱敏: {out}");
+    }
+
+    #[test]
+    fn redacts_proxy_credentials_only() {
+        assert_eq!(
+            redact_proxy("http://user:p@ss@127.0.0.1:7890"),
+            "http://***@127.0.0.1:7890"
+        );
+        assert_eq!(
+            redact_proxy("socks5://name:secret@proxy.local:1080"),
+            "socks5://***@proxy.local:1080"
+        );
+        // 没有认证信息时原样保留，避免把有用的地址也糊掉
+        assert_eq!(
+            redact_proxy("http://proxy.local:8080"),
+            "http://proxy.local:8080"
+        );
     }
 }

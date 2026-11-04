@@ -27,9 +27,13 @@ pub async fn install_base(
     crate::utils::paths::ensure_dir(&inst_dir.join("minecraft").join("mods"))?;
 
     let client = crate::utils::http::build_client(settings)?;
+    // 安装任务里 assets 是几千个小文件，并发是唯一提速杠杆；
+    // 放宽为设置值的 2 倍（上限 128），带宽层面仍受用户限速约束。
+    // 大文件（客户端 jar / 库）的分片下载由 chunk 许可单独约束，
+    // 不会因任务并发提高而挤占带宽。
     let queue = Arc::new(DownloadQueue::new(
         client.clone(),
-        settings.download.max_concurrent as usize,
+        ((settings.download.max_concurrent as usize).saturating_mul(2)).min(128),
     ));
 
     let manifest = crate::version::fetch_manifest(&client).await?;

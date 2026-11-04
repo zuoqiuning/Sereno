@@ -86,6 +86,23 @@ pub fn validate_api_root(raw: &str) -> Result<String> {
             message: "Yggdrasil 服务器地址必须以 http:// 或 https:// 开头".into(),
         });
     }
+    // 明文 HTTP 会把**密码**以可被中间人读取的形式发出去。
+    // 只对本机调试地址放行（自建皮肤站的常见场景）。
+    if lower.starts_with("http://") {
+        let host = lower
+            .trim_start_matches("http://")
+            .split(['/', ':'])
+            .next()
+            .unwrap_or("");
+        let local = matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1");
+        if !local {
+            return Err(LauncherError::InvalidConfig {
+                key: "apiRoot".into(),
+                message: "出于安全考虑，外部服务器必须使用 https://（仅本机地址允许 http://）"
+                    .into(),
+            });
+        }
+    }
     if root.contains('?') || root.contains('#') {
         return Err(LauncherError::InvalidConfig {
             key: "apiRoot".into(),
@@ -306,6 +323,9 @@ pub async fn session(client: &reqwest::Client, profile: &AuthlibProfile) -> Resu
     if let Some((at, cached)) = SESSION.lock().await.clone()
         && std::time::Instant::now() < at
         && cached.api_root == profile.api_root
+        // 同一皮肤站上的两个账号会共用 api_root：只比 api_root 会把 A 的
+        // 令牌配 B 的名字/UUID 启动，表现为鉴权失败或串号。
+        && cached.name == profile.name
     {
         return Ok(cached);
     }
@@ -477,14 +497,36 @@ pub async fn injector_artifact(
 pub async fn ensure_injector(client: &reqwest::Client, prefer_mirror: bool) -> Result<PathBuf> {
     let artifact = injector_artifact(client, prefer_mirror).await?;
 
+    // 这个 jar 会被 `-javaagent` 注入到游戏进程里，等同于执行第三方代码。
+    // 元数据里**没有 sha256 就必须拒绝**——「没哈希所以跳过校验」等于
+    // 把任意远端内容直接塞进 JVM。
+    if artifact.checksums.sha256.trim().is_empty() {
+        return Err(LauncherError::InvalidConfig {
+            key: "authlib-injector".into(),
+            message: "注入器元数据缺少 SHA-256 校验值，出于安全考虑拒绝安装".into(),
+        });
+    }
+
     let dir = crate::utils::paths::cache_dir()?.join("authlib");
     crate::utils::paths::ensure_dir(&dir)?;
-    let path = dir.join(format!("authlib-injector-{}.jar", artifact.version));
+    // version 来自远端 JSON，直接拼进文件名会变成 `../../evil.jar`。
+    let safe_version: String = artifact
+        .version
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(40)
+        .collect();
+    let path = dir.join(format!("authlib-injector-{safe_version}.jar"));
 
     // 已存在且校验通过 → 直接用
     if path.exists()
         && let Ok(actual) = sha256_file(&path)
-        && !artifact.checksums.sha256.is_empty()
         && actual.eq_ignore_ascii_case(&artifact.checksums.sha256)
     {
         return Ok(path);
@@ -509,8 +551,8 @@ pub async fn ensure_injector(client: &reqwest::Client, prefer_mirror: bool) -> R
 
     let bytes = crate::utils::http::read_limited(resp, 64 * 1024 * 1024).await?;
 
-    // 校验 SHA-256
-    if !artifact.checksums.sha256.is_empty() {
+    // 校验 SHA-256（走到这里说明 hash 非空）
+    {
         use sha2::{Digest, Sha256};
         let actual = format!("{:x}", Sha256::digest(&bytes));
         if !actual.eq_ignore_ascii_case(&artifact.checksums.sha256) {

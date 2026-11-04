@@ -59,7 +59,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5NkEyNkJGQjVDQ0IwRkIKUldUN3NNeTF2eVpxU1JERk4rNXE0dTY1Qnl4WHBiWFVMNVRjVFd3K0VDd0hLYVUzTUt5TnQxYmsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDAxRDZDM0IwQTI1Q0JGMDgKUldRSXYxeWlzTVBXQWRweXBvQ1B4eittUDd1OVExemFqZ29UQTdJeUpJOFlZNWgrYmNobFl4REMK",
       "endpoints": [
         "https://sereno-updates-1316381240.cos.ap-beijing.myqcloud.com/latest.json",
         "https://github.com/zuoqiuning/Sereno/releases/latest/download/latest.json"
@@ -72,9 +72,13 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "丘屿知宁",
     "targets": [
       "nsis"
     ],
+    "resources": {
+      "resources/easytier/": "easytier/"
+    },
     "createUpdaterArtifacts": true,
     "licenseFile": "../../../LICENSE",
     "icon": [
@@ -89,6 +93,7 @@
       },
       "nsis": {
         "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
         "languages": [
           "SimpChinese",
           "English"

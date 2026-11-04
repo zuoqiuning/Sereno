@@ -5,5 +5,4 @@ pub mod dependency;
 pub mod local;
 pub mod mcim;
 pub mod modrinth;
-pub mod provider;
 pub mod search;

@@ -479,7 +479,9 @@ onMounted(() => {
             :key="option.id"
             type="button"
             class="rounded-md px-2.5 py-1 text-caption font-medium transition-colors"
-            :class="filter === option.id ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5'"
+            :class="
+              filter === option.id ? 'bg-brand-500 text-white' : 'text-ink-soft hover:bg-ink/5'
+            "
             @click="filter = option.id"
           >
             {{ option.label }} {{ countFor(option.id) }}
@@ -516,28 +518,13 @@ onMounted(() => {
       class="mt-3 flex items-center gap-2 rounded-md bg-surface-muted px-3 py-2"
     >
       <span class="text-caption font-medium text-ink-soft">已选 {{ selected.length }} 项</span>
-      <AppButton
-        variant="secondary"
-        size="xs"
-        :disabled="batching"
-        @click="batchSetEnabled(true)"
-      >
+      <AppButton variant="secondary" size="xs" :disabled="batching" @click="batchSetEnabled(true)">
         全部启用
       </AppButton>
-      <AppButton
-        variant="secondary"
-        size="xs"
-        :disabled="batching"
-        @click="batchSetEnabled(false)"
-      >
+      <AppButton variant="secondary" size="xs" :disabled="batching" @click="batchSetEnabled(false)">
         全部禁用
       </AppButton>
-      <AppButton
-        variant="danger"
-        size="xs"
-        :loading="batching"
-        @click="removeFiles([...selected])"
-      >
+      <AppButton variant="danger" size="xs" :loading="batching" @click="removeFiles([...selected])">
         删除
       </AppButton>
       <button

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { Archive, Camera, Pin, PinOff, RotateCcw, Trash2 } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
+import { toMessage } from "@/utils/error";
 import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import {
@@ -85,7 +86,7 @@ async function load(): Promise<void> {
     snapshots.value = content;
     backups.value = world;
   } catch (err) {
-    error.value = `读取备份失败：${String(err)}`;
+    error.value = `读取备份失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "list" });
   } finally {
     loading.value = false;
@@ -105,7 +106,7 @@ async function createSnapshot(): Promise<void> {
       instanceId: props.instance.id,
     });
   } catch (err) {
-    error.value = `创建快照失败：${String(err)}`;
+    error.value = `创建快照失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "createSnapshot" });
   } finally {
     busy.value = null;
@@ -132,7 +133,7 @@ async function restoreSnapshot(snapshot: ContentSnapshot): Promise<void> {
       instanceId: props.instance.id,
     });
   } catch (err) {
-    error.value = `回滚失败：${String(err)}`;
+    error.value = `回滚失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "restoreSnapshot" });
   } finally {
     busy.value = null;
@@ -153,7 +154,7 @@ async function removeSnapshot(snapshot: ContentSnapshot): Promise<void> {
     await deleteContentSnapshot(props.instance.id, snapshot.id);
     snapshots.value = snapshots.value.filter((item) => item.id !== snapshot.id);
   } catch (err) {
-    error.value = `删除快照失败：${String(err)}`;
+    error.value = `删除快照失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "deleteSnapshot" });
   } finally {
     busy.value = null;
@@ -168,7 +169,7 @@ async function togglePin(snapshot: ContentSnapshot): Promise<void> {
     snapshot.pinned = next;
     toast.info(next ? "已标记为保留" : "已取消保留", "保留的快照不会被自动淘汰");
   } catch (err) {
-    error.value = `设置保留标记失败：${String(err)}`;
+    error.value = `设置保留标记失败：${toMessage(err)}`;
   } finally {
     busy.value = null;
   }
@@ -181,7 +182,7 @@ async function createBackup(): Promise<void> {
     backups.value = [backup, ...backups.value];
     toast.success("存档已备份", formatDate(backup.createdAt));
   } catch (err) {
-    error.value = `创建存档备份失败：${String(err)}`;
+    error.value = `创建存档备份失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "createWorld" });
   } finally {
     busy.value = null;
@@ -202,7 +203,7 @@ async function restoreBackup(backup: WorldBackup): Promise<void> {
     await restoreWorldBackup(props.instance.id, backup.name);
     toast.success("存档已恢复", formatDate(backup.createdAt));
   } catch (err) {
-    error.value = `恢复存档失败：${String(err)}`;
+    error.value = `恢复存档失败：${toMessage(err)}`;
     void log.error(error.value, { component: "BackupModal", action: "restoreWorld" });
   } finally {
     busy.value = null;

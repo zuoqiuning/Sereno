@@ -275,6 +275,7 @@ check("权限", "赞助链接只指向白名单域名", () => {
     "ifdian.net",
     "github.com",
     "www.mcimirror.top",
+    "www.easytier.cn", // 联机内核上游的赞助页（鸣谢礼仪）
   ]);
   const urls = [...links.matchAll(/https?:\/\/([^/"'\s]+)/g)].map((m) => m[1]);
   const bad = urls.filter((host) => !allowed.has(host));
@@ -667,6 +668,26 @@ check("构建", "依赖没有安装期生命周期脚本", () => {
 });
 
 // ---------------------------------------------------------------- 5. 产物
+// 联机内核就位检查：发布包必须自带 EasyTier 内核（用户首次联机零下载），
+// 漏跑 scripts/fetch-easytier.mjs 时在这里直接红。
+{
+  const kernelDir = join(ROOT, "apps/desktop/src-tauri/resources/easytier");
+  check("产物", "联机内核（EasyTier）已就位", () => {
+    const missing = ["easytier-core.exe", "wintun.dll"].filter(
+      (name) => !existsSync(join(kernelDir, name)),
+    );
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        detail: `缺少 ${missing.join(", ")} —— 运行 node scripts/fetch-easytier.mjs`,
+      };
+    }
+    const size = statSync(join(kernelDir, "easytier-core.exe")).size;
+    return size > 1024 * 1024
+      ? true
+      : { ok: false, detail: `easytier-core.exe 体积异常（${size}B），疑似截断，请重新拉取` };
+  });
+}
 const distDir = join(ROOT, "apps/desktop/dist");
 if (existsSync(distDir)) {
   const distFiles = walk(distDir, [], [".js", ".css", ".map", ".html"]);

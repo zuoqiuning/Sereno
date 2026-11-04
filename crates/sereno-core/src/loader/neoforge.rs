@@ -127,6 +127,8 @@ pub async fn install_neoforge(
 
     // 所有依赖（含 universal jar 与 mappings）已预下载完毕，
     // 安装器加 `--offline`：只跑本地处理器，绝不联网超时。
+    // 事务性：安装器失败时删除它留下的半成品版本目录
+    let versions_before = crate::loader::snapshot_versions(instance_dir);
     crate::loader::run_installer(
         java_exe,
         &installer_path,
@@ -134,7 +136,11 @@ pub async fn install_neoforge(
         instance_dir,
         "NeoForge",
     )
-    .await?;
+    .await
+    .map_err(|error| {
+        crate::loader::rollback_new_versions(instance_dir, &versions_before);
+        error
+    })?;
 
     let _ = tokio::fs::remove_file(&installer_path).await;
 

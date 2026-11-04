@@ -88,8 +88,10 @@ const paddingClass: Record<Padding, string> = {
 }
 
 .app-card.lift-on-hover:hover {
-  border-color: color-mix(in srgb, var(--color-brand-500) 26%, transparent);
-  box-shadow: var(--shadow-lg);
+  /* 专业风 hover：边框微亮 + 背景微变，阴影不增长（边界交给边框） */
+  border-color: color-mix(in srgb, var(--color-brand-500) 38%, transparent);
+  background: color-mix(in srgb, var(--color-brand-500) 2%, var(--color-surface));
+  box-shadow: var(--shadow-card);
 }
 
 .app-card.is-selected {

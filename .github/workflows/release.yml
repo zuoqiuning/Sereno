@@ -64,6 +64,11 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
+      # 联机内核随包分发：构建期下载并校验 SHA-256，写入安装包资源。
+      # CI 网络可靠，每次发布都拉最新锁定版本。
+      - name: 拉取联机内核（EasyTier）
+        run: node scripts/fetch-easytier.mjs
+
       # ---------------- 门禁 ----------------
       # 发布出去的产物必须是「过了全部检查」的产物。
       # 这里不复用 CI 的结果，而是**在同一次构建里再跑一遍**——

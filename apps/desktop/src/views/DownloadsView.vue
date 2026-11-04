@@ -16,6 +16,7 @@ import {
 import { useRoute, useRouter } from "vue-router";
 
 import AppBadge from "@/components/common/AppBadge.vue";
+import { toMessage } from "@/utils/error";
 import AppButton from "@/components/common/AppButton.vue";
 import AppEmptyState from "@/components/common/AppEmptyState.vue";
 import AppIconButton from "@/components/common/AppIconButton.vue";
@@ -30,7 +31,6 @@ import ResourceBrowser from "@/components/downloads/ResourceBrowser.vue";
 import { createInstance, listInstances } from "@/api/instance";
 import { installGame } from "@/api/install";
 import { installLoader, getLoaderVersions, type LoaderType } from "@/api/loader";
-import { isApiError } from "@/api/invoke";
 import { log } from "@/api/settings";
 import { useVersionStore } from "@/stores/version";
 import { useTaskStore } from "@/stores/task";
@@ -239,7 +239,8 @@ const filteredVersions = computed<VersionSummary[]>(() => {
   return list;
 });
 
-function typeLabel(type: VersionType): string {  switch (type) {
+function typeLabel(type: VersionType): string {
+  switch (type) {
     case "release":
       return "正式";
     case "snapshot":
@@ -272,12 +273,6 @@ function formatDate(version: VersionSummary): string {
   if (Number.isNaN(date.getTime())) return raw;
   return date.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
 }
-function toErrorMessage(error: unknown): string {
-  if (isApiError(error)) return error.message;
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
 async function loadVersions(force = false): Promise<void> {
   if (versionStore.isFresh && !force) return;
   loading.value = true;
@@ -285,7 +280,7 @@ async function loadVersions(force = false): Promise<void> {
   try {
     await versionStore.ensureLoaded(force);
   } catch (error) {
-    errorMessage.value = `版本清单获取失败：${toErrorMessage(error)}`;
+    errorMessage.value = `版本清单获取失败：${toMessage(error)}`;
     void log.error(errorMessage.value, {
       component: "DownloadsView",
       action: "loadVersions",
@@ -368,7 +363,7 @@ async function executeDownload() {
     taskStore.start(instanceId, instanceName);
     router.push("/tasks");
   } catch (error) {
-    errorMessage.value = `创建实例失败：${toErrorMessage(error)}`;
+    errorMessage.value = `创建实例失败：${toMessage(error)}`;
     void log.error(errorMessage.value, {
       component: "DownloadsView",
       action: "createInstance",
@@ -390,7 +385,7 @@ async function executeDownload() {
       try {
         await installLoader(instanceId, loader.id as LoaderType, loader.version);
       } catch (error) {
-        const message = `${loader.name} 安装失败：${toErrorMessage(error)}`;
+        const message = `${loader.name} 安装失败：${toMessage(error)}`;
         taskStore.setError(instanceId, message);
         void log.error(message, {
           component: "DownloadsView",
@@ -403,7 +398,7 @@ async function executeDownload() {
 
     taskStore.finish(instanceId);
   } catch (error) {
-    const msg = `下载失败：${toErrorMessage(error)}`;
+    const msg = `下载失败：${toMessage(error)}`;
     taskStore.setError(instanceId, msg);
     void log.error(msg, {
       component: "DownloadsView",
@@ -443,11 +438,7 @@ onMounted(() => {
           key="resourcepack"
           kind="resourcepack"
         />
-        <ResourceBrowser
-          v-else-if="activeCategory === 'datapack'"
-          key="datapack"
-          kind="datapack"
-        />
+        <ResourceBrowser v-else-if="activeCategory === 'datapack'" key="datapack" kind="datapack" />
         <ResourceBrowser v-else-if="activeCategory === 'shader'" key="shader" kind="shader" />
 
         <template v-else>
@@ -473,7 +464,7 @@ onMounted(() => {
               <p class="hidden truncate text-micro text-ink-muted lg:block">{{ pageHint }}</p>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex shrink-0 items-center gap-3">
               <AppIconButton
                 size="sm"
                 label="刷新版本清单"
@@ -519,7 +510,10 @@ onMounted(() => {
                 />
               </div>
 
-              <div v-else-if="filteredVersions.length === 0" class="flex flex-1 items-center justify-center">
+              <div
+                v-else-if="filteredVersions.length === 0"
+                class="flex flex-1 items-center justify-center"
+              >
                 <AppEmptyState
                   :icon="Search"
                   title="没有找到匹配的版本"
@@ -537,7 +531,9 @@ onMounted(() => {
                     class="group flex items-center gap-3 px-4 py-3 transition-fast hover:bg-surface-muted"
                   >
                     <!-- 行首不再放图标块：版本号本身就是这一行的主体 -->
-                    <span class="w-35 shrink-0 truncate font-mono text-h2 font-semibold text-ink tabular">
+                    <span
+                      class="w-35 shrink-0 truncate font-mono text-h2 font-semibold text-ink tabular"
+                    >
                       {{ getAprilFoolsInfo(version.id)?.displayId ?? version.id }}
                     </span>
 
@@ -589,7 +585,9 @@ onMounted(() => {
         <div class="min-w-0 flex-1">
           <h2 class="text-h2 font-semibold text-ink">安装选项</h2>
           <p class="text-micro text-ink-muted">
-            {{ modalVersion ? getAprilFoolsInfo(modalVersion.id)?.displayId ?? modalVersion.id : "" }}
+            {{
+              modalVersion ? (getAprilFoolsInfo(modalVersion.id)?.displayId ?? modalVersion.id) : ""
+            }}
             · 选择需要一并安装的加载器
           </p>
         </div>
@@ -623,7 +621,10 @@ onMounted(() => {
                 <Check v-if="item.selected" :size="12" stroke-width="3" />
               </div>
 
-              <span class="text-body font-medium" :class="item.selected ? 'text-ink' : 'text-ink-soft'">
+              <span
+                class="text-body font-medium"
+                :class="item.selected ? 'text-ink' : 'text-ink-soft'"
+              >
                 {{ item.name }}
               </span>
 
@@ -637,7 +638,11 @@ onMounted(() => {
               >
                 {{ item.version }}
               </span>
-              <Loader2 v-else-if="item.loading" :size="14" class="shrink-0 animate-spin text-ink-muted" />
+              <Loader2
+                v-else-if="item.loading"
+                :size="14"
+                class="shrink-0 animate-spin text-ink-muted"
+              />
               <span
                 v-else-if="
                   !item.selected && item.versions.length === 0 && !getLoaderState(item.id).disabled

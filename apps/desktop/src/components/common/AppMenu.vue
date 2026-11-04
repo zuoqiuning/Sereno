@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
   </div>
 
   <Teleport to="body">
-    <div v-if="open" class="fixed z-[80] w-56" :style="anchorStyle">
+    <div v-if="open" class="fixed z-[var(--z-menu)] w-56" :style="anchorStyle">
       <div
         ref="panelRef"
         role="menu"

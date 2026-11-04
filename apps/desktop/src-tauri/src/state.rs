@@ -56,6 +56,8 @@ pub struct AppState {
     running: Arc<Mutex<HashSet<String>>>,
     /// 可取消任务：前端任务 ID → 取消令牌。
     cancels: Mutex<HashMap<String, CancellationToken>>,
+    /// 联机会话（房主 / 房客）。同一时刻最多一个。
+    pub multiplayer: sereno_core::multiplayer::SessionManager,
 }
 
 impl AppState {
@@ -88,6 +90,7 @@ impl AppState {
             started_at: Instant::now(),
             running: Arc::new(Mutex::new(running)),
             cancels: Mutex::new(HashMap::new()),
+            multiplayer: sereno_core::multiplayer::SessionManager::new(),
         })
     }
 

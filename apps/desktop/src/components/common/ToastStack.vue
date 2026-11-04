@@ -25,14 +25,14 @@ function bubbleClass(tone: ToastTone): string {
 <template>
   <Teleport to="body">
     <div
-      class="pointer-events-none fixed left-1/2 top-14 z-[60] w-[min(420px,calc(100vw-2rem))] -translate-x-1/2"
+      class="pointer-events-none fixed left-1/2 top-14 z-[var(--z-toast)] w-[min(420px,calc(100vw-2rem))] -translate-x-1/2"
     >
       <!-- relative 供离场卡片绝对定位；卡片宽度随内容自适应，最多铺满这一列 -->
       <TransitionGroup name="toast" tag="div" class="relative flex flex-col items-center gap-2">
         <div
           v-for="toast in toastStore.items"
           :key="toast.id"
-          class="toast-card pointer-events-auto flex w-fit max-w-full items-start gap-2.5 rounded-xl border border-line/60 bg-surface/95 py-2.5 pl-3 pr-2.5 shadow-[0_2px_6px_-1px_rgba(16,24,40,0.06),0_14px_36px_-12px_rgba(16,24,40,0.24)] backdrop-blur-xl"
+          class="toast-card pointer-events-auto flex min-w-[320px] max-w-full items-start gap-2.5 rounded-xl border border-line/60 bg-surface/95 py-2.5 pl-3 pr-2.5 shadow-[0_2px_6px_-1px_rgba(16,24,40,0.06),0_14px_36px_-12px_rgba(16,24,40,0.24)] backdrop-blur-xl"
         >
           <span
             class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
@@ -76,12 +76,12 @@ function bubbleClass(tone: ToastTone): string {
 .toast-card::before {
   content: "";
   position: absolute;
-  inset: -8px;
+  inset: -6px;
   z-index: -1;
   border-radius: 18px;
-  background: color-mix(in srgb, var(--color-ink) 9%, transparent);
-  filter: blur(12px);
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--color-ink) 8%, transparent);
+  filter: blur(10px);
+  opacity: 0.3; /* 光晕收敛：辅助氛围而不是抢视线 */
   pointer-events: none;
 }
 

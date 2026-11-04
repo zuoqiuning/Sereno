@@ -59,6 +59,9 @@ pub async fn install_forge(
     }
 
     tracing::info!("运行 Forge 安装器（客户端模式）");
+    // 事务性：记录安装前 versions/ 快照，安装器失败时删除它留下的半成品
+    let versions_before = crate::loader::snapshot_versions(instance_dir);
+
     let mut args = vec!["--install-client".to_string(), target_dir.clone()];
     if modern {
         // 支持库已预下载，优先离线安装；缺文件时再退回联网安装
@@ -70,7 +73,7 @@ pub async fn install_forge(
         crate::loader::run_installer(java_exe, &installer_path, &arg_refs, instance_dir, "Forge")
             .await;
 
-    if result.is_err() && modern {
+    let installed = if result.is_err() && modern {
         tracing::warn!("Forge 离线安装失败，退回联网安装");
         crate::loader::run_installer(
             java_exe,
@@ -79,9 +82,14 @@ pub async fn install_forge(
             instance_dir,
             "Forge",
         )
-        .await?;
+        .await
     } else {
-        result?;
+        result
+    };
+
+    if let Err(error) = installed {
+        crate::loader::rollback_new_versions(instance_dir, &versions_before);
+        return Err(error);
     }
 
     let _ = tokio::fs::remove_file(&installer_path).await;
@@ -167,4 +175,44 @@ pub(crate) fn write_launcher_profiles(instance_dir: &Path) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+/// 从 Forge 官方 maven-metadata.xml 拉取版本列表（BMCLAPI 故障时的回退源）。
+///
+/// XML 里每行一个 `<version>1.21.1-forge-52.0.24</version>`，
+/// 用最朴素的字符串匹配解析——为一个回退源引入完整 XML 解析器不值得。
+pub async fn list_versions_official(
+    client: &reqwest::Client,
+    mc_version: &str,
+) -> crate::Result<Vec<String>> {
+    let url = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| crate::LauncherError::LoaderNotFound {
+            loader: format!("forge（官方元数据请求失败: {e}）"),
+            version: mc_version.to_string(),
+        })?;
+    let bytes = crate::utils::http::read_limited(resp, 8 * 1024 * 1024).await?;
+    let text = String::from_utf8_lossy(&bytes);
+
+    let prefix = format!("<version>{mc_version}-forge-");
+    let mut versions = Vec::new();
+    for line in text.lines() {
+        let Some(start) = line.find(&prefix) else {
+            continue;
+        };
+        let rest = &line[start + prefix.len()..];
+        if let Some(end) = rest.find("</version>") {
+            versions.push(format!("{mc_version}-forge-{}", &rest[..end]));
+        }
+    }
+    if versions.is_empty() {
+        return Err(crate::LauncherError::LoaderNotFound {
+            loader: "forge".into(),
+            version: mc_version.to_string(),
+        });
+    }
+    Ok(versions)
 }

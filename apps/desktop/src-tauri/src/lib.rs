@@ -105,9 +105,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Tauri 启动失败");
 
-    // 退出钩子：正常退出时把日志缓冲刷干净，不丢最后几行
+    // 退出钩子：正常退出时把日志缓冲刷干净，不丢最后几行；
+    // 同时给联机内核留「停止文件」兜底，避免 UAC 提权的内核变孤儿
     app.run(|_handle, event| {
         if let tauri::RunEvent::Exit = event {
+            if let Some(state) = _handle.try_state::<state::AppState>() {
+                state.multiplayer.shutdown();
+            }
             logging::flush();
         }
     });

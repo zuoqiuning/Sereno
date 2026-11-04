@@ -555,6 +555,7 @@ mod tests {
             memory_mb: None,
             jvm_args: Vec::new(),
             favorite: false,
+            group: None,
         }
     }
 

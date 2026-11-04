@@ -1,10 +1,5 @@
 import { commands } from "@/bindings";
-import type {
-  AccountState,
-  AuthlibProfile,
-  DeviceCodeInfo,
-  MicrosoftConfig,
-} from "@/types";
+import type { AccountState, AuthlibProfile, DeviceCodeInfo, MicrosoftConfig } from "@/types";
 
 import { callCommand } from "./invoke";
 

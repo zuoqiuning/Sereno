@@ -398,8 +398,8 @@ fn total_memory_bytes() -> Option<u64> {
     None
 }
 
-#[cfg(windows)]
-fn available_space(path: &Path) -> Option<u64> {
+/// 目标路径所在盘的剩余空间（字节）；无法获取时返回 None。
+pub fn available_space(path: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 
@@ -421,7 +421,7 @@ fn available_space(path: &Path) -> Option<u64> {
 }
 
 #[cfg(not(windows))]
-fn available_space(_path: &Path) -> Option<u64> {
+pub fn available_space(_path: &Path) -> Option<u64> {
     None
 }
 

@@ -48,8 +48,8 @@ const panelStyle = ref({
   transform: "none",
 });
 
-const selected = computed(() =>
-  props.options.find((option) => option.value === props.modelValue) ?? null,
+const selected = computed(
+  () => props.options.find((option) => option.value === props.modelValue) ?? null,
 );
 
 const sizeClass = computed(() =>
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
       <div
         v-if="open"
         ref="panelRef"
-        class="select-panel fixed z-[70] max-h-65 overflow-y-auto rounded-lg border border-line/70 bg-surface/95 p-1 shadow-[0_2px_6px_-1px_rgba(16,24,40,0.06),0_16px_40px_-12px_rgba(16,24,40,0.24)] backdrop-blur-xl focus:outline-none"
+        class="select-panel fixed z-[var(--z-select)] max-h-65 overflow-y-auto rounded-lg border border-line/70 bg-surface/95 p-1 shadow-[0_2px_6px_-1px_rgba(16,24,40,0.06),0_16px_40px_-12px_rgba(16,24,40,0.24)] backdrop-blur-xl focus:outline-none"
         :style="panelStyle"
         role="listbox"
         tabindex="-1"

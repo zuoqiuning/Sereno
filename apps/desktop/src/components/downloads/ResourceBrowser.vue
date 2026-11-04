@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { AlertTriangle, ChevronRight, Download, Loader2, Package, Search, SlidersHorizontal } from "@lucide/vue";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Download,
+  Loader2,
+  Package,
+  Search,
+  SlidersHorizontal,
+} from "@lucide/vue";
 import { useRoute } from "vue-router";
 
 import AppButton from "@/components/common/AppButton.vue";
+import { toMessage } from "@/utils/error";
 import AppCard from "@/components/common/AppCard.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import AppLoading from "@/components/common/AppLoading.vue";
@@ -12,7 +21,13 @@ import AppSelect from "@/components/common/AppSelect.vue";
 import ResourceDetailModal from "@/components/downloads/ResourceDetailModal.vue";
 import { getRunningInstances, listInstances } from "@/api/instance";
 import { isApiError } from "@/api/invoke";
-import { searchResources, downloadResource, getCfModVersions, getModVersions, installResourceDependency } from "@/api/resource";
+import {
+  searchResources,
+  downloadResource,
+  getCfModVersions,
+  getModVersions,
+  installResourceDependency,
+} from "@/api/resource";
 import { useToastStore } from "@/stores/toast";
 import { useTaskStore } from "@/stores/task";
 import { useModalState } from "@/composables/useModalState";
@@ -137,12 +152,6 @@ const placeholder = computed(() => {
   }
 });
 
-function toErrorMessage(error: unknown): string {
-  if (isApiError(error)) return error.message;
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
 function sourceLabel(value: ResourceSource): string {
   if (value === "modrinth") return "Modrinth";
   if (value === "curseforge") return "CurseForge";
@@ -223,7 +232,7 @@ async function reload(targetPage = 1): Promise<void> {
     total.value = 0;
     pageCount.value = 1;
     warnings.value = [];
-    error.value = `搜索失败：${toErrorMessage(err)}`;
+    error.value = `搜索失败：${toMessage(err)}`;
   } finally {
     if (current === generation) {
       loading.value = false;
@@ -250,7 +259,9 @@ async function quickDownload(item: ModProject): Promise<void> {
   if (!instance || props.kind !== "mod" || quickDownloadIds.value.has(key)) return;
 
   quickDownloadIds.value.add(key);
-  const taskId = `quick-${key}`;
+  // 任务 ID 必须带实例 ID：同一个 Mod 同时下载到两个实例时，
+  // 后端是两次独立下载（各自 Channel），ID 不带实例会把进度串台
+  const taskId = `quick-${instance.id}-${key}`;
   taskStore.start(taskId, `下载 ${item.title}`, true);
 
   try {
@@ -275,8 +286,7 @@ async function quickDownload(item: ModProject): Promise<void> {
     } else {
       const versions = await getModVersions(item.id, [instance.gameVersion], loader);
       const version = versions.find((entry) => entry.files.length > 0);
-      const file =
-        version?.files.find((entry) => entry.primary) ?? version?.files[0];
+      const file = version?.files.find((entry) => entry.primary) ?? version?.files[0];
       if (!version || !file) throw new Error("该 Mod 没有适配当前实例的文件");
       fileUrl = file.url;
       filename = file.filename;
@@ -315,7 +325,7 @@ async function quickDownload(item: ModProject): Promise<void> {
       taskStore.markCancelled(taskId);
       return;
     }
-    const message = toErrorMessage(err);
+    const message = toMessage(err);
     taskStore.setError(taskId, message);
     toast.error("下载失败", message);
   } finally {
@@ -382,11 +392,7 @@ onMounted(() => {
     <div class="shrink-0 rounded-lg border border-line/70 bg-surface p-3 shadow-sm">
       <div class="flex flex-wrap items-center gap-2">
         <div v-if="kind !== 'modpack'" class="w-42">
-          <AppSelect
-            v-model="instanceId"
-            :options="instanceOptions"
-            @change="onInstanceChange"
-          />
+          <AppSelect v-model="instanceId" :options="instanceOptions" @change="onInstanceChange" />
         </div>
         <div class="w-33">
           <AppSelect
@@ -413,12 +419,7 @@ onMounted(() => {
           />
         </div>
         <div class="min-w-45 flex-1">
-          <AppInput
-            v-model="keyword"
-            clearable
-            :placeholder="placeholder"
-            @submit="reload(1)"
-          />
+          <AppInput v-model="keyword" clearable :placeholder="placeholder" @submit="reload(1)" />
         </div>
         <AppButton variant="primary" :loading="loading" @click="reload(1)">搜索</AppButton>
       </div>

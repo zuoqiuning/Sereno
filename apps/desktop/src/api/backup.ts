@@ -45,10 +45,7 @@ export async function restoreContentSnapshot(
 }
 
 /** 删除某个内容快照。 */
-export async function deleteContentSnapshot(
-  instanceId: string,
-  snapshotId: string,
-): Promise<void> {
+export async function deleteContentSnapshot(instanceId: string, snapshotId: string): Promise<void> {
   await callCommand(() => commands.deleteContentSnapshot(instanceId, snapshotId));
 }
 

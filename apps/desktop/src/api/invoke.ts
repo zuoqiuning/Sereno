@@ -68,7 +68,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   notAuthenticated: "尚未登录微软账号，请先在「账户」页完成登录",
   credentialStoreUnavailable: "系统密钥库不可用，请检查权限设置",
   tokenRefreshFailed: "登录已过期，请重新登录",
-  curseForgeOfficialKeyRequired: "CurseForge 官方接口需要 API Key，请在设置中开启「优先使用国内镜像」",
+  curseForgeOfficialKeyRequired:
+    "CurseForge 官方接口需要 API Key，请在设置中开启「优先使用国内镜像」",
   resourceNotFound: "未找到该资源",
   io: "文件读写失败，请查看日志获取详情",
   parse: "数据格式错误",

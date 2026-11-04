@@ -17,6 +17,11 @@ pub struct LoaderInfo {
 #[serde(rename_all = "camelCase")]
 pub struct InstanceMetadata {
     /// schema 版本。
+    ///
+    /// 必须带 default：迁移函数只在反序列化成功后才执行，裸字段遇到
+    /// 旧文件（字段缺失）会直接反序列化失败，实例从列表里消失——
+    /// 迁移根本没机会跑。default 返回 1（初始 schema）。
+    #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     /// 稳定 ID（目录名）。
     pub id: String,
@@ -50,4 +55,35 @@ pub struct InstanceMetadata {
     /// 老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
     #[serde(default)]
     pub favorite: bool,
+    /// 分组名；`None` = 未分组。纯展示用元数据，不参与路径。
+    ///
+    /// 老实例同样靠 `default` 兼容。
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+fn default_schema_version() -> u32 {
+    1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_without_schema_version_defaults_and_migrates() {
+        // 模拟「schema_version 字段加入之前」的旧 instance.json：
+        // 反序列化必须成功，且迁移链把它视作 v1
+        let json = serde_json::json!({
+            "id": "abc123",
+            "displayName": "测试实例",
+            "gameVersion": "1.21.1",
+            "loader": { "type": "vanilla", "version": null },
+            "status": "ready",
+            "createdAt": "1700000000",
+            "playtimeSecs": 0
+        });
+        let meta: InstanceMetadata = serde_json::from_value(json).unwrap();
+        assert_eq!(meta.schema_version, 1, "缺失的 schema_version 应默认为 1");
+    }
 }

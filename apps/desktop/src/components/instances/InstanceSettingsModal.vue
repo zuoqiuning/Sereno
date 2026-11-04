@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { Gamepad2 } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
+import { toMessage } from "@/utils/error";
 import AppModal from "@/components/common/AppModal.vue";
 import AppSelect from "@/components/common/AppSelect.vue";
 import AppSlider from "@/components/common/AppSlider.vue";
@@ -53,7 +54,7 @@ async function browseJava(): Promise<void> {
     const path = await selectJavaExecutable();
     if (path) javaPath.value = path;
   } catch (err) {
-    error.value = `选择文件失败：${String(err)}`;
+    error.value = `选择文件失败：${toMessage(err)}`;
   }
 }
 

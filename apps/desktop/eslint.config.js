@@ -88,8 +88,7 @@ export default tseslint.config(
             ...RESTRICTED_LIBRARIES,
             {
               name: "@tauri-apps/api/core",
-              message:
-                "不要直接 import @tauri-apps/api/core，请在 src/api/ 中封装后使用",
+              message: "不要直接 import @tauri-apps/api/core，请在 src/api/ 中封装后使用",
             },
           ],
         },
@@ -98,8 +97,7 @@ export default tseslint.config(
         "error",
         {
           selector: "CallExpression[callee.name='invoke']",
-          message:
-            "不要直接调用 invoke()，请在 src/api/ 中封装后使用（见《IPC 契约与类型生成》）",
+          message: "不要直接调用 invoke()，请在 src/api/ 中封装后使用（见《IPC 契约与类型生成》）",
         },
       ],
     },

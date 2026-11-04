@@ -23,6 +23,23 @@ pub async fn launch_game(
     let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
     let mut metadata = read_metadata(&inst_dir)?;
 
+    // 启动前磁盘预检：Java 需要写 hs_err 日志、natives 解压、临时文件，
+    // 剩余空间过小时游戏会在启动后段随机崩溃——提前拦住
+    {
+        const MIN_LAUNCH_BYTES: u64 = 512 * 1024 * 1024;
+        if let Some(available) = sereno_core::health::available_space(&inst_dir)
+            && available < MIN_LAUNCH_BYTES
+        {
+            return Err(LauncherError::InvalidConfig {
+                key: "disk".into(),
+                message: format!(
+                    "磁盘剩余空间不足：启动至少需要 512 MB，当前只有 {:.0} MB",
+                    available as f64 / 1024.0 / 1024.0
+                ),
+            });
+        }
+    }
+
     if metadata.status != "ready" {
         return Err(LauncherError::InvalidConfig {
             key: "status".into(),
