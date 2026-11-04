@@ -1,10 +1,72 @@
 //! Java 探测：扫描系统并解析 `java -version`。
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex as StdMutex};
+
+use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use crate::models::java::JavaCandidate;
 use crate::{LauncherError, Result};
+
+/// 探测结果的磁盘缓存。
+///
+/// 探测一个 Java 要起一次子进程（约 100–200 ms）。候选目录有几十个时，
+/// **每次进设置页、每次启动游戏**都要花 1–3 秒重新扫一遍——这属于纯浪费。
+/// 用「路径 + 大小 + mtime」作键：Java 被升级/替换时键必然变化，缓存自然失效。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedProbe {
+    path: String,
+    size: u64,
+    mtime_ms: u64,
+    major_version: u32,
+    version_string: String,
+    arch: String,
+}
+
+static PROBE_CACHE: LazyLock<StdMutex<HashMap<String, CachedProbe>>> =
+    LazyLock::new(|| StdMutex::new(load_probe_cache()));
+
+fn probe_cache_file() -> Option<PathBuf> {
+    crate::utils::paths::cache_dir()
+        .ok()
+        .map(|dir| dir.join("java-scan.json"))
+}
+
+fn load_probe_cache() -> HashMap<String, CachedProbe> {
+    let Some(path) = probe_cache_file() else {
+        return HashMap::new();
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return HashMap::new();
+    };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+fn save_probe_cache() {
+    let Some(path) = probe_cache_file() else {
+        return;
+    };
+    let Ok(cache) = PROBE_CACHE.lock() else {
+        return;
+    };
+    let Ok(bytes) = serde_json::to_vec(&*cache) else {
+        return;
+    };
+    let _ = crate::utils::fs::atomic_write(&path, &bytes);
+}
+
+fn file_stamp(path: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime_ms = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    Some((meta.len(), mtime_ms))
+}
 
 /// 探测当前系统上所有可用的 Java。
 ///
@@ -54,6 +116,10 @@ pub async fn detect_all() -> Result<Vec<JavaCandidate>> {
 
     // 新版本在前，方便界面直接展示推荐项
     candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.major_version));
+
+    // 扫描结束后统一落盘，避免每个候选都重写一次 JSON
+    save_probe_cache();
+
     Ok(candidates)
 }
 
@@ -205,10 +271,51 @@ async fn add_candidate(
     if seen_paths.contains(&key) {
         return;
     }
-    if let Ok(candidate) = probe_java(&canonical).await {
+    if let Ok(candidate) = probe_java_cached(&canonical).await {
         seen_paths.insert(normalize_path_key(&candidate.path));
         candidates.push(candidate);
     }
+}
+
+/// 带缓存的探测：命中「路径 + 大小 + mtime」时不再起子进程。
+async fn probe_java_cached(path: &Path) -> Result<JavaCandidate> {
+    let key = normalize_path_key(&path.to_string_lossy());
+    let stamp = file_stamp(path);
+
+    if let Some((size, mtime_ms)) = stamp
+        && let Ok(cache) = PROBE_CACHE.lock()
+        && let Some(entry) = cache.get(&key)
+        && entry.size == size
+        && entry.mtime_ms == mtime_ms
+    {
+        return Ok(JavaCandidate {
+            path: entry.path.clone(),
+            major_version: entry.major_version,
+            version_string: entry.version_string.clone(),
+            arch: entry.arch.clone(),
+            is_custom: false,
+        });
+    }
+
+    let candidate = probe_java(path).await?;
+
+    if let Some((size, mtime_ms)) = stamp
+        && let Ok(mut cache) = PROBE_CACHE.lock()
+    {
+        cache.insert(
+            key,
+            CachedProbe {
+                path: candidate.path.clone(),
+                size,
+                mtime_ms,
+                major_version: candidate.major_version,
+                version_string: candidate.version_string.clone(),
+                arch: candidate.arch.clone(),
+            },
+        );
+    }
+
+    Ok(candidate)
 }
 
 /// 让前端「重新扫描」时也能直接探测用户指定的路径。

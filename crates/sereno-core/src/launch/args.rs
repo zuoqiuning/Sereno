@@ -85,6 +85,14 @@ pub fn build_args(
     };
     let memory_mb = options.memory_mb.clamp(512, 32768);
 
+    // `clientid` 是启动器自己的 Azure 公开客户端 ID。
+    // 正版登录传空串时，部分服务端会把它当成无效客户端；离线模式约定传 "0"。
+    let client_id = if user_type == "msa" {
+        crate::account::microsoft::client_id()
+    } else {
+        "0".to_string()
+    };
+
     let mut ctx: HashMap<&str, &str> = HashMap::new();
     ctx.insert("auth_player_name", username);
     ctx.insert("version_name", &version.id);
@@ -102,7 +110,7 @@ pub fn build_args(
         options.xuid.trim()
     };
     ctx.insert("auth_xuid", xuid);
-    ctx.insert("clientid", if user_type == "msa" { "" } else { "0" });
+    ctx.insert("clientid", &client_id);
     ctx.insert("user_type", &user_type);
     ctx.insert("user_properties", "{}");
     ctx.insert("version_type", version_type_name(version.version_type));
@@ -115,8 +123,15 @@ pub fn build_args(
     ctx.insert("classpath_separator", if cfg!(windows) { ";" } else { ":" });
 
     // 基础 JVM 参数。内存来自设置，而不是写死 2G。
+    //
+    // Xms 取 Xmx 的一半（下限 512、上限 4096）：固定 512M 会让整合包在
+    // 前几分钟反复扩容、频繁 Full GC；而 Xms = Xmx 又会一启动就锁死全部内存。
+    let initial_heap = (memory_mb / 2).clamp(512, 4096);
     jvm_args.push(format!("-Xmx{memory_mb}M"));
-    jvm_args.push(format!("-Xms{}M", memory_mb.min(512)));
+    jvm_args.push(format!("-Xms{initial_heap}M"));
+    // Java 9+ 默认就是 G1，这里显式声明是为了让「参数列表」自解释；
+    // 用户可以在实例级附加参数里覆盖（附加参数排在主类之前）。
+    jvm_args.push("-XX:+UseG1GC".to_string());
     jvm_args.push(format!("-Djava.library.path={natives_dir}"));
     jvm_args.push(format!("-Dorg.lwjgl.librarypath={natives_dir}"));
     jvm_args.push("-Dminecraft.launcher.brand=Sereno".to_string());
@@ -125,6 +140,14 @@ pub fn build_args(
         crate::APP_VERSION
     ));
     jvm_args.push("-Dlog4j2.formatMsgNoLookups=true".to_string());
+    // 编码：Java 18+ 在 stdout 被重定向到管道时，默认使用系统 ANSI 编码
+    // （简体中文 Windows 上是 GBK）。不显式指定的话，写进 `latest.log` 的中文
+    // 是 GBK 字节，内置日志查看器按 UTF-8 读会直接失败、显示“没有日志”，
+    // 崩溃分析也就拿不到任何内容。Java 19+ 认 `stdout.encoding` / `stderr.encoding`，
+    // 旧版本忽略未知属性，无副作用。
+    jvm_args.push("-Dfile.encoding=UTF-8".to_string());
+    jvm_args.push("-Dstdout.encoding=UTF-8".to_string());
+    jvm_args.push("-Dstderr.encoding=UTF-8".to_string());
 
     if let Some(logging) = &version.logging
         && let Some(client) = &logging.client

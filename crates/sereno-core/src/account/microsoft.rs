@@ -610,21 +610,30 @@ pub async fn clear_session(store: &dyn SecureStore) -> Result<()> {
 /// 当前登录态（读设置里的公开资料 + 是否配置了客户端 ID）。
 pub fn account_state(settings: &AppSettings) -> AccountState {
     let microsoft = settings.account.microsoft.as_ref();
+    let is_microsoft = settings.account.kind == kind::MICROSOFT;
+    let offline = super::offline::active(settings);
+
     AccountState {
-        kind: if settings.account.kind == kind::MICROSOFT {
+        kind: if is_microsoft {
             kind::MICROSOFT.to_string()
         } else {
             kind::OFFLINE.to_string()
         },
-        name: match settings.account.kind.as_str() {
-            kind::MICROSOFT => microsoft
+        name: match is_microsoft {
+            true => microsoft
                 .map(|profile| profile.name.clone())
-                .unwrap_or_else(|| settings.profile.name.clone()),
-            _ => settings.profile.name.clone(),
+                .unwrap_or_else(|| offline.name.clone()),
+            false => offline.name.clone(),
         },
-        uuid: microsoft.map(|profile| profile.uuid.clone()),
+        uuid: match is_microsoft {
+            true => microsoft.map(|profile| profile.uuid.clone()),
+            false => Some(offline.uuid.clone()),
+        },
         microsoft_available: is_configured(),
         credential_store_ephemeral: secure_store::is_ephemeral(),
+        offline_accounts: super::offline::profiles(settings),
+        active_offline_id: Some(offline.id),
+        microsoft_profile: microsoft.cloned(),
     }
 }
 
@@ -875,7 +884,10 @@ mod tests {
         let state = account_state(&settings);
         assert_eq!(state.kind, kind::OFFLINE);
         assert_eq!(state.name, "Player");
-        assert!(state.uuid.is_none());
+        // 离线档案也会固化 UUID，启动时直接使用，不再按名字临时派生
+        let expected = crate::launch::args::offline_uuid("Player");
+        assert_eq!(state.uuid.as_deref(), Some(expected.as_str()));
+        assert_eq!(state.offline_accounts.len(), 1);
 
         settings.account.kind = kind::MICROSOFT.to_string();
         settings.account.microsoft = Some(MicrosoftProfile {
@@ -888,5 +900,7 @@ mod tests {
             state.uuid.as_deref(),
             Some("8667ba71-b85a-4004-af54-457a9734eed7")
         );
+        // 离线档案仍然保留，切回来不用重建
+        assert_eq!(state.offline_accounts.len(), 1);
     }
 }

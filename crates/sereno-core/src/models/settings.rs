@@ -109,9 +109,13 @@ impl Default for HttpSettings {
 }
 
 impl AppSettings {
+    /// 全局 User-Agent。
+    ///
+    /// 镜像站会做 UA 白名单，格式必须是 `Name/Version`；
+    /// 括号里带项目地址，方便管理员识别来源。
     pub fn user_agent(&self) -> String {
         format!(
-            "Sereno/{} (Windows; Minecraft Launcher; +https://github.com/sereno)",
+            "Sereno/{} (+https://github.com/zuoqiuning/Sereno)",
             crate::APP_VERSION
         )
     }
@@ -214,6 +218,12 @@ pub struct AccountSettings {
     /// 微软资料；离线账户为 null。
     #[serde(default)]
     pub microsoft: Option<crate::models::account::MicrosoftProfile>,
+    /// 已保存的离线档案；空列表时由 `profile.name` 派生。
+    #[serde(default)]
+    pub offline_accounts: Vec<crate::models::account::OfflineProfile>,
+    /// 当前选中的离线档案 ID。
+    #[serde(default)]
+    pub active_offline_id: Option<String>,
 }
 
 fn default_account_kind() -> String {
@@ -225,6 +235,8 @@ impl Default for AccountSettings {
         Self {
             kind: default_account_kind(),
             microsoft: None,
+            offline_accounts: Vec::new(),
+            active_offline_id: None,
         }
     }
 }
@@ -302,5 +314,13 @@ mod tests {
         assert_eq!(s.download.max_concurrent, 8);
         assert_eq!(s.theme, "light");
         assert!(s.logging.auto_language_chinese);
+    }
+
+    /// 镜像站按 `Name/Version` 做 UA 白名单，且要求带来源地址。
+    #[test]
+    fn user_agent_follows_mirror_registration() {
+        let ua = AppSettings::default().user_agent();
+        assert!(ua.starts_with(&format!("Sereno/{}", crate::APP_VERSION)));
+        assert!(ua.contains("https://github.com/zuoqiuning/Sereno"));
     }
 }

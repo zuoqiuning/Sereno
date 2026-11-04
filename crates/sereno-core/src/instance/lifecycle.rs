@@ -88,6 +88,7 @@ pub fn create_instance(
         java_path: None,
         memory_mb: None,
         jvm_args: Vec::new(),
+        favorite: false,
     };
 
     // 3. 写入磁盘
@@ -130,6 +131,20 @@ pub fn recover_interrupted(settings: &AppSettings) -> Result<()> {
     let root = instances_root(settings)?;
     if !root.exists() {
         return Ok(());
+    }
+
+    // 清理上个进程遗留的**运行锁** `running.json`。
+    //
+    // 绝不能碰 `.launcher/lock.json`：它是「期望内容清单」（mods / 资源包的
+    // sha1 与来源），属于用户数据；而运行锁是 `instance/lock.rs` 维护的
+    // `running.json`。两者名字相近、语义完全不同——删错一个，
+    // 缺失检测与内容回滚会永久失效。
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                crate::instance::lock::clear(&entry.path());
+            }
+        }
     }
 
     let entries = std::fs::read_dir(&root).map_err(|e| LauncherError::Io {

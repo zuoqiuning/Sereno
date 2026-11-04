@@ -3,6 +3,7 @@
 use sereno_core::{LauncherError, Result};
 
 const REPO: &str = "https://github.com/zuoqiuning/Sereno";
+const ISSUES: &str = "https://github.com/zuoqiuning/Sereno/issues";
 
 fn open_external(url: &str) -> Result<()> {
     opener::open(url).map_err(|e| LauncherError::Io {
@@ -34,4 +35,11 @@ pub fn open_supporter_page(target: String) -> Result<()> {
 #[specta::specta]
 pub fn open_project_repo() -> Result<()> {
     open_external(REPO)
+}
+
+/// 反馈页：直达 GitHub Issues。
+#[tauri::command]
+#[specta::specta]
+pub fn open_project_issues() -> Result<()> {
+    open_external(ISSUES)
 }

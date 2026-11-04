@@ -6,11 +6,15 @@ use crate::utils::disk_cache::DiskCache;
 use crate::utils::http::{MAX_METADATA_BYTES, read_json_limited};
 use crate::utils::ttl_cache::TtlCache;
 use crate::{LauncherError, Result};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 const CF_API_BASE: &str = "https://api.curseforge.com/v1";
+/// MCIM 镜像：路径与官方一致，只是把域名换成 `mod.mcimirror.top/curseforge`。
+const CF_MIRROR_BASE: &str = "https://mod.mcimirror.top/curseforge/v1";
+/// 文件 CDN 镜像：`edge.forgecdn.net` → `mod.mcimirror.top`。
+const CF_CDN_MIRROR: &str = "https://mod.mcimirror.top";
 const GAME_ID_MINECRAFT: u32 = 432;
 /// CurseForge 单次最多 50 条，超过会被直接拒绝。
 pub const CF_PAGE_MAX: u32 = 50;
@@ -60,6 +64,39 @@ static COOLDOWN_UNTIL: LazyLock<std::sync::Mutex<Option<Instant>>> =
 /// 全局 Key 索引：并发请求遇到 429 时共享轮换进度，
 /// 而不是每个请求各自从 0 号 Key 试一遍、把 429 放大 N 倍。
 static KEY_INDEX: AtomicUsize = AtomicUsize::new(0);
+/// 是否走 MCIM 国内镜像（由 `build_client` 按设置同步）。
+static MIRROR_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub fn set_mirror_enabled(enabled: bool) {
+    MIRROR_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn mirror_enabled() -> bool {
+    MIRROR_ENABLED.load(Ordering::Relaxed)
+}
+
+/// 当前使用的 CurseForge 接口根地址。
+///
+/// 镜像模式**不需要 API Key**，由镜像服务端统一挡额度；
+/// 只有用户主动关掉镜像时才回落到官方接口并读取 `.env` 里的 Key。
+pub fn api_base() -> &'static str {
+    if mirror_enabled() {
+        CF_MIRROR_BASE
+    } else {
+        CF_API_BASE
+    }
+}
+
+/// 把文件 CDN 换成镜像地址；其他域名（例如 `mediafilez`）保持原样。
+pub fn mirror_file_url(url: &str) -> String {
+    if !mirror_enabled() {
+        return url.to_string();
+    }
+    match url.strip_prefix("https://edge.forgecdn.net/") {
+        Some(rest) => format!("{CF_CDN_MIRROR}/{rest}"),
+        None => url.to_string(),
+    }
+}
 
 pub fn in_cooldown() -> bool {
     COOLDOWN_UNTIL
@@ -127,7 +164,8 @@ pub(crate) async fn request(
     body: Option<&serde_json::Value>,
 ) -> Result<reqwest::Response> {
     // 全局冷却期间直接失败：连在途许可都不占，才算真的“冷却”。
-    if in_cooldown() {
+    let mirror = mirror_enabled();
+    if !mirror && in_cooldown() {
         return Err(LauncherError::DownloadFailed {
             message: "CurseForge 正在限流冷却，请稍后重试或改用 Modrinth".into(),
             url: url.to_string(),
@@ -143,18 +181,25 @@ pub(crate) async fn request(
             url: url.to_string(),
         })?;
 
-    let mut key_index = KEY_INDEX.load(Ordering::Relaxed) % api_keys.len();
+    let key_count = api_keys.len();
+    let mut key_index = if key_count == 0 {
+        0
+    } else {
+        KEY_INDEX.load(Ordering::Relaxed) % key_count
+    };
 
     for attempt in 1..=MAX_RETRIES {
         throttle().await;
 
-        let api_key = &api_keys[key_index];
-        let builder = match body {
+        let mut builder = match body {
             Some(body) => client.post(url).json(body),
             None => client.get(url),
         };
+        // 镜像会替我们处理配额，**不要**再把 Key 发出去。
+        if !mirror && key_count > 0 {
+            builder = builder.header("x-api-key", &api_keys[key_index]);
+        }
         let resp = builder
-            .header("x-api-key", api_key)
             .header("Accept", "application/json")
             .send()
             .await
@@ -176,14 +221,14 @@ pub(crate) async fn request(
             // 不再让每个页面都等待完整的重试链。
             mark_cooldown(wait_secs);
 
-            if api_keys.len() > 1 && attempt < MAX_RETRIES {
+            if !mirror && key_count > 1 && attempt < MAX_RETRIES {
                 let next = KEY_INDEX.fetch_add(1, Ordering::Relaxed) + 1;
-                key_index = next % api_keys.len();
+                key_index = next % key_count;
                 tracing::warn!(
                     attempt,
                     "CurseForge 429，切换到 Key {}/{} 重试",
                     key_index + 1,
-                    api_keys.len()
+                    key_count
                 );
                 continue;
             }
@@ -236,10 +281,10 @@ pub async fn search(
     limit: u32,
     api_keys: &[String],
 ) -> Result<SearchPage> {
-    if api_keys.is_empty() {
+    if !mirror_enabled() && api_keys.is_empty() {
         return Err(LauncherError::InvalidConfig {
             key: "CURSEFORGE_API_KEY".into(),
-            message: "未在环境变量中设置 CurseForge API Key".into(),
+            message: "镜像已关闭，且未在环境变量中设置 CurseForge API Key".into(),
         });
     }
     let page_size = limit.clamp(1, CF_PAGE_MAX);
@@ -257,7 +302,8 @@ pub async fn search(
         ResourceSort::Updated => 3,
     };
     let mut url = format!(
-        "{CF_API_BASE}/mods/search?gameId={GAME_ID_MINECRAFT}&classId={class_id}&sortField={sort_field}&sortOrder=desc&pageSize={page_size}"
+        "{}/mods/search?gameId={GAME_ID_MINECRAFT}&classId={class_id}&sortField={sort_field}&sortOrder=desc&pageSize={page_size}",
+        api_base()
     );
     if offset > 0 {
         url.push_str(&format!("&index={offset}"));
@@ -294,7 +340,7 @@ pub async fn search(
     if let Some(cached) = SEARCH_CACHE.get(&url) {
         return Ok(map_page(cached));
     }
-    if in_cooldown() {
+    if !mirror_enabled() && in_cooldown() {
         return Err(LauncherError::DownloadFailed {
             message: "CurseForge 正在限流冷却，请稍后重试或切换 Modrinth".into(),
             url: url.clone(),
@@ -420,7 +466,7 @@ pub async fn get_versions(
     api_key: &str,
     max_files: usize,
 ) -> Result<Vec<CfFile>> {
-    let mut url = format!("{CF_API_BASE}/mods/{mod_id}/files?pageSize={CF_PAGE_MAX}");
+    let mut url = format!("{}/mods/{mod_id}/files?pageSize={CF_PAGE_MAX}", api_base());
 
     if !mc_version.is_empty() {
         url.push_str(&format!("&gameVersion={}", urlencoding::encode(mc_version)));
@@ -448,14 +494,18 @@ pub async fn get_versions(
         VERSION_CACHE.insert(url.clone(), cached.clone());
         return Ok(cached);
     }
-    if in_cooldown() {
+    if !mirror_enabled() && in_cooldown() {
         return Err(LauncherError::DownloadFailed {
             message: "CurseForge 正在限流冷却，请稍后重试或切换 Modrinth".into(),
             url: url.clone(),
         });
     }
 
-    let keys = [api_key.to_string()];
+    let keys = if api_key.is_empty() {
+        Vec::new()
+    } else {
+        vec![api_key.to_string()]
+    };
     let mut files = Vec::new();
     let mut offset = 0usize;
 
@@ -485,6 +535,13 @@ pub async fn get_versions(
     }
 
     files.truncate(max_files);
+    if mirror_enabled() {
+        for file in &mut files {
+            if let Some(url) = file.download_url.take() {
+                file.download_url = Some(mirror_file_url(&url));
+            }
+        }
+    }
     VERSION_CACHE.insert(url.clone(), files.clone());
     if let Some(cache) = VERSION_DISK.as_ref() {
         cache.insert(&url, &files);

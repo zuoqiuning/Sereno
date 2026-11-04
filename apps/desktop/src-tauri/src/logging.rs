@@ -318,9 +318,17 @@ pub fn init() {
     };
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(format!(
-            "{default_level},sereno_core=debug,sereno_desktop_lib=debug"
-        ))
+        // dev 打开全部 debug；release 严格 info。
+        //
+        // **不要**无条件给 `sereno_core` 开 debug：游戏进程的每一行 stdout 都会
+        // 走一次日志（见 `launch/process.rs`），一次游玩就是几万行，
+        // 50 MB 的分段很快被打满，诊断包里全是噪音。
+        // 需要看游戏输出时设 `RUST_LOG=trace`，或直接读实例的 `minecraft/logs/latest.log`。
+        if cfg!(debug_assertions) {
+            EnvFilter::new("debug")
+        } else {
+            EnvFilter::new("info")
+        }
     });
 
     // ---- 文件 sink：JSON Lines，按天 + 50 MB 分段 ----

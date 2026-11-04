@@ -79,7 +79,43 @@ pub fn finish_startup(app: tauri::AppHandle) -> Result<()> {
     if let Some(splash) = app.get_webview_window("splash") {
         let _ = splash.close();
     }
+
+    // 通知前端「主窗口已经可见」：需要在窗口显示之后做首屏动效、
+    // 延迟加载的页面可以在这时才开始请求。
+    use tauri::Emitter;
+    let event = crate::ipc::events::AppReady {
+        version: sereno_core::APP_VERSION.to_string(),
+        state_dir: sereno_core::utils::paths::state_dir()
+            .map(|dir| sereno_core::utils::paths::redact_path(&dir))
+            .unwrap_or_default(),
+    };
+    let _ = app.emit("app-ready", event);
+
     Ok(())
+}
+
+/// 保存窗口尺寸与位置。
+///
+/// 单独一个命令而不是让前端「读整份设置 → 改 window → 整体保存」：
+/// 那样在用户同时改内存 / 主题时会把对方的改动覆盖掉。
+/// 这里只改 `window` 一段，写盘前仍走 `update_settings` 的合并逻辑。
+#[tauri::command]
+#[specta::specta]
+pub fn save_window_state(
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    state: tauri::State<'_, AppState>,
+) -> Result<()> {
+    let mut settings = state.snapshot_settings()?;
+    settings.window = sereno_core::models::settings::WindowState {
+        width: Some(width.max(640)),
+        height: Some(height.max(480)),
+        x: Some(x),
+        y: Some(y),
+    };
+    state.update_settings(settings)
 }
 
 /// 打开系统原生的“选择文件夹”对话框。

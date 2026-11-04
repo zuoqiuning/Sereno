@@ -1,8 +1,7 @@
 //! 账户命令：微软正版登录 / 退出 / 离线用户名。
 
 use sereno_core::Result;
-use sereno_core::account::microsoft;
-use sereno_core::account::secure_store;
+use sereno_core::account::{microsoft, offline, secure_store};
 use sereno_core::models::account::{AccountState, DeviceCodeInfo, MicrosoftConfig, kind};
 
 use crate::state::AppState;
@@ -55,6 +54,8 @@ pub async fn complete_microsoft_login(
 }
 
 /// 退出登录：删除凭据、清空会话缓存、切回离线账户。
+///
+/// 只清掉微软资料，**离线档案列表必须保留**，否则用户建过的档案会全部丢失。
 #[tauri::command]
 #[specta::specta]
 pub async fn logout_account(state: tauri::State<'_, AppState>) -> Result<AccountState> {
@@ -62,14 +63,16 @@ pub async fn logout_account(state: tauri::State<'_, AppState>) -> Result<Account
     microsoft::clear_session(store.as_ref()).await?;
 
     let mut settings = state.snapshot_settings()?;
-    settings.account = sereno_core::models::settings::AccountSettings::default();
+    settings.account.microsoft = None;
+    settings.account.kind = kind::OFFLINE.to_string();
+    offline::ensure(&mut settings);
     state.update_settings(settings)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))
 }
 
-/// 设置离线用户名（切回离线账户）。
+/// 设置离线用户名（切回离线账户）；同名档案存在时直接切换过去。
 #[tauri::command]
 #[specta::specta]
 pub fn set_offline_account(
@@ -77,10 +80,94 @@ pub fn set_offline_account(
     state: tauri::State<'_, AppState>,
 ) -> Result<AccountState> {
     let mut settings = state.snapshot_settings()?;
-    settings.profile.name = name;
-    settings.account.kind = kind::OFFLINE.to_string();
-    // 保留微软资料但不再使用，方便用户下次快速切回正版
+    offline::ensure(&mut settings);
+
+    let trimmed = name.trim();
+    let existing = settings
+        .account
+        .offline_accounts
+        .iter()
+        .find(|profile| profile.name.eq_ignore_ascii_case(trimmed))
+        .map(|profile| profile.id.clone());
+
+    match existing {
+        Some(id) => {
+            offline::switch(&mut settings, &id)?;
+        }
+        None => {
+            offline::add(&mut settings, trimmed)?;
+        }
+    }
+
     state.update_settings(settings)?;
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 新建离线档案并切换过去。
+#[tauri::command]
+#[specta::specta]
+pub fn add_offline_account(
+    name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let mut settings = state.snapshot_settings()?;
+    offline::add(&mut settings, &name)?;
+    state.update_settings(settings)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 切换到某个离线档案。
+#[tauri::command]
+#[specta::specta]
+pub fn switch_offline_account(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let mut settings = state.snapshot_settings()?;
+    offline::switch(&mut settings, &id)?;
+    state.update_settings(settings)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 删除离线档案（至少保留一个）。
+#[tauri::command]
+#[specta::specta]
+pub fn remove_offline_account(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountState> {
+    let mut settings = state.snapshot_settings()?;
+    offline::remove(&mut settings, &id)?;
+    state.update_settings(settings)?;
+
+    let settings = state.snapshot_settings()?;
+    Ok(microsoft::account_state(&settings))
+}
+
+/// 切换回已登录过的微软账户（令牌仍在系统密钥库）。
+#[tauri::command]
+#[specta::specta]
+pub async fn activate_microsoft_account(state: tauri::State<'_, AppState>) -> Result<AccountState> {
+    let settings = state.snapshot_settings()?;
+    if settings.account.microsoft.is_none() {
+        return Err(sereno_core::LauncherError::InvalidConfig {
+            key: "microsoft".into(),
+            message: "还没有登录过微软账户".into(),
+        });
+    }
+
+    // 先刷新一次会话，确认密钥库里的令牌仍然有效；失败就不要切过去。
+    let client = sereno_core::utils::http::build_client(&settings)?;
+    microsoft::session(&client).await?;
+
+    let mut next = settings;
+    next.account.kind = kind::MICROSOFT.to_string();
+    state.update_settings(next)?;
 
     let settings = state.snapshot_settings()?;
     Ok(microsoft::account_state(&settings))

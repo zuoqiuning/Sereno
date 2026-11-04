@@ -205,14 +205,22 @@ pub async fn install_loader(
 
     let spec_ver = loader_version.as_deref().filter(|v| *v != "latest");
 
-    let loader_info = sereno_core::loader::install::install_loader_into(
-        &settings,
-        &inst_dir,
-        &metadata,
-        &loader_type,
-        spec_ver,
-    )
-    .await?;
+    // 取消键与前端任务 ID 对齐（任务页按 `loader-<实例 id>` 登记）。
+    let cancel_key = format!("loader-{instance_id}");
+    let cancel = state.new_cancel_token(&cancel_key);
+    let result = tokio::select! {
+        _ = cancel.cancelled() => Err(sereno_core::LauncherError::Cancelled),
+        result = sereno_core::loader::install::install_loader_into(
+            &settings,
+            &inst_dir,
+            &metadata,
+            &loader_type,
+            spec_ver,
+        ) => result,
+    };
+    state.clear_cancel_token(&cancel_key);
+
+    let loader_info = result?;
 
     metadata.loader = loader_info;
     write_metadata(&inst_dir, &metadata)?;

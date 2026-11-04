@@ -36,17 +36,29 @@ pub fn run() {
         .commands(commands::all_commands!())
         .events(ipc::events::all_events!());
 
-    // 3. debug 构建导出 bindings.ts（release 不做文件写入）
-    //    `export` 接收 &self，返回 Result<()>，因此不改变 builder 本身
-    #[cfg(debug_assertions)]
-    builder
-        .export(specta_typescript::Typescript::default(), bindings_path())
-        .expect("导出 bindings.ts 失败");
+    // 3. `--export-bindings`：只导出类型后退出，不创建窗口（CI / 刷新类型用）。
+    //
+    //    导出本身只在 debug 构建里做（写文件不该发生在 release）。
+    //    release 下如果传了这个参数，必须**明确失败**而不是静默成功——
+    //    否则 CI 会拿到「退出码 0 但 bindings 没更新」的假绿。
+    let export_bindings = std::env::args().any(|arg| arg == "--export-bindings");
 
-    // 4. 仅导出类型后退出，不创建窗口（CI / 脚手架刷新类型用）
-    if std::env::args().any(|a| a == "--export-bindings") {
-        tracing::info!("bindings.ts 已导出，进程退出");
-        return;
+    #[cfg(debug_assertions)]
+    {
+        builder
+            .export(specta_typescript::Typescript::default(), bindings_path())
+            .expect("导出 bindings.ts 失败");
+
+        if export_bindings {
+            tracing::info!("bindings.ts 已导出，进程退出");
+            return;
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    if export_bindings {
+        eprintln!("[sereno] --export-bindings 只在 debug 构建可用（release 不写文件）");
+        std::process::exit(2);
     }
 
     let app = tauri::Builder::default()

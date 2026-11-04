@@ -55,7 +55,7 @@ pub async fn launch_game(
     let java =
         sereno_core::java::detector::resolve(version.required_java_major(), java_path).await?;
 
-    // 账户：微软正版用真实令牌、UUID 与 XUID；离线账户由 args 层按用户名派生 UUID。
+    // 账户：微软正版用真实令牌、UUID 与 XUID；离线账户用档案里固化的 UUID。
     let (username, uuid, access_token, user_type, xuid) =
         if settings.account.kind == sereno_core::models::account::kind::MICROSOFT {
             let session = sereno_core::account::microsoft::session(&client).await?;
@@ -67,9 +67,10 @@ pub async fn launch_game(
                 session.xuid,
             )
         } else {
+            let profile = sereno_core::account::offline::active(&settings);
             (
-                settings.profile.name.clone(),
-                String::new(),
+                profile.name,
+                profile.uuid,
                 "0".to_string(),
                 "legacy".to_string(),
                 String::new(),

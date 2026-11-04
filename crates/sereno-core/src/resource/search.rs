@@ -253,7 +253,7 @@ async fn resolve_totals(
 
     let mr_future = modrinth::search(client, query, 0, 1);
     let cf_future = async {
-        if api_keys.is_empty() {
+        if api_keys.is_empty() && !curseforge::mirror_enabled() {
             return Ok(None);
         }
         curseforge::search(client, query, 0, 1, api_keys)
@@ -291,7 +291,7 @@ async fn resolve_totals(
 
     // 两个来源都成功（或本来就没有 Key）时才缓存总数：
     // 否则一次网络抖动会让接下来 10 分钟的聚合结果永久缺一边。
-    if mr_ok && (cf_ok || api_keys.is_empty()) {
+    if mr_ok && (cf_ok || (api_keys.is_empty() && !curseforge::mirror_enabled())) {
         TOTALS_CACHE.insert(key.clone(), result.totals);
         if let Some(cache) = TOTALS_DISK.as_ref() {
             cache.insert(&key, &result.totals);
@@ -312,7 +312,7 @@ async fn search_aggregate(
 
     // CF 冷却期间强制按 Modrinth-only 分页，避免继续按旧总数计算窗口后
     // 每页都去请求 CF（只会立刻失败，还会让页码和结果错位）。
-    if !api_keys.is_empty() && curseforge::in_cooldown() {
+    if !api_keys.is_empty() && !curseforge::mirror_enabled() && curseforge::in_cooldown() {
         totals_result.totals.cf = 0;
         totals_result.cf_error = Some(LauncherError::DownloadFailed {
             message: "CurseForge 正在限流冷却，已仅显示 Modrinth 结果".into(),
@@ -436,7 +436,7 @@ fn source_warnings(
             "CurseForge 暂时不可用（{error}），仅显示 Modrinth 结果"
         ));
     }
-    if api_keys.is_empty() {
+    if api_keys.is_empty() && !curseforge::mirror_enabled() {
         warnings.push("未配置 CurseForge API Key，仅显示 Modrinth 结果".into());
     }
     warnings

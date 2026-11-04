@@ -66,7 +66,12 @@ pub async fn create_instance(
 #[tauri::command]
 #[specta::specta]
 pub fn get_running_instances(state: tauri::State<'_, AppState>) -> Result<Vec<String>> {
-    Ok(state.running_instances())
+    // 以实例目录里的运行锁为准：游戏退出（甚至启动器重启过）后，
+    // 锁会被清掉，内存集合也要跟着收缩。
+    let settings = state.snapshot_settings()?;
+    let alive = sereno_core::instance::lock::running_instances(&settings);
+    state.replace_running(alive.clone());
+    Ok(alive)
 }
 
 #[tauri::command]
@@ -111,6 +116,21 @@ pub async fn select_java_executable(app: tauri::AppHandle) -> Result<Option<Stri
         .blocking_pick_file();
 
     Ok(path.map(|p| p.to_string()))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_instance_favorite(
+    instance_id: String,
+    favorite: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<InstanceMetadata> {
+    let settings = state.snapshot_settings()?;
+    let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
+    let mut metadata = read_metadata(&inst_dir)?;
+    metadata.favorite = favorite;
+    write_metadata(&inst_dir, &metadata)?;
+    Ok(metadata)
 }
 
 /// 更新实例级启动配置：Java、内存与附加 JVM 参数。

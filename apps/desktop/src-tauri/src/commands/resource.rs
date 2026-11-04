@@ -83,15 +83,70 @@ fn folder_for(kind: ResourceKind) -> Result<&'static str> {
     }
 }
 
+/// 资源文件地址白名单。
+///
+/// 前端只能传 Modrinth / CurseForge / MCIM 的文件地址；否则一旦 WebView 被注入，
+/// 启动器就会变成“任意 URL 下载器”，可以把文件写进实例目录。
+fn ensure_resource_url(url: &str) -> Result<()> {
+    const ALLOWED_HOST_SUFFIX: [&str; 3] = [".modrinth.com", ".forgecdn.net", ".mcimirror.top"];
+
+    let rest =
+        url.strip_prefix("https://")
+            .ok_or_else(|| sereno_core::LauncherError::InvalidConfig {
+                key: "url".into(),
+                message: "下载地址必须使用 HTTPS".into(),
+            })?;
+    let host = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if ALLOWED_HOST_SUFFIX
+        .iter()
+        .any(|suffix| host.ends_with(suffix))
+    {
+        Ok(())
+    } else {
+        Err(sereno_core::LauncherError::InvalidConfig {
+            key: "url".into(),
+            message: format!("不允许的下载地址: {host}"),
+        })
+    }
+}
+
+/// 一次资源下载的目标描述。
+///
+/// 收进结构体而不是八个位置参数：字段含义靠名字自解释，
+/// 调用点也不会因为参数顺序写错而把 `sha1` 传成 `filename`。
+struct DownloadTarget<'a> {
+    /// 目标实例；`None` 表示下载到启动器的公共下载目录。
+    instance_id: Option<&'a str>,
+    /// 实例内的子目录（`mods` / `resourcepacks` / `shaderpacks`）。
+    folder: &'a str,
+    file_url: &'a str,
+    filename: &'a str,
+    sha1: Option<String>,
+}
+
 async fn download_to(
     settings: &AppSettings,
-    instance_id: Option<&str>,
-    folder: &str,
-    file_url: &str,
-    filename: &str,
-    sha1: Option<String>,
+    target: DownloadTarget<'_>,
     sink: Option<Arc<dyn ProgressSink>>,
+    cancel: Option<tokio_util::sync::CancellationToken>,
 ) -> Result<()> {
+    let DownloadTarget {
+        instance_id,
+        folder,
+        file_url,
+        filename,
+        sha1,
+    } = target;
+
+    ensure_resource_url(file_url)?;
     let client = sereno_core::utils::http::build_client(settings)?;
 
     // 文件名来自远端 API / 前端参数，必须清理成安全文件名，
@@ -132,10 +187,13 @@ async fn download_to(
 
     // 有进度通道时走完整会话：前端任务页能拿到文件级进度与总字节数。
     if let Some(sink) = sink {
-        let session = sereno_core::download::session::DownloadSession::new(
+        let mut session = sereno_core::download::session::DownloadSession::new(
             "resource-download".to_string(),
             queue,
         );
+        if let Some(token) = cancel {
+            session.cancel_token = token;
+        }
         return session.run(vec![task], sink).await;
     }
 
@@ -161,6 +219,11 @@ async fn download_to(
 ///
 /// `instance_id` 为空时下载到启动器的下载目录（`%APPDATA%\Sereno\downloads\<kind>`），
 /// 用户可以先下载、再决定放进哪个实例。
+//
+// 参数扁平化是**有意为之**：这些参数就是 IPC 契约，前端调用点写一行即可读。
+// 改成请求结构体会改变 `bindings.ts` 的生成形状（必须用 debug 构建重新生成并提交），
+// 属于独立改动，已记录在 `docs/代码评审与PCL对比.md` 的 P2-1。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub async fn download_resource(
@@ -169,28 +232,39 @@ pub async fn download_resource(
     file_url: String,
     filename: String,
     sha1: Option<String>,
+    task_id: String,
     channel: Channel<DownloadProgress>,
     state: tauri::State<'_, AppState>,
 ) -> Result<()> {
     let folder = folder_for(kind)?;
     let settings = state.snapshot_settings()?;
-    if let Some(id) = instance_id.as_ref()
-        && state.is_running(id)
-    {
-        return Err(sereno_core::LauncherError::InstanceBusy { id: id.clone() });
-    }
 
+    // 任务页可以按 `task_id` 取消这次下载；没登记过就只是普通下载。
+    let token = state.new_cancel_token(&task_id);
     let sink: Arc<dyn ProgressSink> = Arc::new(ChannelSink(channel));
-    download_to(
+    let result = download_to(
         &settings,
-        instance_id.as_deref(),
-        folder,
-        &file_url,
-        &filename,
-        sha1,
+        DownloadTarget {
+            instance_id: instance_id.as_deref(),
+            folder,
+            file_url: &file_url,
+            filename: &filename,
+            sha1,
+        },
         Some(sink),
+        Some(token),
     )
-    .await
+    .await;
+
+    state.clear_cancel_token(&task_id);
+    result
+}
+
+/// 取消一个资源下载任务（任务页的“取消”按钮）；返回是否命中任务。
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_download(task_id: String, state: tauri::State<'_, AppState>) -> Result<bool> {
+    Ok(state.cancel_task(&task_id))
 }
 
 /// 安装单个必需前置：按目标实例的游戏版本 / 加载器挑选文件后下载到 `mods`。
@@ -204,11 +278,6 @@ pub async fn install_resource_dependency(
     state: tauri::State<'_, AppState>,
 ) -> Result<String> {
     let settings = state.snapshot_settings()?;
-    if state.is_running(&instance_id) {
-        return Err(sereno_core::LauncherError::InstanceBusy {
-            id: instance_id.clone(),
-        });
-    }
 
     let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
     let metadata = read_metadata(&inst_dir)?;
@@ -250,10 +319,13 @@ pub async fn install_resource_dependency(
             let api_key = sereno_core::resource::curseforge::api_keys()
                 .into_iter()
                 .next()
-                .ok_or_else(|| sereno_core::LauncherError::InvalidConfig {
+                .unwrap_or_default();
+            if api_key.is_empty() && !sereno_core::resource::curseforge::mirror_enabled() {
+                return Err(sereno_core::LauncherError::InvalidConfig {
                     key: "CURSEFORGE_API_KEY".into(),
-                    message: "未在环境变量中设置 CurseForge API Key".into(),
-                })?;
+                    message: "镜像已关闭，且未在环境变量中设置 CurseForge API Key".into(),
+                });
+            }
             let file = sereno_core::resource::curseforge::dependency_file(
                 &client,
                 mod_id,
@@ -284,11 +356,14 @@ pub async fn install_resource_dependency(
 
     download_to(
         &settings,
-        Some(&instance_id),
-        "mods",
-        &url,
-        &filename,
-        sha1,
+        DownloadTarget {
+            instance_id: Some(&instance_id),
+            folder: "mods",
+            file_url: &url,
+            filename: &filename,
+            sha1,
+        },
+        None,
         None,
     )
     .await?;
@@ -362,11 +437,14 @@ pub async fn update_local_resource(
 
     let download_result = download_to(
         &settings,
-        Some(&instance_id),
-        folder,
-        &file_url,
-        &target_name,
-        sha1,
+        DownloadTarget {
+            instance_id: Some(&instance_id),
+            folder,
+            file_url: &file_url,
+            filename: &target_name,
+            sha1,
+        },
+        None,
         None,
     )
     .await;

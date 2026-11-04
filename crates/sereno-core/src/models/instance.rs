@@ -45,4 +45,9 @@ pub struct InstanceMetadata {
     /// 实例专用附加 JVM 参数（一行一个，已去掉空行）。
     #[serde(default)]
     pub jvm_args: Vec<String>,
+    /// 是否被用户「收藏」：列表里置顶显示。
+    ///
+    /// 老实例的 `instance.json` 里没有这个字段，`default` 保证能正常读取。
+    #[serde(default)]
+    pub favorite: bool,
 }

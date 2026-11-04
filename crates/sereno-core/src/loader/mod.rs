@@ -104,6 +104,9 @@ pub(crate) async fn run_installer(
         .current_dir(work_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // 用户取消 / 上层 future 被 drop 时，必须把安装器子进程一起收掉，
+    // 否则会留下一个还在写实例目录的孤儿 Java 进程。
+    command.kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000); // CREATE_NO_WINDOW
 

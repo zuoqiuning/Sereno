@@ -18,7 +18,6 @@ use crate::{LauncherError, Result};
 
 const DISABLED_SUFFIX: &str = ".disabled";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
-const CF_API: &str = "https://api.curseforge.com/v1";
 const HASH_BATCH: usize = 100;
 
 pub fn folder_name(kind: LocalResourceKind) -> &'static str {
@@ -352,10 +351,10 @@ pub(crate) async fn cf_post_json<T: serde::de::DeserializeOwned>(
     body: &serde_json::Value,
     api_keys: &[String],
 ) -> Result<T> {
-    if api_keys.is_empty() {
+    if !super::curseforge::mirror_enabled() && api_keys.is_empty() {
         return Err(LauncherError::InvalidConfig {
             key: "CURSEFORGE_API_KEY".into(),
-            message: "未配置 CurseForge API Key".into(),
+            message: "镜像已关闭，且未配置 CurseForge API Key".into(),
         });
     }
 
@@ -637,7 +636,7 @@ async fn curseforge_updates(
         let body = serde_json::json!({ "fingerprints": fingerprints });
         let response: CfFingerprintResponse = cf_post_json(
             client,
-            &format!("{CF_API}/fingerprints/432"),
+            &format!("{}/fingerprints/432", super::curseforge::api_base()),
             &body,
             api_keys,
         )
@@ -667,8 +666,13 @@ async fn curseforge_updates(
     let mut projects: HashMap<u32, CfProject> = HashMap::new();
     for chunk in project_ids.chunks(50) {
         let body = serde_json::json!({ "modIds": chunk });
-        let data: CfProjectList =
-            cf_post_json(client, &format!("{CF_API}/mods"), &body, api_keys).await?;
+        let data: CfProjectList = cf_post_json(
+            client,
+            &format!("{}/mods", super::curseforge::api_base()),
+            &body,
+            api_keys,
+        )
+        .await?;
         for project in data.data {
             projects.insert(project.id, project);
         }
@@ -736,8 +740,13 @@ async fn curseforge_updates(
     let mut remote_files: HashMap<u32, CfFile> = HashMap::new();
     for chunk in file_ids.chunks(50) {
         let body = serde_json::json!({ "fileIds": chunk });
-        let data: CfFileList =
-            cf_post_json(client, &format!("{CF_API}/mods/files"), &body, api_keys).await?;
+        let data: CfFileList = cf_post_json(
+            client,
+            &format!("{}/mods/files", super::curseforge::api_base()),
+            &body,
+            api_keys,
+        )
+        .await?;
         for file in data.data {
             remote_files.insert(file.id, file);
         }
@@ -776,7 +785,7 @@ async fn curseforge_updates(
                         .unwrap_or_else(|| local.display_name.clone()),
                     icon_url: meta.and_then(|meta| meta.icon_url.clone()),
                     version_name: remote.display_name.clone(),
-                    download_url: download_url.clone(),
+                    download_url: super::curseforge::mirror_file_url(&download_url),
                     new_file_name: remote.file_name.clone(),
                     sha1: None,
                     source: ResourceSource::Curseforge,

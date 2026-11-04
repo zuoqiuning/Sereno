@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex as StdMutex};
 
 use futures_util::StreamExt;
 use sha1::{Digest, Sha1};
@@ -24,10 +25,67 @@ const CHUNK_THRESHOLD: u64 = 16 * 1024 * 1024;
 const MAX_CHUNKS: u32 = 4;
 const PROGRESS_INTERVAL_MS: u64 = 250;
 
+/// 全局限速之外的并发闸门。
+///
+/// 之前每个下载命令都会 `DownloadQueue::new(..., max_concurrent)` 各建一份信号量，
+/// 同时下 3 个 Mod 就是 3 倍并发，`最大下载线程数` 形同虚设。
+/// 现在所有队列共享同一份许可，设置变更时按新值整体替换。
+static GLOBAL_SLOTS: LazyLock<StdMutex<(usize, Arc<Semaphore>)>> =
+    LazyLock::new(|| StdMutex::new((0, Arc::new(Semaphore::new(1)))));
+/// 同路径互斥也要跨队列共享，否则两个队列仍可能同时写同一个文件。
+type PathLockMap = HashMap<PathBuf, Arc<Mutex<()>>>;
+static GLOBAL_PATH_LOCKS: LazyLock<Arc<Mutex<PathLockMap>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+fn shared_semaphore(max_concurrent: usize) -> Arc<Semaphore> {
+    let max = max_concurrent.max(1);
+    let mut guard = GLOBAL_SLOTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if guard.0 != max {
+        *guard = (max, Arc::new(Semaphore::new(max)));
+    }
+    Arc::clone(&guard.1)
+}
+
+/// 分片下载的并发池。
+///
+/// 主信号量管的是**文件级**并发，而一个大文件会内部再开 [`MAX_CHUNKS`] 条连接。
+/// 如果分片不额外限流，「设置 8 并发」在分片场景下会变成 32 条连接，
+/// 镜像站会直接 503——这也是设置项与实际行为不符的老问题。
+/// 这里按同一个 `max_concurrent` 单独限一层：分片总数不超过用户设定的并发。
+static CHUNK_SLOTS: LazyLock<StdMutex<(usize, Arc<Semaphore>)>> =
+    LazyLock::new(|| StdMutex::new((0, Arc::new(Semaphore::new(1)))));
+
+fn shared_chunk_semaphore(max_concurrent: usize) -> Arc<Semaphore> {
+    let max = max_concurrent.max(1);
+    let mut guard = CHUNK_SLOTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if guard.0 != max {
+        *guard = (max, Arc::new(Semaphore::new(max)));
+    }
+    Arc::clone(&guard.1)
+}
+
+/// 坏文件统一用「原文件名 + `.part`」。
+///
+/// 旧实现用 `with_extension("part")`，同目录下 `a.jar` 与 `a.zip` 都会变成
+/// `a.part`，两个任务并行时会互相覆盖。
+fn part_path(destination: &Path) -> PathBuf {
+    let name = destination
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "download".to_string());
+    destination.with_file_name(format!("{name}.part"))
+}
+
 pub struct DownloadQueue {
     client: reqwest::Client,
     semaphore: Arc<Semaphore>,
     path_locks: Arc<Mutex<HashMap<std::path::PathBuf, Arc<Mutex<()>>>>>,
+    /// 分片任务专用并发池（见 [`CHUNK_SLOTS`]）。
+    chunk_slots: Arc<Semaphore>,
 }
 
 /// 一次任务执行的共享上下文。
@@ -72,8 +130,9 @@ impl DownloadQueue {
             client,
             // 二道保险：配置层已经夹过 1–32，这里再挡一次 0，
             // 0 个许可会让 acquire() 永远不返回。
-            semaphore: Arc::new(Semaphore::new(max_concurrent.max(1))),
-            path_locks: Arc::new(Mutex::new(HashMap::new())),
+            semaphore: shared_semaphore(max_concurrent),
+            path_locks: Arc::clone(&GLOBAL_PATH_LOCKS),
+            chunk_slots: shared_chunk_semaphore(max_concurrent),
         }
     }
 
@@ -132,13 +191,21 @@ impl DownloadQueue {
                 return Err(LauncherError::Cancelled);
             }
 
-            let _permit = self
-                .semaphore
-                .acquire()
-                .await
-                .map_err(|_| LauncherError::Cancelled)?;
+            // 并发许可只覆盖「一次尝试」。
+            //
+            // 如果把许可提到 while 外面（或与 sleep 同作用域），正在退避的任务
+            // 会一直占着槽位：8 个任务同时踩到超时，整个下载器就会停止派发，
+            // 用户看到的是「进度条不动」，而实际带宽是空的。
+            let outcome = {
+                let _permit = self
+                    .semaphore
+                    .acquire()
+                    .await
+                    .map_err(|_| LauncherError::Cancelled)?;
+                self.download_any_source(&task, &ctx).await
+            };
 
-            match self.download_any_source(&task, &ctx).await {
+            match outcome {
                 Ok(()) => return Ok(()),
                 Err(LauncherError::Cancelled) => return Err(LauncherError::Cancelled),
                 // 校验失败说明这组源给出的内容都不对，重试同一组源没有意义
@@ -165,7 +232,7 @@ impl DownloadQueue {
     }
 
     async fn download_any_source(&self, task: &DownloadTask, ctx: &TaskCtx) -> Result<()> {
-        let temp_path = task.destination.with_extension("part");
+        let temp_path = part_path(&task.destination);
 
         let mut last_error: Option<String> = None;
 
@@ -395,6 +462,7 @@ impl DownloadQueue {
                 cancel: chunk_cancel.clone(),
                 task_bytes: Arc::clone(&task_bytes),
                 session_counter: Arc::clone(&ctx.counter),
+                slots: Arc::clone(&self.chunk_slots),
             })));
         }
 
@@ -527,6 +595,8 @@ struct ChunkJob {
     cancel: CancellationToken,
     task_bytes: Arc<AtomicU64>,
     session_counter: Arc<SessionCounter>,
+    /// 分片并发池：分片连接数并入全局并发预算。
+    slots: Arc<Semaphore>,
 }
 
 async fn download_chunk(job: ChunkJob) -> Result<u64> {
@@ -539,7 +609,15 @@ async fn download_chunk(job: ChunkJob) -> Result<u64> {
         cancel,
         task_bytes,
         session_counter,
+        slots,
     } = job;
+
+    // 许可覆盖「一次分片请求」的完整生命周期（连接 + 读流），
+    // 保证同一时刻的真实连接数不超过用户设定的并发。
+    let _permit = slots
+        .acquire()
+        .await
+        .map_err(|_| LauncherError::Cancelled)?;
 
     let response = client
         .get(&url)
@@ -664,4 +742,25 @@ fn write_all_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> std::i
         offset += n as u64;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn part_file_keeps_full_name() {
+        let destination = Path::new("mods/fabric-api.jar");
+        assert_eq!(
+            part_path(destination),
+            PathBuf::from("mods/fabric-api.jar.part")
+        );
+    }
+
+    #[test]
+    fn part_files_do_not_collide_across_extensions() {
+        let jar = part_path(Path::new("mods/a.jar"));
+        let zip = part_path(Path::new("mods/a.zip"));
+        assert_ne!(jar, zip);
+    }
 }

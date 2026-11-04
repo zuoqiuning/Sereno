@@ -42,7 +42,14 @@ pub async fn install_game(
     metadata.status = "installing".to_string();
     write_metadata(&inst_dir, &metadata)?;
 
-    let result = run_install(&settings, &inst_dir, &game_version, channel).await;
+    // 取消键与前端任务 ID 一致（任务页按实例 id 登记安装任务），
+    // 这样「取消」按钮不需要额外参数就能命中。
+    let cancel = state.new_cancel_token(&instance_id);
+    let result = tokio::select! {
+        _ = cancel.cancelled() => Err(sereno_core::LauncherError::Cancelled),
+        result = run_install(&settings, &inst_dir, &game_version, channel) => result,
+    };
+    state.clear_cancel_token(&instance_id);
 
     metadata.status = if result.is_ok() {
         "ready".to_string()
@@ -80,7 +87,13 @@ pub async fn repair_instance(
     metadata.status = "installing".to_string();
     write_metadata(&inst_dir, &metadata)?;
 
-    let result = run_install(&settings, &inst_dir, &game_version, channel).await;
+    let cancel_key = format!("repair-{instance_id}");
+    let cancel = state.new_cancel_token(&cancel_key);
+    let result = tokio::select! {
+        _ = cancel.cancelled() => Err(sereno_core::LauncherError::Cancelled),
+        result = run_install(&settings, &inst_dir, &game_version, channel) => result,
+    };
+    state.clear_cancel_token(&cancel_key);
 
     metadata.status = if result.is_ok() {
         "ready".to_string()

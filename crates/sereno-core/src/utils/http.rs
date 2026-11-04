@@ -10,6 +10,8 @@ pub const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 pub fn build_client(settings: &AppSettings) -> Result<reqwest::Client> {
     let http = &settings.http;
+    // CurseForge 的接口域名与文件 CDN 是否走 MCIM 镜像，由「镜像优先」开关决定。
+    crate::resource::curseforge::set_mirror_enabled(settings.download.prefer_mirror);
     let mut builder = reqwest::Client::builder()
         .user_agent(settings.user_agent())
         .https_only(true)
@@ -67,6 +69,7 @@ fn redirect_policy(max_redirects: usize) -> Policy {
                     || h.contains("mocdn.net")
                     || h.contains("curseforge.com")
                     || h.contains("forgecdn.net")
+                    || h.contains("mcimirror.top")
                     || h.contains("modrinth.com")
                     || h.contains("cdn.modrinth.com")
             };

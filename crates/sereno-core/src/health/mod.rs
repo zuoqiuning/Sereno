@@ -127,10 +127,26 @@ fn check_instance(inst_dir: &Path, version: Option<&VersionDetail>) -> HealthChe
             .and_then(|downloads| downloads.artifact.as_ref())
             .and_then(|artifact| artifact.path.clone())
             .or_else(|| crate::version::artifact::maven_relative_path(&lib.name));
-        if let Some(relative) = relative
-            && !inst_dir.join("libraries").join(relative).is_file()
-        {
-            missing += 1;
+        if let Some(relative) = relative {
+            let path = inst_dir.join("libraries").join(&relative);
+            if !path.is_file() {
+                missing += 1;
+            } else if let Some(expected_sha1) = lib
+                .downloads
+                .as_ref()
+                .and_then(|d| d.artifact.as_ref())
+                .map(|a| &a.sha1)
+            {
+                // 快速校验（利用已有的 SHA-1 缓存）
+                if crate::download::verify::verify_file(
+                    &path,
+                    &crate::download::task::Checksum::Sha1(expected_sha1.clone()),
+                )
+                .is_err()
+                {
+                    missing += 1;
+                }
+            }
         }
     }
 

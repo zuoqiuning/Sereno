@@ -40,6 +40,9 @@ reqwest = { version = "0.13.5", default-features = false, features = [
   "json",
   "gzip",
   "stream",
+  # SOCKS5 代理默认是关闭的：不开这个 feature 时传 socks5:// 会直接报错，
+  # 而不是静默回退。设置里既然提供了代理输入框，就必须真的支持它。
+  "socks",
 ] }
 
 # ---- 校验 ----
@@ -57,6 +60,8 @@ regex = "1.13.1"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
   "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
   "Wdk_System_SystemServices",
   "Win32_Storage_FileSystem",

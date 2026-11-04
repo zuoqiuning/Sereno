@@ -50,6 +50,13 @@ where
         message: format!("拉起 Java 失败: {e}"),
     })?;
 
+    // 写跨进程运行锁：启动器重启后还能认出“这个实例正在跑”，
+    // 避免重复启动同一个实例导致存档并发写入。
+    let pid = child.id().unwrap_or(0);
+    if let Err(error) = crate::instance::lock::mark(instance_dir, pid) {
+        tracing::warn!(%error, "写入实例运行锁失败，跨进程启动保护不可用");
+    }
+
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
 
@@ -63,6 +70,7 @@ where
     match timeout_res {
         Ok(Ok(status)) => {
             append_log(&log, &format!("进程已退出，退出码: {:?}", status.code())).await;
+            crate::instance::lock::clear(instance_dir);
             Err(LauncherError::Internal {
                 message: format!(
                     "游戏启动即崩溃（退出码: {:?}）\n请查看实例 minecraft/logs/latest.log",
@@ -70,11 +78,15 @@ where
                 ),
             })
         }
-        Ok(Err(e)) => Err(LauncherError::Internal {
-            message: format!("等待进程时出错: {e}"),
-        }),
+        Ok(Err(e)) => {
+            crate::instance::lock::clear(instance_dir);
+            Err(LauncherError::Internal {
+                message: format!("等待进程时出错: {e}"),
+            })
+        }
         Err(_) => {
             let log = Arc::clone(&log);
+            let dir = instance_dir.to_path_buf();
             tokio::spawn(async move {
                 match child.wait().await {
                     Ok(status) => {
@@ -86,6 +98,7 @@ where
                         on_exit(None);
                     }
                 }
+                crate::instance::lock::clear(&dir);
             });
             Ok(())
         }
@@ -100,11 +113,14 @@ fn spawn_log_reader(
     tokio::spawn(async move {
         let mut reader = BufReader::new(stream).lines();
         while let Ok(Some(line)) = reader.next_line().await {
+            // 游戏输出**不进**启动器的 info 日志：它已经有 `latest.log` 这一份归宿，
+            // 再复制一遍会让启动器日志被几万行游戏日志淹没。
+            // 这里只保留 trace 级别，需要时用 `RUST_LOG=trace` 打开。
             if is_error {
-                // 现代 MC 会把 log4j 状态、JVM 警告都写 stderr，用 debug 避免刷屏
-                tracing::debug!("[MC stderr] {}", line);
+                // 现代 MC 会把 log4j 状态、JVM 警告都写 stderr，量级远小于 stdout
+                tracing::debug!(target: "sereno_core::mc", "{}", line);
             } else {
-                tracing::info!("[MC] {}", line);
+                tracing::trace!(target: "sereno_core::mc", "{}", line);
             }
             append_log(&log, &line).await;
         }

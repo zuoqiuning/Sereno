@@ -88,7 +88,23 @@ pub async fn install_base(
 
         session
             .run_with_counter(all_tasks, Arc::clone(&sink), Arc::clone(&counter))
-            .await
+            .await?;
+
+        // 1.6 及更早版本要读 `assets/virtual/legacy`，缺了它游戏没有声音与语言文件。
+        // 必须在资源下载**完成之后**做，否则对象文件还不存在。
+        if base_plan.asset_index_id.as_deref() == Some("legacy") {
+            let index_path = inst_dir
+                .join("minecraft")
+                .join("assets")
+                .join("indexes")
+                .join("legacy.json");
+            if index_path.exists() {
+                let index = AssetIndexJson::from_file(&index_path)?;
+                index.materialize_virtual_legacy(inst_dir)?;
+            }
+        }
+
+        Ok(())
     }
     .await;
 
