@@ -118,6 +118,22 @@ pub async fn install_pack(
 
     // 3. MOD 与其它资源文件
     let tasks = modpack::build_file_tasks(index, inst_dir, settings.download.prefer_mirror);
+
+    // 3a. 增量更新：清理上一版有而本版没有的文件（差量下载由队列层
+    //     对已存在文件的校验跳过自动完成）
+    let declared: std::collections::HashSet<PathBuf> = index
+        .files
+        .iter()
+        .filter_map(|file| crate::utils::archive::validate_entry_path(&file.path).ok())
+        .collect();
+    let previous = load_recorded_files(inst_dir);
+    if !previous.is_empty() {
+        let removed = cleanup_stale_pack_files(inst_dir, &previous, &declared);
+        if removed > 0 {
+            tracing::info!("整合包增量更新：清理旧版本残留 {removed} 个文件");
+        }
+    }
+
     if !tasks.is_empty() {
         download_pack_files(client, settings, &tasks, sink.clone()).await?;
     }
@@ -127,6 +143,9 @@ pub async fn install_pack(
     if overrides > 0 {
         tracing::info!("整合包覆盖文件已写入 {overrides} 个文件");
     }
+
+    // 5. 记录本版文件清单，供下次增量更新清理（只在成功后写）
+    record_files(inst_dir, declared.into_iter().collect());
 
     Ok(())
 }
@@ -328,6 +347,26 @@ pub async fn install_cf_pack(
     };
 
     let resolved = modpack::curseforge::resolve_files(manifest, &files, &projects);
+
+    // 3a. 增量更新：清理上一版残留（与 Modrinth 同款机制）
+    let declared: std::collections::HashSet<PathBuf> = resolved
+        .iter()
+        .filter_map(|file| {
+            crate::utils::archive::validate_entry_path(&format!(
+                "{}/{}",
+                file.folder, file.file_name
+            ))
+            .ok()
+        })
+        .collect();
+    let previous = load_recorded_files(inst_dir);
+    if !previous.is_empty() {
+        let removed = cleanup_stale_pack_files(inst_dir, &previous, &declared);
+        if removed > 0 {
+            tracing::info!("整合包增量更新：清理旧版本残留 {removed} 个文件");
+        }
+    }
+
     if !resolved.is_empty() {
         let tasks = modpack::curseforge::build_file_tasks(
             &resolved,
@@ -343,5 +382,158 @@ pub async fn install_cf_pack(
         tracing::info!("CurseForge 整合包覆盖文件已写入 {overrides} 个文件");
     }
 
+    // 5. 记录本版文件清单（只在成功后写）
+    record_files(inst_dir, declared.into_iter().collect());
+
     Ok(())
+}
+
+// ============================================================
+// 增量更新：文件清单记录 + 旧版残留清理
+//
+// 队列层已对「已存在且校验通过」的文件直接跳过（差量下载免费获得）；
+// 这里补齐 HMCL 的另一半：**清理旧版本有而新版本没有的文件**——
+// 否则换版本后残留的旧 mod 会与新版冲突。
+// ============================================================
+
+/// 记录文件：`<实例>/.launcher/modpack-files.json`。
+const PACK_FILES_RECORD: &str = ".launcher/modpack-files.json";
+
+/// 本版整合包声明的文件路径（相对游戏目录 `minecraft/`）。
+fn record_path(inst_dir: &Path) -> PathBuf {
+    inst_dir.join(PACK_FILES_RECORD)
+}
+
+/// 读取上次安装记录的文件清单；无记录 / 解析失败返回空（清理自动变空操作）。
+fn load_recorded_files(inst_dir: &Path) -> Vec<PathBuf> {
+    let Ok(bytes) = std::fs::read(record_path(inst_dir)) else {
+        return Vec::new();
+    };
+    #[derive(serde::Deserialize)]
+    struct Record {
+        #[serde(default)]
+        files: Vec<String>,
+    }
+    let Ok(record) = serde_json::from_slice::<Record>(&bytes) else {
+        return Vec::new();
+    };
+    record
+        .files
+        .into_iter()
+        // 只信任能通过安全校验的路径——记录文件本身也要防篡改
+        .filter_map(|relative| crate::utils::archive::validate_entry_path(&relative).ok())
+        .collect()
+}
+
+/// 写入本版文件清单（原子写；记录失败只降级为「下次全量」，不影响安装结果）。
+fn record_files(inst_dir: &Path, mut files: Vec<PathBuf>) {
+    files.sort();
+    files.dedup();
+    #[derive(serde::Serialize)]
+    struct Record {
+        schema_version: u32,
+        files: Vec<String>,
+    }
+    let record = Record {
+        schema_version: 1,
+        files: files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect(),
+    };
+    let Ok(bytes) = serde_json::to_vec_pretty(&record) else {
+        return;
+    };
+    if let Err(error) = crate::utils::fs::atomic_write(&record_path(inst_dir), &bytes) {
+        tracing::warn!(%error, "整合包文件清单写入失败（下次更新将退化为全量）");
+    }
+}
+
+/// 清理上一版残留：记录里**有**而新清单里**没有**的文件。
+///
+/// 只删上次记录过的文件——用户自己放进去的 mod（不在记录里）绝不动。
+/// 返回删除的文件数。
+fn cleanup_stale_pack_files(
+    inst_dir: &Path,
+    previous: &[PathBuf],
+    declared: &std::collections::HashSet<PathBuf>,
+) -> usize {
+    let minecraft = inst_dir.join("minecraft");
+    let mut removed = 0usize;
+    for relative in previous {
+        if declared.contains(relative) {
+            continue;
+        }
+        let path = minecraft.join(relative);
+        if !path.is_file() {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                removed += 1;
+                tracing::debug!(file = %path.display(), "整合包更新：移除旧版本文件");
+            }
+            Err(error) => {
+                tracing::warn!(file = %path.display(), %error, "旧版本文件删除失败，保留");
+            }
+        }
+    }
+    removed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn cleanup_removes_only_recorded_stale_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        let mods = inst.join("minecraft").join("mods");
+        touch(&mods.join("kept.jar")); // 新旧都在
+        touch(&mods.join("stale.jar")); // 旧有新无（记录过）
+        touch(&mods.join("user-mod.jar")); // 用户自装（从未记录）
+
+        let previous: Vec<PathBuf> = ["mods/kept.jar", "mods/stale.jar"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        let declared: std::collections::HashSet<PathBuf> =
+            ["mods/kept.jar"].iter().map(PathBuf::from).collect();
+
+        let removed = cleanup_stale_pack_files(inst, &previous, &declared);
+        assert_eq!(removed, 1);
+        assert!(mods.join("kept.jar").is_file());
+        assert!(!mods.join("stale.jar").exists());
+        // 用户自装文件必须毫发无损
+        assert!(mods.join("user-mod.jar").is_file());
+    }
+
+    #[test]
+    fn cleanup_ignores_unvalidated_recorded_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        touch(&inst.join("evil.txt"));
+
+        // 记录文件被篡改成穿越路径：load 阶段直接丢弃，不会删除任何东西
+        let previous = load_recorded_files_with(inst, &["../evil.txt".to_string()]);
+        let declared: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let removed = cleanup_stale_pack_files(inst, &previous, &declared);
+        assert_eq!(removed, 0);
+        assert!(inst.join("evil.txt").is_file());
+    }
+
+    /// 测试辅助：绕过文件读取直接构造「已加载」的记录。
+    fn load_recorded_files_with(_inst_dir: &Path, raw: &[String]) -> Vec<PathBuf> {
+        raw.iter()
+            .filter_map(|relative| crate::utils::archive::validate_entry_path(relative).ok())
+            .collect()
+    }
 }
