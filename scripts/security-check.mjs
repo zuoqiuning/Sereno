@@ -550,6 +550,80 @@ check("注入面", "注入器下载后必须校验哈希", () => {
 // ---------------------------------------------------------------- 4. 构建面
 const cargoToml = readText("Cargo.toml");
 
+check("构建", "<Transition> 里只有一个子元素", () => {
+  // Vue 的 `<Transition>` 只接受**一个**子元素，多了就编译失败：
+  //   "<Transition> expects exactly one child element or component."
+  //
+  // eslint 的 `vue/valid-v-else` 抓不到这个——它只管 v-if 链的配对，
+  // 而「Transition 里塞了三个兄弟 v-if」在 eslint 看来是合法的。
+  // 只有真正跑一次 vue 编译器才会暴露，而那时 dev server 已经挂了。
+  //
+  // 这里静态扫一遍：Transition 的直接子元素（同一层、忽略注释与 template）
+  // 超过一个就报错。
+  // 复用脚本里已有的 `walk`——它会跳过 `SKIP_DIRS` 里的目录。
+  // 注意 `exts` 要带点（".vue"），路径要拼 `ROOT`。
+  const files = walk(join(ROOT, "apps/desktop/src"), [], [".vue"]);
+
+  const problems = [];
+  for (const file of files) {
+    // `walk` 已经返回绝对路径了，不能再拼 ROOT。
+    const text = readFileSync(file, "utf8");
+    const lines = text.split("\n");
+
+    // 找 <Transition ...> 的开标签，记录它的缩进
+    for (let i = 0; i < lines.length; i += 1) {
+      const open = lines[i].match(/^(\s*)<Transition\b/);
+      if (!open) continue;
+      const indent = open[1].length;
+
+      // 收集这一层（indent + 2）的直接子元素
+      const children = [];
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const line = lines[j];
+        const m = line.match(/^(\s*)<([A-Za-z][\w.-]*)([^>]*)>/);
+        if (m && m[1].length === indent + 2) {
+          children.push({ tag: m[2], attrs: m[3] ?? "", line: j + 1 });
+        }
+        // 遇到同层或更浅的结束标签就结束这一段
+        if (/^(\s*)<\/\w+>/.test(line)) {
+          const closeIndent = line.match(/^(\s*)/)[1].length;
+          if (closeIndent <= indent) break;
+        }
+      }
+
+      // Vue 的规则比「一个子元素」宽松一点：
+      //
+      // - **v-if / v-else-if / v-else 链**是合法的——编译期会合并成
+      //   一个子节点，运行时只渲染其中一个（MoreView 就是这种）；
+      // - 多个**独立**的 v-if 不行——编译后是多个子节点，
+      //   Transition 只接受一个，于是编译报错。
+      //
+      // 所以只数「带独立 v-if」的那些。
+      const independent = children.filter((child) => {
+        if (child.tag === "template") return false;
+        if (/\bv-else-if\b/.test(child.attrs) || /\bv-else\b/.test(child.attrs)) {
+          return false;
+        }
+        return /\bv-if\b/.test(child.attrs);
+      });
+
+      if (independent.length > 1) {
+        problems.push(
+          `${file}:${independent[0].line} 的 <Transition> 里有 ` +
+            `${independent.length} 个独立的 v-if 子元素` +
+            `（${independent.map((c) => c.tag).join(", ")}）——` +
+            "Transition 只接受一个子元素，要么用 v-if/v-else 链，" +
+            "要么套一个带 :key 的容器"
+        );
+      }
+    }
+  }
+
+  return problems.length === 0
+    ? true
+    : { ok: false, detail: problems.slice(0, 3).join("；") };
+});
+
 check("构建", "release profile 去掉了符号表", () => {
   const m = /\[profile\.release\]([\s\S]*?)(?=\n\[|$)/.exec(cargoToml);
   const section = m?.[1] ?? "";
