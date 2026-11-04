@@ -1,6 +1,6 @@
 name: CI
 
-# 提交前必须跑通的四条命令（见《测试策略与回归清单》）：
+# 提交前必须跑通的门禁（见《测试策略与回归清单》）：
 #   cargo fmt --check / cargo clippy -D warnings / cargo test / pnpm typecheck + lint
 #
 # 单人项目靠自觉一定会漏，尤其是 `clippy -D warnings` 与 `pnpm typecheck`
@@ -11,6 +11,15 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
+# 同一分支的新推送自动取消上一次未跑完的 CI，省额度也省等待
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 默认权限最小化：CI 只需要读代码
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,22 +34,31 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # rust-toolchain.toml 里已固定版本与组件，rustup 会自动安装
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
+      # ----------------------------------------------------------------
+      # 顺序很重要：pnpm 必须排在 setup-node 之前
+      #
+      # setup-node 的 `cache: 'pnpm'` 会调用 `pnpm store path` 来定位缓存目录。
+      # 如果那时 pnpm 还没装好，runner 会直接报
+      #   Unable to locate executable file: pnpm
+      # 并中断整个流程。反过来，setup-node 读 package.json 的 packageManager
+      # 字段自动装 pnpm 时，同样依赖 pnpm 已经可用——所以先装 pnpm 最稳。
+      #
+      # 版本不在这里写死：pnpm/action-setup 会读 package.json 的
+      # `packageManager` 字段（当前 pnpm@12.15.0），保证 CI 与本地永远一致。
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v6
 
       - name: 安装 Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12.15.0
+      # rust-toolchain.toml 里已固定版本与组件，rustup 会自动安装
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
 
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
