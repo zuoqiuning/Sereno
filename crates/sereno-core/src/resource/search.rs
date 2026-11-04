@@ -104,8 +104,20 @@ pub async fn search(
     normalized.page = page;
     normalized.page_size = page_size;
     normalized.query = translate_keyword(&query.query);
+    // 缓存 key 必须包含**镜像模式**。
+    //
+    // 镜像与官方是两条不同的数据通路：镜像可能缺刚收录的资源，
+    // 官方则因为没有 API Key 直接拒绝。两者返回的结果与错误都不同，
+    // 混用缓存会让「关掉镜像」这个操作看起来毫无效果——
+    // 用户看到的还是镜像时期的结果，官方模式的错误提示也不会出现。
+    let mirror_mode = if curseforge::mirror_enabled() {
+        "mirror"
+    } else {
+        "official"
+    };
     let cache_key = format!(
-        "v3:{}",
+        "v4:{}:{}",
+        mirror_mode,
         serde_json::to_string(&normalized).unwrap_or_default()
     );
 
@@ -201,7 +213,18 @@ fn totals_key(query: &ResourceSearchQuery) -> String {
     key.source = ResourceSource::Modrinth;
     key.page = 1;
     key.page_size = 1;
-    format!("v3:{}", serde_json::to_string(&key).unwrap_or_default())
+    // 与 `search` 的缓存 key 一样，镜像模式必须参与——
+    // CurseForge 的总命中数在镜像与官方之间是不同的值。
+    let mirror_mode = if curseforge::mirror_enabled() {
+        "mirror"
+    } else {
+        "official"
+    };
+    format!(
+        "v4:{}:{}",
+        mirror_mode,
+        serde_json::to_string(&key).unwrap_or_default()
+    )
 }
 
 /// 探测两个来源的总命中数。只取 1 条元数据，代价很小；
