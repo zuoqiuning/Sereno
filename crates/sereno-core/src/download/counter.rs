@@ -48,6 +48,19 @@ impl SessionCounter {
         self.downloaded_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
 
+    /// 预播种一个**在下载队列之外已完成**的阶段。
+    ///
+    /// 版本 JSON 解析、清单落盘等工作发生在计数器创建之后、下载任务
+    /// 开始之前——不播种的话进度条会在这几秒停在 0%，观感是
+    /// 「卡住了」。播种后这些工作计入总量**和**已完成，进度从真实
+    /// 的起点开始走（对齐 PCL「元数据阶段也计入总进度」的观感）。
+    pub fn seed_completed(&self, files: u32, bytes: u64) {
+        self.total_files.fetch_add(files, Ordering::Relaxed);
+        self.total_bytes.fetch_add(bytes, Ordering::Relaxed);
+        self.done_files.fetch_add(files, Ordering::Relaxed);
+        self.downloaded_bytes.fetch_add(bytes, Ordering::Relaxed);
+    }
+
     pub fn mark_done(&self) {
         self.done_files.fetch_add(1, Ordering::Relaxed);
     }

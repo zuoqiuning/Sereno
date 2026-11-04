@@ -215,7 +215,20 @@ async function retryTask(task: TaskItem): Promise<void> {
               </p>
             </div>
 
-            <div class="metric shrink-0 text-brand-500">{{ percentOf(active) }}<span>%</span></div>
+            <div class="shrink-0 text-right">
+              <div class="text-brand-500">
+                <template v-if="active.status === 'running' && percentOf(active) >= 100">
+                  <span class="text-h3 font-semibold">安装器运行中…</span>
+                </template>
+                <template v-else>{{ percentOf(active) }}<span>%</span></template>
+              </div>
+              <div
+                v-if="active.status === 'running' && percentOf(active) >= 100"
+                class="text-micro text-ink-muted"
+              >
+                安装文件已就绪，正在执行安装
+              </div>
+            </div>
           </div>
 
           <!-- 粗壮的主进度条 -->

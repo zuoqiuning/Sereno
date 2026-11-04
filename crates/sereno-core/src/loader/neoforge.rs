@@ -137,10 +137,7 @@ pub async fn install_neoforge(
         "NeoForge",
     )
     .await
-    .map_err(|error| {
-        crate::loader::rollback_new_versions(instance_dir, &versions_before);
-        error
-    })?;
+    .inspect_err(|_| crate::loader::rollback_new_versions(instance_dir, &versions_before))?;
 
     let _ = tokio::fs::remove_file(&installer_path).await;
 

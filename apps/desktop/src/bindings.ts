@@ -41,6 +41,16 @@ export const commands = {
 	 *  禁止控制字符。分组只是展示元数据，不参与目录结构，无需迁移。
 	 */
 	setInstanceGroup: (instanceId: string, group: string | null) => typedError<InstanceMetadata_Serialize, LauncherError>(__TAURI_INVOKE("set_instance_group", { instanceId, group })),
+	/**
+	 *  列出实例的全部存档（按最后游玩时间倒序）。
+	 * 
+	 *  目录遍历可能较慢（大型存档数千个文件），走 spawn_blocking。
+	 */
+	listInstanceSaves: (instanceId: string) => typedError<SaveSummary_Serialize[], LauncherError>(__TAURI_INVOKE("list_instance_saves", { instanceId })),
+	/**  删除存档（回收站优先，失败自动回退物理删除）。 */
+	deleteInstanceSave: (instanceId: string, saveName: string) => typedError<null, LauncherError>(__TAURI_INVOKE("delete_instance_save", { instanceId, saveName })),
+	/**  打开某个存档的目录。 */
+	openSaveFolder: (instanceId: string, saveName: string) => typedError<null, LauncherError>(__TAURI_INVOKE("open_save_folder", { instanceId, saveName })),
 	readInstanceLogs: (instanceId: string) => typedError<InstanceLogs_Serialize, LauncherError>(__TAURI_INVOKE("read_instance_logs", { instanceId })),
 	/**
 	 *  扫描外部目录，找出可导入的实例候选。
@@ -1910,6 +1920,45 @@ export type Rule_Serialize = {
 	os: OsSpec_Serialize | null,
 	/**  官方启动器用来控制 demo、快速进入世界、自定义分辨率等参数。 */
 	features: { [key in string]: boolean } | null,
+};
+
+/**  单个存档的摘要信息。 */
+export type SaveSummary = SaveSummary_Serialize | SaveSummary_Deserialize;
+
+/**  单个存档的摘要信息。 */
+export type SaveSummary_Deserialize = {
+	/**
+	 *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
+	 *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
+	 */
+	name: string,
+	/**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
+	iconDataUrl?: string | null,
+	/**
+	 *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
+	 *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
+	 */
+	lastPlayedSecs: string,
+	/**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
+	sizeBytes: string,
+};
+
+/**  单个存档的摘要信息。 */
+export type SaveSummary_Serialize = {
+	/**
+	 *  存档名 = `saves/` 下的目录名（游戏内显示的名字来自 level.dat，
+	 *  v1 不解析 NBT，用目录名代替——绝大多数玩家两者一致）。
+	 */
+	name: string,
+	/**  `icon.png` 的 base64 data URL（缩略图）；不存在为 None。 */
+	iconDataUrl: string | null,
+	/**
+	 *  最后游玩时间（level.dat 的修改时间，秒级时间戳字符串——
+	 *  specta 禁止导出 i64，全项目时间戳统一走字符串）。
+	 */
+	lastPlayedSecs: string,
+	/**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
+	sizeBytes: string,
 };
 
 /**  启动器的磁盘占用概览。 */

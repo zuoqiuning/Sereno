@@ -52,6 +52,13 @@ pub async fn install_base(
             .unwrap_or_default()
     );
     let counter = Arc::new(SessionCounter::new(session_id.clone(), "install"));
+    // 播种「版本 JSON 解析与落盘」阶段：它发生在计数器创建之前，
+    // 不播种进度条会在元数据阶段停在 0%，观感是「卡住」
+    if let Ok(detail_path) = crate::version::detail::detail_file(inst_dir, &version_detail.id)
+        && let Ok(detail_bytes) = std::fs::metadata(&detail_path).map(|m| m.len())
+    {
+        counter.seed_completed(1, detail_bytes);
+    }
     let summary_cancel = CancellationToken::new();
     let summary_handle = spawn_summary_pusher(
         Arc::clone(&counter),

@@ -1,6 +1,6 @@
 //! 实例生命周期管理：创建、读取列表。
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::instance::{InstanceMetadata, LoaderInfo};

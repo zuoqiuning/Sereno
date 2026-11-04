@@ -6,6 +6,7 @@ import {
   FileText,
   ChevronDown,
   Folder,
+  Globe,
   HeartPulse,
   Users,
   Import,
@@ -36,6 +37,7 @@ import PageShell from "@/components/layout/PageShell.vue";
 import type { MenuItem } from "@/components/common/menu";
 import InstanceResourceModal from "@/components/downloads/InstanceResourceModal.vue";
 import WorldBackupModal from "@/components/instances/WorldBackupModal.vue";
+import SavesModal from "@/components/instances/SavesModal.vue";
 import LanModal from "@/components/instances/LanModal.vue";
 import LogViewerModal from "@/components/instances/LogViewerModal.vue";
 import HealthModal from "@/components/instances/HealthModal.vue";
@@ -80,6 +82,7 @@ const backupModal = useModalState<InstanceMetadata>();
 const logModal = useModalState<InstanceMetadata>();
 const healthModal = useModalState<InstanceMetadata>();
 const lanModal = useModalState<InstanceMetadata>();
+const savesModal = useModalState<InstanceMetadata>();
 const settingsModal = useModalState<InstanceMetadata>();
 /** 导入外部实例弹窗。 */
 const importModalVisible = ref(false);
@@ -668,6 +671,7 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       icon: Archive,
       disabled: destructiveBlocked,
     },
+    { id: "saves", label: "存档管理", icon: Globe },
     { id: "logs", label: "查看日志与崩溃", icon: ScrollText },
     {
       id: "diagnostics",
@@ -725,6 +729,9 @@ function runAction(id: string, inst: InstanceMetadata): void {
       break;
     case "health":
       healthModal.open(inst);
+      break;
+    case "saves":
+      savesModal.open(inst);
       break;
     case "lan":
       lanModal.open(inst);
@@ -1141,6 +1148,13 @@ function formatPlaytime(secs: number): string {
       :instance="backupModal.item"
       :open="backupModal.visible"
       @close="backupModal.close"
+    />
+
+    <SavesModal
+      v-if="savesModal.item"
+      :instance="savesModal.item"
+      :open="savesModal.visible"
+      @close="savesModal.close"
     />
 
     <HealthModal

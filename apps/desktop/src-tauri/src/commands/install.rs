@@ -37,16 +37,16 @@ pub async fn install_game(
     {
         const MIN_INSTALL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
         let inst_root = sereno_core::utils::paths::instances_root(&settings)?;
-        if let Some(available) = sereno_core::health::available_space(&inst_root) {
-            if available < MIN_INSTALL_BYTES {
-                return Err(sereno_core::LauncherError::InvalidConfig {
-                    key: "disk".into(),
-                    message: format!(
-                        "磁盘剩余空间不足：需要至少 2 GB，当前只有 {:.1} GB",
-                        available as f64 / 1024.0 / 1024.0 / 1024.0
-                    ),
-                });
-            }
+        if let Some(available) = sereno_core::health::available_space(&inst_root)
+            && available < MIN_INSTALL_BYTES
+        {
+            return Err(sereno_core::LauncherError::InvalidConfig {
+                key: "disk".into(),
+                message: format!(
+                    "磁盘剩余空间不足：需要至少 2 GB，当前只有 {:.1} GB",
+                    available as f64 / 1024.0 / 1024.0 / 1024.0
+                ),
+            });
         }
     }
     let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
