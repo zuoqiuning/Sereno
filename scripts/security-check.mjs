@@ -338,6 +338,49 @@ check("权限", "更新通道启用了 minisign 签名校验", () => {
   return true;
 });
 
+check("权限", "更新公钥格式正确（base64 编码的 minisign 公钥行）", () => {
+  const conf = readText("apps/desktop/src-tauri/tauri.conf.json");
+  const pubkey = conf.match(/"pubkey"\s*:\s*"([^"]+)"/)?.[1]?.trim();
+  if (!pubkey) {
+    return { ok: false, detail: "配置里没有 pubkey" };
+  }
+
+  // updater 插件的解码路径是：base64 解码 → 解析成两行 minisign 文本。
+  // 因此 pubkey 必须是**整行公钥的 base64**，而不是裸的 key blob——
+  // 填错的话客户端一律验签失败（更新功能静默失效）。
+  let decoded;
+  try {
+    decoded = Buffer.from(pubkey, "base64").toString("utf8");
+  } catch {
+    return { ok: false, detail: "pubkey 不是合法的 base64" };
+  }
+
+  const lines = decoded.trim().split("\n");
+  if (lines.length !== 2) {
+    return {
+      ok: false,
+      detail:
+        `pubkey 解码后应有 2 行（注释 + key），实际 ${lines.length} 行——` +
+        "填的是裸 key blob 吗？插件要的是 base64 编码的整行公钥",
+    };
+  }
+  if (!lines[0].includes("minisign public key")) {
+    return {
+      ok: false,
+      detail: `pubkey 第一行不是公钥注释：${lines[0].slice(0, 40)}`,
+    };
+  }
+  // 第二行必须是 42 字节 key blob 的 base64（56 个字符，无 padding）
+  const blob = lines[1].trim();
+  if (!/^[A-Za-z0-9+/]{56}$/.test(blob)) {
+    return {
+      ok: false,
+      detail: `pubkey 第二行不是 42 字节 key blob 的 base64（长度 ${blob.length}）`,
+    };
+  }
+  return true;
+});
+
 check("权限", "更新私钥不在仓库里", () => {
   // 私钥必须是「环境变量引用」或「文件路径」，不能是密钥本体。
   // 扫全部受版本控制的文本文件，命中即视为泄漏。
