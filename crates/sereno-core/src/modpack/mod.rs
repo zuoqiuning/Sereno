@@ -9,6 +9,7 @@
 //! MOD 本体不在包里，而是由索引里的 `downloads` 指向 Modrinth CDN，
 //! 由启动器自己下载并校验 SHA-1。
 
+pub mod curseforge;
 pub mod install;
 
 use std::io::Read;

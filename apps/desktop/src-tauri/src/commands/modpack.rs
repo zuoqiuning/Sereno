@@ -111,3 +111,103 @@ pub async fn install_modpack(
 
     result
 }
+
+/// CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。
+///
+/// **按需读取**：整合包在 CF 上是几十 MB 的 zip，这里只用 HTTP Range
+/// 取回根目录的 `manifest.json`（几 KB），不必先下载整个包。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_cf_modpack_info(
+    project_id: u32,
+    file_id: u32,
+    state: tauri::State<'_, AppState>,
+) -> Result<ModpackInfo> {
+    let settings = state.snapshot_settings()?;
+    let client = sereno_core::utils::http::build_client(&settings)?;
+    let (manifest, _) =
+        sereno_core::modpack::install::read_cf_manifest(&client, &settings, project_id, file_id)
+            .await?;
+
+    let (loader, loader_version) =
+        sereno_core::modpack::curseforge::loader_of(&manifest).unwrap_or_default();
+
+    Ok(ModpackInfo {
+        name: if manifest.name.is_empty() {
+            "未命名整合包".to_string()
+        } else {
+            manifest.name.clone()
+        },
+        minecraft_version: manifest.minecraft.version.clone(),
+        loader,
+        loader_version,
+        file_count: sereno_core::modpack::curseforge::required_file_count(&manifest),
+    })
+}
+
+/// 安装 CurseForge 整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
+///
+/// 与 Modrinth 的差别在第 3 步：CF 的 `manifest.json` 里没有下载地址，
+/// 必须先回查 CurseForge API 解析 `fileID`，否则整个整合包装不上。
+#[tauri::command]
+#[specta::specta]
+pub async fn install_cf_modpack(
+    instance_id: String,
+    project_id: u32,
+    file_id: u32,
+    channel: Channel<DownloadProgress>,
+    state: tauri::State<'_, AppState>,
+) -> Result<()> {
+    if state.is_running(&instance_id) {
+        return Err(sereno_core::LauncherError::InstanceBusy {
+            id: instance_id.clone(),
+        });
+    }
+
+    let settings = state.snapshot_settings()?;
+    let inst_dir = sereno_core::utils::paths::instance_dir(&settings, &instance_id)?;
+    let mut metadata = read_metadata(&inst_dir)?;
+
+    let client = sereno_core::utils::http::build_client(&settings)?;
+    let pack =
+        sereno_core::modpack::install::ensure_cf_pack(&client, &settings, project_id, file_id)
+            .await?;
+    let manifest = sereno_core::modpack::curseforge::read_manifest(&pack)?;
+
+    // 整合包要求的游戏版本必须与实例一致，否则装出来的实例根本进不去
+    let required = manifest.minecraft.version.trim();
+    if !required.is_empty() && required != metadata.game_version {
+        return Err(sereno_core::LauncherError::InvalidConfig {
+            key: "minecraftVersion".into(),
+            message: format!(
+                "整合包要求 Minecraft {required}，当前实例是 {}",
+                metadata.game_version
+            ),
+        });
+    }
+
+    let sink: Arc<dyn ProgressSink> = Arc::new(ChannelSink(channel));
+
+    metadata.status = "installing".to_string();
+    write_metadata(&inst_dir, &metadata)?;
+
+    let result = sereno_core::modpack::install::install_cf_pack(
+        &settings,
+        &client,
+        &inst_dir,
+        &mut metadata,
+        &manifest,
+        &pack,
+        sink,
+    )
+    .await;
+
+    metadata.status = if result.is_ok() {
+        "ready".to_string()
+    } else {
+        "created".to_string()
+    };
+    write_metadata(&inst_dir, &metadata)?;
+
+    result
+}

@@ -453,7 +453,11 @@ function rawFromCf(file: CfFile): RawVersion {
     loaderKeys,
     loaderLabels: loaderKeys.map(loaderLabelOf),
     gameVersions,
-    sourceVersionId: null,
+    // CurseForge 的整合包以「文件」形式分发：每个文件就是一份整合包 zip，
+    // 文件 ID 就是后端解析 `manifest.json` 需要的 `fileId`。
+    // Modrinth 用的是版本 ID，两者语义不同，因此这里带上来源前缀由上层区分。
+    sourceVersionId:
+      props.kind === "modpack" ? `cf:${file.id}` : null,
     dependencies: (file.dependencies ?? [])
       .filter((dependency) => (dependency.relationType ?? 0) === 3 || (dependency.relationType ?? 0) === 2)
       .map((dependency) => ({

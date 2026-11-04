@@ -9,10 +9,15 @@ import AppLoading from "@/components/common/AppLoading.vue";
 import AppModal from "@/components/common/AppModal.vue";
 import { createInstance } from "@/api/instance";
 import { isApiError } from "@/api/invoke";
-import { getModpackInfo, installModpack } from "@/api/modpack";
+import {
+  getCfModpackInfo,
+  getModpackInfo,
+  installCfModpack,
+  installModpack,
+} from "@/api/modpack";
 import { log } from "@/api/settings";
 import { useTaskStore } from "@/stores/task";
-import type { ModProject, ModpackInfo } from "@/types";
+import type { DownloadProgress, ModProject, ModpackInfo } from "@/types";
 
 /**
  * 整合包安装确认。
@@ -54,11 +59,27 @@ function toErrorMessage(value: unknown): string {
   return String(value);
 }
 
+/**
+ * CurseForge 的整合包以「文件」形式分发，`versionId` 形如 `cf:4612979`。
+ *
+ * Modrinth 用的是版本 ID（纯字符串），两者语义不同，用前缀区分。
+ */
+function cfFileId(): number | null {
+  if (props.item.source !== "curseforge") return null;
+  const raw = props.versionId.startsWith("cf:") ? props.versionId.slice(3) : props.versionId;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
-    info.value = await getModpackInfo(props.item.id, props.versionId);
+    const fileId = cfFileId();
+    info.value =
+      fileId !== null
+        ? await getCfModpackInfo(Number(props.item.id), fileId)
+        : await getModpackInfo(props.item.id, props.versionId);
     if (info.value.name) instanceName.value = info.value.name;
   } catch (err) {
     error.value = `读取整合包信息失败：${toErrorMessage(err)}`;
@@ -87,13 +108,20 @@ async function install(): Promise<void> {
     emit("close");
     router.push("/tasks");
 
-    await installModpack(instanceId, props.item.id, props.versionId, (progress) => {
+    const fileId = cfFileId();
+    const onProgress = (progress: DownloadProgress): void => {
       if (progress.kind === "session") {
         taskStore.updateProgress(instanceId, progress.summary, null);
       } else {
         taskStore.updateProgress(instanceId, null, progress.snapshot);
       }
-    });
+    };
+
+    if (fileId !== null) {
+      await installCfModpack(instanceId, Number(props.item.id), fileId, onProgress);
+    } else {
+      await installModpack(instanceId, props.item.id, props.versionId, onProgress);
+    }
 
     taskStore.finish(instanceId);
   } catch (err) {

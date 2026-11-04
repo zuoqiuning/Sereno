@@ -164,6 +164,15 @@ export const commands = {
 	 *  这里只负责把内容装进那个实例。
 	 */
 	installModpack: (instanceId: string, projectId: string, versionId: string, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_modpack", { instanceId, projectId, versionId, channel })),
+	/**  CurseForge 整合包概览：安装前先让用户看清「什么版本、什么加载器、多少个文件」。 */
+	getCfModpackInfo: (projectId: number, fileId: number) => typedError<ModpackInfo, LauncherError>(__TAURI_INVOKE("get_cf_modpack_info", { projectId, fileId })),
+	/**
+	 *  安装 CurseForge 整合包：原版 + 加载器 + MOD + 覆盖文件，一次做完。
+	 * 
+	 *  与 Modrinth 的差别在第 3 步：CF 的 `manifest.json` 里没有下载地址，
+	 *  必须先回查 CurseForge API 解析 `fileID`，否则整个整合包装不上。
+	 */
+	installCfModpack: (instanceId: string, projectId: number, fileId: number, channel: Channel<DownloadProgress_Deserialize>) => typedError<null, LauncherError>(__TAURI_INVOKE("install_cf_modpack", { instanceId, projectId, fileId, channel })),
 	launchGame: (instanceId: string) => typedError<null, LauncherError>(__TAURI_INVOKE("launch_game", { instanceId })),
 	/**  当前登录态。 */
 	getAccountState: () => typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),
@@ -412,6 +421,16 @@ export type CfFile_Deserialize = {
 	fileDate?: string | null,
 	/**  文件依赖：relationType = 3 表示必须安装。 */
 	dependencies?: CfDependency_Deserialize[],
+	/**
+	 *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
+	 * 
+	 *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
+	 */
+	hashes?: CfHash[],
+	/**  文件字节数，用于下载进度统计。 */
+	fileLength?: number,
+	/**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
+	modules?: CfModule[],
 };
 
 export type CfFile_Serialize = {
@@ -427,6 +446,28 @@ export type CfFile_Serialize = {
 	fileDate: string | null,
 	/**  文件依赖：relationType = 3 表示必须安装。 */
 	dependencies: CfDependency_Serialize[],
+	/**
+	 *  文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
+	 * 
+	 *  整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
+	 */
+	hashes: CfHash[],
+	/**  文件字节数，用于下载进度统计。 */
+	fileLength: number,
+	/**  zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。 */
+	modules: CfModule[],
+};
+
+/**  CurseForge 的哈希条目。 */
+export type CfHash = {
+	value: string,
+	/**  1 = SHA-1，2 = MD5。 */
+	algo: number,
+};
+
+/**  CurseForge 文件内的模块条目。 */
+export type CfModule = {
+	name: string,
 };
 
 /**

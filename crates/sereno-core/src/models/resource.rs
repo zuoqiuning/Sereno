@@ -218,6 +218,57 @@ pub struct CfFile {
     /// 文件依赖：relationType = 3 表示必须安装。
     #[serde(default)]
     pub dependencies: Vec<CfDependency>,
+    /// 文件哈希。`algo = 1` 是 SHA-1，`algo = 2` 是 MD5。
+    ///
+    /// 整合包安装靠 SHA-1 校验下载结果，缺了它就只剩「能下下来」这一层保证。
+    #[serde(default)]
+    pub hashes: Vec<CfHash>,
+    /// 文件字节数，用于下载进度统计。
+    #[specta(type = specta_typescript::Number)]
+    #[serde(default)]
+    pub file_length: u64,
+    /// zip 内部的模块清单（如 `META-INF`、`pack.mcmeta`），用于判断资源类型。
+    #[serde(default)]
+    pub modules: Vec<CfModule>,
+}
+
+/// CurseForge 的哈希条目。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CfHash {
+    pub value: String,
+    /// 1 = SHA-1，2 = MD5。
+    pub algo: u32,
+}
+
+/// CurseForge 文件内的模块条目。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CfModule {
+    pub name: String,
+}
+
+/// 批量查询项目时返回的精简信息（只要分类，用于决定资源落到哪个目录）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfModBrief {
+    pub id: u32,
+    /// 6 = Mod，12 = 资源包，6552 = 光影，6945 = 数据包，4471 = 整合包。
+    #[serde(default)]
+    pub class_id: u32,
+    #[serde(default)]
+    pub name: String,
+}
+
+/// 批量查询项目的响应体。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfModsBriefResponse {
+    pub data: Vec<CfModBrief>,
+}
+
+/// 查询单个文件的响应体。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfFileResponse {
+    pub data: CfFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]

@@ -18,6 +18,13 @@ const CF_CDN_MIRROR: &str = "https://mod.mcimirror.top";
 const GAME_ID_MINECRAFT: u32 = 432;
 /// CurseForge 单次最多 50 条，超过会被直接拒绝。
 pub const CF_PAGE_MAX: u32 = 50;
+/// 批量查询文件时单次提交的 ID 上限。
+///
+/// 官方文档没有写死上限，但一次提交几千个 ID 会让响应体变得巨大
+/// （每个文件对象约 1 KB），反而来不及就被网关掐断。50 是稳妥值。
+const BATCH_FILE_LIMIT: usize = 50;
+/// 批量查询项目时单次提交的 ID 上限。同上。
+const BATCH_MOD_LIMIT: usize = 50;
 /// 详情页首屏只要最新一批文件，其余分支由「按版本补全」按需取回。
 pub const VERSION_FIRST_PAGE_FILES: usize = CF_PAGE_MAX as usize;
 /// 更新检查等场景需要完整的文件列表，最多取 200 个（4 页）。
@@ -452,6 +459,109 @@ pub async fn get_versions_for(
     }
 
     Ok(files)
+}
+
+/// 批量查询文件详情。
+///
+/// **整合包安装必须走这个接口**：CurseForge 的 `manifest.json` 里只有
+/// `projectID` / `fileID`，没有下载地址，只能回查 API 才知道文件在哪。
+/// 一次查一个文件会让上百个 MOD 的整合包花掉上百个请求（CF 配额按请求数算），
+/// 因此这里走官方的批量接口 `POST /v1/mods/files`。
+///
+/// 单次最多提交 `BATCH_FILE_LIMIT` 个 ID，超出部分自动分批。
+pub async fn get_files_by_ids(
+    client: &reqwest::Client,
+    file_ids: &[u32],
+    api_keys: &[String],
+) -> Result<Vec<CfFile>> {
+    let mut result = Vec::new();
+    for chunk in file_ids.chunks(BATCH_FILE_LIMIT) {
+        let url = format!("{}/mods/files", api_base());
+        let body = serde_json::json!({ "fileIds": chunk });
+        let resp = request(client, &url, api_keys, Some(&body)).await?;
+
+        if !resp.status().is_success() {
+            return Err(LauncherError::DownloadFailed {
+                message: format!("CurseForge 批量查询文件返回 HTTP {}", resp.status()),
+                url,
+            });
+        }
+
+        let data: crate::models::resource::CfFilesResponse =
+            read_json_limited(resp, MAX_METADATA_BYTES).await?;
+        result.extend(data.data);
+    }
+
+    // 镜像模式下 CDN 域名要换成镜像，否则国内直连官方 CDN 会被卡住。
+    if mirror_enabled() {
+        for file in &mut result {
+            if let Some(url) = file.download_url.take() {
+                file.download_url = Some(mirror_file_url(&url));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// 批量查询项目（只要分类，用于决定文件落到 `mods/` 还是 `resourcepacks/`）。
+pub async fn get_mods_by_ids(
+    client: &reqwest::Client,
+    mod_ids: &[u32],
+    api_keys: &[String],
+) -> Result<Vec<crate::models::resource::CfModBrief>> {
+    let mut result = Vec::new();
+    for chunk in mod_ids.chunks(BATCH_MOD_LIMIT) {
+        let url = format!("{}/mods", api_base());
+        let body = serde_json::json!({ "modIds": chunk });
+        let resp = request(client, &url, api_keys, Some(&body)).await?;
+
+        if !resp.status().is_success() {
+            return Err(LauncherError::DownloadFailed {
+                message: format!("CurseForge 批量查询项目返回 HTTP {}", resp.status()),
+                url,
+            });
+        }
+
+        let data: crate::models::resource::CfModsBriefResponse =
+            read_json_limited(resp, MAX_METADATA_BYTES).await?;
+        result.extend(data.data);
+    }
+
+    Ok(result)
+}
+
+/// 查询单个项目下的某个文件。
+///
+/// 整合包 zip 自身的下载地址就靠它拿（整合包在 CF 上也是一个普通文件）。
+pub async fn get_file(
+    client: &reqwest::Client,
+    mod_id: u32,
+    file_id: u32,
+    api_keys: &[String],
+) -> Result<Option<CfFile>> {
+    let url = format!("{}/mods/{mod_id}/files/{file_id}", api_base());
+    let resp = request(client, &url, api_keys, None).await?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(LauncherError::DownloadFailed {
+            message: format!("CurseForge 查询文件返回 HTTP {}", resp.status()),
+            url,
+        });
+    }
+
+    let data: crate::models::resource::CfFileResponse =
+        read_json_limited(resp, MAX_METADATA_BYTES).await?;
+    let mut file = data.data;
+    if mirror_enabled()
+        && let Some(url) = file.download_url.take()
+    {
+        file.download_url = Some(mirror_file_url(&url));
+    }
+    Ok(Some(file))
 }
 
 /// 取某个项目（或某个游戏版本 / 加载器）的文件列表。

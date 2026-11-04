@@ -69,6 +69,8 @@ macro_rules! all_commands {
             crate::commands::resource::check_local_resource_updates,
             crate::commands::modpack::get_modpack_info,
             crate::commands::modpack::install_modpack,
+            crate::commands::modpack::get_cf_modpack_info,
+            crate::commands::modpack::install_cf_modpack,
             crate::commands::launch::launch_game,
             crate::commands::account::get_account_state,
             crate::commands::account::start_microsoft_login,

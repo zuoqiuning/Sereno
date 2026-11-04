@@ -9,4 +9,5 @@ pub mod fs;
 pub mod http;
 pub mod paths;
 pub mod redact;
+pub mod remote_zip;
 pub mod ttl_cache;
