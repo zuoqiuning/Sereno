@@ -399,6 +399,9 @@ async fn run_installer(java_exe: &str, installer: &Path, sandbox: &Path) -> Resu
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        // 用户取消时上层 future 被 drop，必须把安装器子进程一起收掉，
+        // 否则会留下一个还在打补丁的 Java 进程。
+        .kill_on_drop(true)
         // Windows 上隐藏控制台窗口
         .env("APPDATA", &sandbox_str);
 

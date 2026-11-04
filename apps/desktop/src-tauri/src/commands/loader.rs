@@ -192,10 +192,18 @@ pub async fn install_loader(
     // OptiFine 走的是「下载安装器 → 无头跑一次 → 收集产物」的特殊流程，
     // 与其它加载器的安装器协议完全不同，单独处理。
     if loader_type == "optifine" {
-        let info = sereno_core::loader::install::install_optifine_into(
-            &settings, &inst_dir, &metadata, spec_ver,
-        )
-        .await?;
+        // 取消键与前端任务 ID 对齐（任务页按 `loader-<实例 id>` 登记）。
+        let cancel_key = format!("loader-{instance_id}");
+        let cancel = state.new_cancel_token(&cancel_key);
+        let result = tokio::select! {
+            _ = cancel.cancelled() => Err(sereno_core::LauncherError::Cancelled),
+            result = sereno_core::loader::install::install_optifine_into(
+                &settings, &inst_dir, &metadata, spec_ver,
+            ) => result,
+        };
+        state.clear_cancel_token(&cancel_key);
+
+        let info = result?;
         metadata.loader = info;
         write_metadata(&inst_dir, &metadata)?;
 
