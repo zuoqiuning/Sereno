@@ -27,6 +27,10 @@ pub struct AppSettings {
     #[serde(default)]
     pub download: DownloadSettings,
 
+    /// 启动器自身的更新设置。
+    #[serde(default)]
+    pub update: UpdateSettings,
+
     #[serde(default)]
     pub logging: LoggingSettings,
 
@@ -49,6 +53,7 @@ impl Default for AppSettings {
             profile: ProfileSettings::default(),
             account: AccountSettings::default(),
             download: DownloadSettings::default(),
+            update: UpdateSettings::default(),
             logging: LoggingSettings::default(),
             http: HttpSettings::default(),
             theme: default_theme(),
@@ -265,6 +270,32 @@ pub struct DownloadSettings {
     pub speed_limit_kbps: Option<u32>,
 }
 
+/// 启动器自身的更新设置。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSettings {
+    /// 是否在启动时自动检查更新。
+    ///
+    /// 默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
+    /// 不影响启动速度。关闭后只能手动检查。
+    #[serde(default = "default_true")]
+    pub auto_check: bool,
+
+    /// 上次检查到的新版本号；为空表示已是最新或还没查过。
+    ///
+    /// 记下来是为了在用户下次打开时仍能提示「有新版本」——
+    /// 只在检查那一刻弹一次 Toast 的话，错过就没了。
+    #[serde(default)]
+    pub latest_version: Option<String>,
+
+    /// 上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
+    ///
+    /// 映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
+    #[specta(type = specta_typescript::Number)]
+    #[serde(default)]
+    pub last_checked_at: Option<u64>,
+}
+
 fn default_max_concurrent() -> u32 {
     8
 }
@@ -282,6 +313,16 @@ impl Default for DownloadSettings {
             prefer_mirror: default_true(),
             retry_times: default_retry_times(),
             speed_limit_kbps: None,
+        }
+    }
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            auto_check: default_true(),
+            latest_version: None,
+            last_checked_at: None,
         }
     }
 }

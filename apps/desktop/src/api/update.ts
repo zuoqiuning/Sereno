@@ -1,5 +1,5 @@
 import { commands, events } from "@/bindings";
-import type { AppUpdateInfo, UpdateProgress } from "@/types";
+import type { AppUpdateInfo, UpdateProgress, UpdateStatus } from "@/types";
 
 import { callCommand } from "./invoke";
 
@@ -34,6 +34,16 @@ export function installAppUpdate(): Promise<null> {
 /** 重启应用（安装完成后调用）。 */
 export function relaunchApp(): Promise<null> {
   return callCommand(() => commands.relaunchApp());
+}
+
+/** 读取更新页状态（不发起网络请求）。 */
+export function getUpdateStatus(): Promise<UpdateStatus> {
+  return callCommand(() => commands.getUpdateStatus());
+}
+
+/** 设置「启动时自动检查更新」。 */
+export function setUpdateAutoCheck(autoCheck: boolean): Promise<null> {
+  return callCommand(() => commands.setUpdateAutoCheck(autoCheck));
 }
 
 /**

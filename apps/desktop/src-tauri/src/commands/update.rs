@@ -37,6 +37,7 @@ use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::ipc::events;
+use crate::state::AppState;
 
 /// 把插件的错误转成统一的 `LauncherError`。
 fn update_error(context: &str, error: impl std::fmt::Display) -> LauncherError {
@@ -74,9 +75,16 @@ pub struct AppUpdateInfo {
 /// 检查是否有新版本。
 ///
 /// **不产生任何下载**——只是读一次清单。
+///
+/// 结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
+/// 只在检查那一刻弹一次 Toast 的话，错过就没了；
+/// 记下来才能在用户下次打开「更新」页时仍然看得到「有新版本」。
 #[tauri::command]
 #[specta::specta]
-pub async fn check_app_update(app: tauri::AppHandle) -> Result<AppUpdateInfo> {
+pub async fn check_app_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<AppUpdateInfo> {
     let current = app.package_info().version.to_string();
 
     let updater = app
@@ -91,23 +99,40 @@ pub async fn check_app_update(app: tauri::AppHandle) -> Result<AppUpdateInfo> {
         Err(e) => return Err(update_error("检查更新失败", e)),
     };
 
-    let Some(update) = update else {
-        return Ok(AppUpdateInfo {
+    let info = match &update {
+        Some(update) => AppUpdateInfo {
+            available: true,
+            latest_version: update.version.clone(),
+            current_version: current,
+            notes: update.body.clone().unwrap_or_default(),
+            pub_date: update.date.map(|date| date.to_string()),
+        },
+        None => AppUpdateInfo {
             available: false,
             latest_version: current.clone(),
             current_version: current,
             notes: String::new(),
             pub_date: None,
-        });
+        },
     };
 
-    Ok(AppUpdateInfo {
-        available: true,
-        latest_version: update.version.clone(),
-        current_version: current,
-        notes: update.body.clone().unwrap_or_default(),
-        pub_date: update.date.map(|date| date.to_string()),
-    })
+    // 记录本次检查结果。写设置失败不该让「检查更新」整体失败——
+    // 用户已经拿到了答案，存不存下来只是下次打开时看不看得见。
+    let mut settings = state.snapshot_settings()?;
+    settings.update.latest_version = Some(info.latest_version.clone());
+    settings.update.last_checked_at = Some(now_seconds());
+    let _ = state.update_settings(settings);
+
+    Ok(info)
+}
+
+/// 当前的 Unix 时间戳（秒）。
+fn now_seconds() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
 }
 
 /// 下载更新、验签并安装。
@@ -186,4 +211,49 @@ pub async fn install_app_update(app: tauri::AppHandle) -> Result<()> {
 pub fn relaunch_app(app: tauri::AppHandle) -> Result<()> {
     app.request_restart();
     Ok(())
+}
+
+/// 更新页需要的完整状态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    /// 当前版本号。
+    pub current_version: String,
+    /// 是否在启动时自动检查。
+    pub auto_check: bool,
+    /// 上次检查到的新版本号（没有则为空）。
+    pub latest_version: Option<String>,
+    /// 上次检查时间戳（秒）。
+    #[specta(type = specta_typescript::Number)]
+    pub last_checked_at: Option<u64>,
+}
+
+/// 读取更新页的状态。
+///
+/// **不发起网络请求**——只是把设置里的记录读出来。
+/// 页面据此显示「上次检查于……」与已知的最新版本。
+#[tauri::command]
+#[specta::specta]
+pub fn get_update_status(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<UpdateStatus> {
+    let settings = state.snapshot_settings()?;
+    Ok(UpdateStatus {
+        current_version: app.package_info().version.to_string(),
+        auto_check: settings.update.auto_check,
+        latest_version: settings.update.latest_version.clone(),
+        last_checked_at: settings.update.last_checked_at,
+    })
+}
+
+/// 设置「启动时自动检查更新」。
+///
+/// 关闭后启动器不再自动发起检查请求，用户只能手动检查。
+#[tauri::command]
+#[specta::specta]
+pub fn set_update_auto_check(auto_check: bool, state: tauri::State<'_, AppState>) -> Result<()> {
+    let mut settings = state.snapshot_settings()?;
+    settings.update.auto_check = auto_check;
+    state.update_settings(settings)
 }

@@ -1,6 +1,6 @@
 import { onMounted, ref } from "vue";
 
-import { checkAppUpdate } from "@/api/update";
+import { checkAppUpdate, getUpdateStatus } from "@/api/update";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
 import type { AppUpdateInfo } from "@/types";
@@ -17,10 +17,10 @@ import type { AppUpdateInfo } from "@/types";
  *    都只是「查不到更新」，不能抛到外层让应用起不来；
  * 3. **不要打扰用户**——检查是静默的，只在**真的有新版本**时才提示。
  *
- * ## 返回值
+ * ## 与「自动检查」开关的关系
  *
- * `info` 供「关于」页的更新卡片复用——它自己也会调 `checkAppUpdate()`，
- * 但静默检查的结果可以省掉一次往返。
+ * 用户在更新页关掉「启动时自动检查」后，这里就**完全不发请求**——
+ * 不是「检查了但静默」，而是一次网络请求都不发。
  */
 export function useUpdateCheck() {
   const toast = useToastStore();
@@ -47,7 +47,7 @@ export function useUpdateCheck() {
       if (result.available) {
         toast.success(
           `发现新版本 v${result.latestVersion}`,
-          "可在「关于」页一键更新",
+          "可在「更新」页一键安装",
           5000,
         );
       }
@@ -63,7 +63,20 @@ export function useUpdateCheck() {
     }
   }
 
-  onMounted(() => {
+  onMounted(async () => {
+    // 先问用户要不要自动检查——关掉的话一次请求都不该发。
+    try {
+      const status = await getUpdateStatus();
+      if (!status.autoCheck) return;
+    } catch (err) {
+      // 读不到设置时按「开启」处理：静默检查失败不该挡住启动。
+      void log.warn("读取更新设置失败，仍将检查更新", {
+        component: "useUpdateCheck",
+        action: "readStatus",
+        error: String(err),
+      });
+    }
+
     // 挂载后再触发：先让首屏出来，再去问服务器。
     void checkSilently();
   });

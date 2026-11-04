@@ -279,6 +279,10 @@ export const commands = {
 	 *  检查是否有新版本。
 	 * 
 	 *  **不产生任何下载**——只是读一次清单。
+	 * 
+	 *  结果会写进设置（`update.latest_version` / `update.last_checked_at`）：
+	 *  只在检查那一刻弹一次 Toast 的话，错过就没了；
+	 *  记下来才能在用户下次打开「更新」页时仍然看得到「有新版本」。
 	 */
 	checkAppUpdate: () => typedError<AppUpdateInfo_Serialize, LauncherError>(__TAURI_INVOKE("check_app_update")),
 	/**
@@ -299,6 +303,19 @@ export const commands = {
 	 *  它会在退出时把「需要重启」标记置上，由运行循环在退出后重新拉起进程。
 	 */
 	relaunchApp: () => typedError<null, LauncherError>(__TAURI_INVOKE("relaunch_app")),
+	/**
+	 *  读取更新页的状态。
+	 * 
+	 *  **不发起网络请求**——只是把设置里的记录读出来。
+	 *  页面据此显示「上次检查于……」与已知的最新版本。
+	 */
+	getUpdateStatus: () => typedError<UpdateStatus_Serialize, LauncherError>(__TAURI_INVOKE("get_update_status")),
+	/**
+	 *  设置「启动时自动检查更新」。
+	 * 
+	 *  关闭后启动器不再自动发起检查请求，用户只能手动检查。
+	 */
+	setUpdateAutoCheck: (autoCheck: boolean) => typedError<null, LauncherError>(__TAURI_INVOKE("set_update_auto_check", { autoCheck })),
 };
 
 /** Events */
@@ -449,6 +466,8 @@ export type AppSettings_Deserialize = {
 	/**  当前账户（离线 / 微软）。 */
 	account?: AccountSettings_Deserialize,
 	download?: DownloadSettings_Deserialize,
+	/**  启动器自身的更新设置。 */
+	update?: UpdateSettings_Deserialize,
 	logging?: LoggingSettings_Deserialize,
 	http?: HttpSettings_Deserialize,
 	theme?: string,
@@ -464,6 +483,8 @@ export type AppSettings_Serialize = {
 	/**  当前账户（离线 / 微软）。 */
 	account: AccountSettings_Serialize,
 	download: DownloadSettings_Serialize,
+	/**  启动器自身的更新设置。 */
+	update: UpdateSettings_Serialize,
 	logging: LoggingSettings_Serialize,
 	http: HttpSettings_Serialize,
 	theme: string,
@@ -1790,6 +1811,84 @@ export type UpdateProgress = {
 	total: number,
 	/**  0–100 的百分比（总量未知时为 0）。 */
 	percent: number,
+};
+
+/**  启动器自身的更新设置。 */
+export type UpdateSettings = UpdateSettings_Serialize | UpdateSettings_Deserialize;
+
+/**  启动器自身的更新设置。 */
+export type UpdateSettings_Deserialize = {
+	/**
+	 *  是否在启动时自动检查更新。
+	 * 
+	 *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
+	 *  不影响启动速度。关闭后只能手动检查。
+	 */
+	autoCheck?: boolean,
+	/**
+	 *  上次检查到的新版本号；为空表示已是最新或还没查过。
+	 * 
+	 *  记下来是为了在用户下次打开时仍能提示「有新版本」——
+	 *  只在检查那一刻弹一次 Toast 的话，错过就没了。
+	 */
+	latestVersion?: string | null,
+	/**
+	 *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
+	 * 
+	 *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
+	 */
+	lastCheckedAt?: number,
+};
+
+/**  启动器自身的更新设置。 */
+export type UpdateSettings_Serialize = {
+	/**
+	 *  是否在启动时自动检查更新。
+	 * 
+	 *  默认开启：检查只发一次 HTTP 请求（端点返回 404 也很快），
+	 *  不影响启动速度。关闭后只能手动检查。
+	 */
+	autoCheck: boolean,
+	/**
+	 *  上次检查到的新版本号；为空表示已是最新或还没查过。
+	 * 
+	 *  记下来是为了在用户下次打开时仍能提示「有新版本」——
+	 *  只在检查那一刻弹一次 Toast 的话，错过就没了。
+	 */
+	latestVersion: string | null,
+	/**
+	 *  上次检查的时间戳（秒）。用于界面上显示「上次检查于……」。
+	 * 
+	 *  映射成 JS `number`：时间戳到 2^53 秒（约 2.8 亿年）都不会丢精度。
+	 */
+	lastCheckedAt: number,
+};
+
+/**  更新页需要的完整状态。 */
+export type UpdateStatus = UpdateStatus_Serialize | UpdateStatus_Deserialize;
+
+/**  更新页需要的完整状态。 */
+export type UpdateStatus_Deserialize = {
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  是否在启动时自动检查。 */
+	autoCheck: boolean,
+	/**  上次检查到的新版本号（没有则为空）。 */
+	latestVersion?: string | null,
+	/**  上次检查时间戳（秒）。 */
+	lastCheckedAt?: number,
+};
+
+/**  更新页需要的完整状态。 */
+export type UpdateStatus_Serialize = {
+	/**  当前版本号。 */
+	currentVersion: string,
+	/**  是否在启动时自动检查。 */
+	autoCheck: boolean,
+	/**  上次检查到的新版本号（没有则为空）。 */
+	latestVersion: string | null,
+	/**  上次检查时间戳（秒）。 */
+	lastCheckedAt: number,
 };
 
 export type VersionDetail = VersionDetail_Serialize | VersionDetail_Deserialize;

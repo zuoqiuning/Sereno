@@ -4,7 +4,7 @@ import { updateNavDirection } from "@/composables/useNavDirection";
 import HomeView from "@/views/HomeView.vue";
 
 /*
- * 路由表：`/`、`/instances`、`/downloads`、`/tasks`、`/settings`、`/more`。
+ * 路由表：`/`、`/instances`、`/downloads`、`/tasks`、`/settings`、`/more`、`/update`。
  *
  * 用 `createWebHashHistory`：打包后没有服务端 rewrite，hash 路由刷新不会 404。
  *
@@ -45,6 +45,12 @@ export const router = createRouter({
       name: "more",
       component: () => import("@/views/MoreView.vue"),
       meta: { title: "更多" },
+    },
+    {
+      path: "/update",
+      name: "update",
+      component: () => import("@/views/UpdateView.vue"),
+      meta: { title: "更新" },
     },
     // 404 兜底：用户手输 #/foobar 时回到主页，而不是白屏
     {

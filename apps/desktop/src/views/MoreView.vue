@@ -1,15 +1,22 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { CircleHelp, Heart, Info, HeartHandshake, MessageSquare } from "@lucide/vue";
+import { useRouter } from "vue-router";
+import {
+  CircleHelp,
+  Heart,
+  Info,
+  HeartHandshake,
+  MessageSquare,
+  RefreshCw,
+} from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
 import AppCard from "@/components/common/AppCard.vue";
 import AppEmptyState from "@/components/common/AppEmptyState.vue";
-import UpdateCard from "@/components/common/UpdateCard.vue";
 import PageShell from "@/components/layout/PageShell.vue";
 import SideNav from "@/components/layout/SideNav.vue";
 import type { SideNavItem } from "@/components/layout/SideNav.vue";
-import { APP_AUTHOR, APP_NAME, APP_VERSION } from "@/constants/app";
+import { APP_NAME, APP_VERSION } from "@/constants/app";
 import { log } from "@/api/settings";
 import { openProjectIssues, openProjectRepo, openSupporterPage, type SupporterTarget } from "@/api/supporters";
 
@@ -19,12 +26,18 @@ type SectionId = "about" | "credits" | "thanks" | "help" | "feedback";
 const sections: SideNavItem[] = [
   { id: "about", label: "关于", icon: Info },
   { id: "credits", label: "鸣谢", icon: HeartHandshake },
-  { id: "thanks", label: "感谢名单", icon: Heart },
+  { id: "thanks", label: "感谢", icon: Heart },
   { id: "help", label: "帮助", icon: CircleHelp },
   { id: "feedback", label: "反馈", icon: MessageSquare },
 ];
 
 const activeSection = ref<SectionId>("about");
+const router = useRouter();
+
+/** 跳到更新页。 */
+function goUpdate(): void {
+  void router.push("/update");
+}
 
 /** 赞助名单：后续有赞助者时把名字填进来即可。 */
 interface Sponsor {
@@ -47,12 +60,12 @@ const acknowledgements: Acknowledgement[] = [
     supporter: "bmclapi",
   },
   {
-    name: "MCIM（Minecraft Mod Info Mirror）",
-    desc: "面向国内用户的 Modrinth 与 CurseForge 元数据及文件镜像。正是它让 Sereno 能在不配置任何 API Key 的前提下访问 CurseForge。",
+    name: "MCIM",
+    desc: "面向国内用户的 Modrinth 与 CurseForge 元数据及文件镜像。",
     supporter: "mcim",
   },
   {
-    name: "PCL2（龙腾猫跃）",
+    name: "PCL2",
     desc: "加载器离线安装、镜像优先与实例资源管理的思路参考了其设计。",
     supporter: "pcl",
   },
@@ -185,21 +198,15 @@ function openIssues(): void {
                     Sereno 是一款完全免费、无广告、无遥测的第三方启动器。
                     本软件与 Mojang Studios、Microsoft 或网易公司无关。
                   </p>
-                  <p class="opacity-80">
-                    请只从官方渠道获取：每个版本都附有
-                    <code class="font-mono">SHA256SUMS.txt</code>，可用
-                    <code class="font-mono">certutil -hashfile</code> 核对文件是否与官方原件一致。
-                  </p>
                 </div>
-
-                <p class="text-micro text-ink-muted">
-                  © 2026 {{ APP_AUTHOR }} · 赞助不会解锁任何功能，只是让我更有底气继续维护
-                </p>
               </div>
 
-              <!-- 更新入口：放在「关于」分区底部，与版本信息同处一屏 -->
+              <!-- 更新入口：更新功能有自己的页面，这里只给一个跳转 -->
               <div class="mt-5 w-full max-w-xl">
-                <UpdateCard />
+                <AppButton variant="soft" size="sm" @click="goUpdate">
+                  <RefreshCw :size="13" />
+                  检查更新
+                </AppButton>
               </div>
             </div>
           </AppCard>
@@ -234,7 +241,7 @@ function openIssues(): void {
           </AppCard>
 
           <!-- 感谢名单 -->
-          <AppCard v-else-if="activeSection === 'thanks'" key="thanks" title="感谢名单" padding="lg">
+          <AppCard v-else-if="activeSection === 'thanks'" key="thanks" title="感谢" padding="lg">
             <template #icon>
               <Heart :size="16" class="text-brand-500" />
             </template>

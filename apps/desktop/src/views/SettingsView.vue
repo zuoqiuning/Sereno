@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   Coffee,
   Download,
@@ -8,6 +8,7 @@ import {
   Gamepad2,
   HardDrive,
   RefreshCw,
+  ShieldCheck,
   SlidersHorizontal,
 } from "@lucide/vue";
 
@@ -25,22 +26,41 @@ import { commands } from "@/bindings";
 import { callCommand } from "@/api/invoke";
 import { installJavaRuntime } from "@/api/java";
 import { clearStorageCache, getStorageUsage } from "@/api/storage";
+import { checkAppUpdate, setUpdateAutoCheck } from "@/api/update";
+import { isApiError } from "@/api/invoke";
+import { useToastStore } from "@/stores/toast";
 import { formatBytes } from "@/utils/format";
 import { log } from "@/api/settings";
 import { applyTheme } from "@/utils/theme";
 import type { AppSettings_Serialize, JavaCandidate, StorageUsage } from "@/types";
 
-type SectionId = "general" | "launch";
+type SectionId = "general" | "launch" | "update";
 
 const sections: SideNavItem[] = [
   { id: "general", label: "通用", icon: SlidersHorizontal },
   { id: "launch", label: "启动", icon: Gamepad2 },
+  { id: "update", label: "更新", icon: RefreshCw },
 ];
 
 const route = useRoute();
+const router = useRouter();
+const toast = useToastStore();
+
+/** 把任意抛出物转成可读文案。 */
+function toMessage(value: unknown): string {
+  if (isApiError(value)) return value.message;
+  if (value instanceof Error) return value.message;
+  return String(value);
+}
 
 /** 当前分区：支持命令面板用 `?section=launch` 直接跳进来。 */
-const activeSection = ref<SectionId>(route.query.section === "launch" ? "launch" : "general");
+const activeSection = ref<SectionId>(
+  route.query.section === "launch"
+    ? "launch"
+    : route.query.section === "update"
+      ? "update"
+      : "general",
+);
 const loading = ref(false);
 const javas = ref<JavaCandidate[]>([]);
 const settings = ref<AppSettings_Serialize | null>(null);
@@ -49,6 +69,47 @@ const downloadingJava = ref<number | null>(null);
 const javaError = ref("");
 const storage = ref<StorageUsage | null>(null);
 const clearingCache = ref(false);
+/** 手动检查更新的进行态。 */
+const checkingUpdate = ref(false);
+
+/** 切换「启动时自动检查更新」。 */
+async function onToggleAutoCheck(value: boolean): Promise<void> {
+  const previous = settings.value?.update.autoCheck ?? true;
+  if (settings.value) settings.value.update.autoCheck = value;
+  try {
+    await setUpdateAutoCheck(value);
+    toast.success(value ? "已开启自动检查" : "已关闭自动检查");
+  } catch (e) {
+    if (settings.value) settings.value.update.autoCheck = previous;
+    toast.error("保存设置失败", toMessage(e));
+  }
+}
+
+/** 手动检查一次更新。 */
+async function checkNow(): Promise<void> {
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    const result = await checkAppUpdate();
+    if (result.available) {
+      toast.success(
+        `发现新版本 v${result.latestVersion}`,
+        `当前版本 v${result.currentVersion}`,
+      );
+    } else {
+      toast.success("已是最新版本", `v${result.currentVersion}`);
+    }
+  } catch (e) {
+    toast.error("检查更新失败", toMessage(e));
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
+/** 跳到独立的更新页。 */
+function goUpdatePage(): void {
+  void router.push("/update");
+}
 
 /** 磁盘占用：实例、缓存、日志。 */
 async function loadStorage(): Promise<void> {
@@ -190,7 +251,7 @@ async function useJava(candidate: JavaCandidate): Promise<void> {
  */
 async function applyRouteFocus(): Promise<void> {
   const section = route.query.section;
-  if (section === "launch" || section === "general") {
+  if (section === "launch" || section === "general" || section === "update") {
     activeSection.value = section;
   }
 
@@ -421,7 +482,7 @@ onMounted(() => {
           </div>
 
           <!-- 启动 -->
-          <div v-else key="launch" class="flex flex-col gap-4">
+          <div v-if="activeSection === 'launch'" key="launch" class="flex flex-col gap-4">
             <AppCard title="游戏启动设置" padding="lg">
               <template #icon>
                 <Gamepad2 :size="16" class="text-brand-500" />
@@ -501,7 +562,15 @@ onMounted(() => {
                 未找到 Java 环境，可以先自动下载，或在实例设置里手动指定路径。
               </p>
 
-              <div v-else class="flex flex-col divide-y divide-line/50">
+              <!--
+                这里用完整的 v-if 而不是 v-else：
+                上面隔着 `<p v-if="javaError">`，v-else 必须紧邻前一个兄弟元素才成立。
+                （而且加上更新分区后，顶层也需要一条完整的 v-if / v-else-if 链。）
+              -->
+              <div
+                v-if="javas.length > 0 || loading"
+                class="flex flex-col divide-y divide-line/50"
+              >
                 <div
                   v-for="j in javas"
                   :key="j.path"
@@ -526,6 +595,59 @@ onMounted(() => {
                     {{ settings!.java.customPath === j.path ? "当前使用" : "使用" }}
                   </AppButton>
                 </div>
+              </div>
+            </AppCard>
+          </div>
+
+          <!-- 更新 -->
+          <div v-if="activeSection === 'update'" key="update" class="flex flex-col gap-4">
+            <AppCard title="启动器更新" padding="lg">
+              <template #icon>
+                <RefreshCw :size="16" class="text-brand-500" />
+              </template>
+
+              <SettingsRow
+                title="启动时自动检查更新"
+                description="启动器打开时自动检查一次有没有新版本。只发一个请求，不影响启动速度。"
+              >
+                <AppSwitch
+                  :model-value="settings!.update.autoCheck"
+                  label="启动时自动检查更新"
+                  @update:model-value="onToggleAutoCheck"
+                />
+              </SettingsRow>
+
+              <SettingsRow
+                title="检查更新"
+                description="手动检查一次。更新包必须通过数字签名校验，验签不通过不会被安装。"
+              >
+                <AppButton variant="secondary" size="sm" :loading="checkingUpdate" @click="checkNow">
+                  <RefreshCw :size="13" :class="{ 'animate-spin': checkingUpdate }" />
+                  检查更新
+                </AppButton>
+              </SettingsRow>
+            </AppCard>
+
+            <AppCard title="更新通道" padding="lg">
+              <template #icon>
+                <ShieldCheck :size="16" class="text-brand-500" />
+              </template>
+
+              <div class="flex flex-col gap-2 text-caption leading-6 text-ink-muted">
+                <p>
+                  更新包从官方渠道下载，并用内置的 minisign
+                  公钥验签——签名不匹配的更新包不会被安装。
+                </p>
+                <p>
+                  下载优先走腾讯云 COS，失败时自动回落到 GitHub Release；
+                  两个端点都不可用时会明确报错，不会静默失败。
+                </p>
+              </div>
+
+              <div class="mt-4">
+                <AppButton variant="soft" size="sm" @click="goUpdatePage">
+                  打开更新页
+                </AppButton>
               </div>
             </AppCard>
           </div>

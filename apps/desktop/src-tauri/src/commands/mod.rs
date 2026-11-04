@@ -99,6 +99,8 @@ macro_rules! all_commands {
             crate::commands::update::check_app_update,
             crate::commands::update::install_app_update,
             crate::commands::update::relaunch_app,
+            crate::commands::update::get_update_status,
+            crate::commands::update::set_update_auto_check,
         ]
     };
 }
