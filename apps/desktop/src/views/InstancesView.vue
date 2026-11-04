@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Folder,
   Globe,
+  Server,
   HeartPulse,
   Users,
   Import,
@@ -38,6 +39,7 @@ import type { MenuItem } from "@/components/common/menu";
 import InstanceResourceModal from "@/components/downloads/InstanceResourceModal.vue";
 import WorldBackupModal from "@/components/instances/WorldBackupModal.vue";
 import SavesModal from "@/components/instances/SavesModal.vue";
+import ServersModal from "@/components/instances/ServersModal.vue";
 import LanModal from "@/components/instances/LanModal.vue";
 import LogViewerModal from "@/components/instances/LogViewerModal.vue";
 import HealthModal from "@/components/instances/HealthModal.vue";
@@ -83,6 +85,7 @@ const logModal = useModalState<InstanceMetadata>();
 const healthModal = useModalState<InstanceMetadata>();
 const lanModal = useModalState<InstanceMetadata>();
 const savesModal = useModalState<InstanceMetadata>();
+const serversModal = useModalState<InstanceMetadata>();
 const settingsModal = useModalState<InstanceMetadata>();
 /** 导入外部实例弹窗。 */
 const importModalVisible = ref(false);
@@ -672,6 +675,7 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       disabled: destructiveBlocked,
     },
     { id: "saves", label: "存档管理", icon: Globe },
+    { id: "servers", label: "服务器列表", icon: Server },
     { id: "logs", label: "查看日志与崩溃", icon: ScrollText },
     {
       id: "diagnostics",
@@ -732,6 +736,9 @@ function runAction(id: string, inst: InstanceMetadata): void {
       break;
     case "saves":
       savesModal.open(inst);
+      break;
+    case "servers":
+      serversModal.open(inst);
       break;
     case "lan":
       lanModal.open(inst);
@@ -1155,6 +1162,13 @@ function formatPlaytime(secs: number): string {
       :instance="savesModal.item"
       :open="savesModal.visible"
       @close="savesModal.close"
+    />
+
+    <ServersModal
+      v-if="serversModal.item"
+      :instance="serversModal.item"
+      :open="serversModal.visible"
+      @close="serversModal.close"
     />
 
     <HealthModal

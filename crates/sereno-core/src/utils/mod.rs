@@ -7,6 +7,7 @@ pub mod archive;
 pub mod disk_cache;
 pub mod fs;
 pub mod http;
+pub mod nbt;
 pub mod paths;
 pub mod redact;
 pub mod remote_zip;

@@ -89,6 +89,21 @@ export const commands = {
   /**  打开某个存档的目录。 */
   openSaveFolder: (instanceId: string, saveName: string) =>
     typedError<null, LauncherError>(__TAURI_INVOKE("open_save_folder", { instanceId, saveName })),
+  /**  列出实例的服务器列表（servers.dat，保持游戏内显示顺序）。 */
+  listInstanceServers: (instanceId: string) =>
+    typedError<ServerSummary_Serialize[], LauncherError>(
+      __TAURI_INVOKE("list_instance_servers", { instanceId }),
+    ),
+  /**  添加服务器（追加到列表末尾）。 */
+  addInstanceServer: (instanceId: string, name: string, address: string) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("add_instance_server", { instanceId, name, address }),
+    ),
+  /**  按下标删除服务器。 */
+  deleteInstanceServer: (instanceId: string, index: number) =>
+    typedError<null, LauncherError>(
+      __TAURI_INVOKE("delete_instance_server", { instanceId, index }),
+    ),
   readInstanceLogs: (instanceId: string) =>
     typedError<InstanceLogs_Serialize, LauncherError>(
       __TAURI_INVOKE("read_instance_logs", { instanceId }),
@@ -2262,6 +2277,33 @@ export type SaveSummary_Serialize = {
   lastPlayedSecs: string;
   /**  存档目录总大小（字节，字符串——specta 禁止导出 u64）。 */
   sizeBytes: string;
+};
+
+/**  单个服务器的摘要。 */
+export type ServerSummary = ServerSummary_Serialize | ServerSummary_Deserialize;
+
+/**  单个服务器的摘要。 */
+export type ServerSummary_Deserialize = {
+  /**  在 servers.dat 中的下标（删除时按它定位；顺序即文件内顺序）。 */
+  index: number;
+  /**  服务器显示名。 */
+  name: string;
+  /**  服务器地址（`host:port`）。 */
+  address: string;
+  /**  `icon` 字段的 base64 data URL（游戏内截图）；无图标为 None。 */
+  iconDataUrl?: string | null;
+};
+
+/**  单个服务器的摘要。 */
+export type ServerSummary_Serialize = {
+  /**  在 servers.dat 中的下标（删除时按它定位；顺序即文件内顺序）。 */
+  index: number;
+  /**  服务器显示名。 */
+  name: string;
+  /**  服务器地址（`host:port`）。 */
+  address: string;
+  /**  `icon` 字段的 base64 data URL（游戏内截图）；无图标为 None。 */
+  iconDataUrl: string | null;
 };
 
 /**  启动器的磁盘占用概览。 */

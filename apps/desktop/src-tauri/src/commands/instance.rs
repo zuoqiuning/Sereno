@@ -159,6 +159,60 @@ pub async fn open_save_folder(
     Ok(())
 }
 
+/// 列出实例的服务器列表（servers.dat，保持游戏内显示顺序）。
+#[tauri::command]
+#[specta::specta]
+pub async fn list_instance_servers(
+    instance_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<sereno_core::instance::servers::ServerSummary>> {
+    let settings = state.snapshot_settings()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        sereno_core::instance::servers::list(&settings, &instance_id)
+    })
+    .await
+    .map_err(|e| sereno_core::LauncherError::Internal {
+        message: format!("服务器列表任务失败: {e}"),
+    })?
+}
+
+/// 添加服务器（追加到列表末尾）。
+#[tauri::command]
+#[specta::specta]
+pub async fn add_instance_server(
+    instance_id: String,
+    name: String,
+    address: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<()> {
+    let settings = state.snapshot_settings()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        sereno_core::instance::servers::add(&settings, &instance_id, &name, &address)
+    })
+    .await
+    .map_err(|e| sereno_core::LauncherError::Internal {
+        message: format!("添加服务器任务失败: {e}"),
+    })?
+}
+
+/// 按下标删除服务器。
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_instance_server(
+    instance_id: String,
+    index: u32,
+    state: tauri::State<'_, AppState>,
+) -> Result<()> {
+    let settings = state.snapshot_settings()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        sereno_core::instance::servers::delete(&settings, &instance_id, index)
+    })
+    .await
+    .map_err(|e| sereno_core::LauncherError::Internal {
+        message: format!("删除服务器任务失败: {e}"),
+    })?
+}
+
 /// 打开系统原生的“选择文件”对话框，用来指定实例专用 Java。
 #[tauri::command]
 #[specta::specta]

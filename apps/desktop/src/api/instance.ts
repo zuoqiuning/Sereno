@@ -1,7 +1,14 @@
 import { commands, events } from "@/bindings";
-import type { GameExited, ImportScan, InstanceLogs, InstanceMetadata, SaveSummary } from "@/types";
+import type {
+  GameExited,
+  ImportScan,
+  InstanceLogs,
+  InstanceMetadata,
+  SaveSummary,
+  ServerSummary,
+} from "@/types";
 
-export type { SaveSummary };
+export type { SaveSummary, ServerSummary };
 
 import { callCommand } from "./invoke";
 
@@ -134,4 +141,23 @@ export function deleteInstanceSave(instanceId: string, saveName: string): Promis
 /** 打开某个存档的目录。 */
 export function openSaveFolder(instanceId: string, saveName: string): Promise<null> {
   return callCommand(() => commands.openSaveFolder(instanceId, saveName));
+}
+
+/** 列出实例的服务器列表（servers.dat，保持游戏内显示顺序）。 */
+export function listInstanceServers(instanceId: string): Promise<ServerSummary[]> {
+  return callCommand(() => commands.listInstanceServers(instanceId));
+}
+
+/** 添加服务器（追加到列表末尾）。 */
+export function addInstanceServer(
+  instanceId: string,
+  name: string,
+  address: string,
+): Promise<null> {
+  return callCommand(() => commands.addInstanceServer(instanceId, name, address));
+}
+
+/** 按下标删除服务器。 */
+export function deleteInstanceServer(instanceId: string, index: number): Promise<null> {
+  return callCommand(() => commands.deleteInstanceServer(instanceId, index));
 }
