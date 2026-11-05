@@ -31,6 +31,7 @@ logs/
 # 代码导出文档：由 scripts/export-code.mjs 生成，每次运行覆盖。
 # 它是整个代码库的副本，不该进版本库（否则历史里会多一份全量代码）。
 /Sereno项目代码导出.md
+/PCL参考代码导出.md
 
 # ---- IDE ----
 .idea/
