@@ -156,12 +156,14 @@ async fn generate_manifest(args: &[String]) {
             .await
             .expect("补丁哈希失败");
 
+        let patch_size = std::fs::metadata(&patch_name).map(|m| m.len()).ok();
         new_patches.push(PatchInfo {
             from_version: old_version,
             to_version: new_version.to_string(),
             patch_url: format!("{}/{}", base_url.trim_end_matches('/'), patch_name),
             patch_hash,
             target_hash: new_hash.clone(),
+            patch_size,
         });
     }
 

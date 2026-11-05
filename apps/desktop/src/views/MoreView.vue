@@ -16,9 +16,9 @@ import {
   openSupporterPage,
   type SupporterTarget,
 } from "@/api/supporters";
-import { checkAppUpdate } from "@/api/update";
-import { checkAndApplyDelta } from "@/api/update";
+import { checkAppUpdate, checkDeltaUpdate, applyDeltaUpdate } from "@/api/update";
 import { toMessage } from "@/utils/error";
+import { askConfirm } from "@/composables/useConfirm";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
 
@@ -45,18 +45,38 @@ const updateStore = useUpdateStore();
  *
  * 没有独立的更新页——发现新版本就**叫醒全局更新卡片**，
  * 与启动时的自动检查是同一个入口。
+ *
+ * 增量通道**只检查不应用**：发现补丁先弹确认框征求用户同意，
+ * 用户点「立即更新」才真正下载合并并重启。
+ * 0.2.0 的闪退事故就是「检查」直接把应用退掉导致的，这里的
+ * askConfirm 是防回归的关键一环，不要删。
  */
 async function checkUpdate(): Promise<void> {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
-    // 增量优先：有补丁就合并并自动重启（带宽省 50–95%）；
-    // 没有补丁 / 安全模式 / 失败回退 → 无缝走原有全量更新
-    const delta = await checkAndApplyDelta();
-    if (delta.applied) {
-      toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
+    // 增量优先：有补丁先问用户（带宽省 50–95%）；
+    // 没有补丁 / 用户拒绝 / 检查失败 → 无缝走原有全量更新
+    const delta = await checkDeltaUpdate();
+    if (delta.available) {
       checkingUpdate.value = false;
-      return;
+      const ok = await askConfirm({
+        title: `发现新版本 v${delta.toVersion}`,
+        message:
+          "可使用增量更新，无需重新下载完整安装包。\n" +
+          "更新会自动完成，结束后应用将自动重启。\n\n" +
+          (delta.notes ? `更新说明：${delta.notes}` : ""),
+        confirmText: "立即更新",
+      });
+      if (!ok) return;
+      checkingUpdate.value = true;
+      const applied = await applyDeltaUpdate();
+      if (applied.applied) {
+        toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
+        checkingUpdate.value = false;
+        return;
+      }
+      // 增量被安全模式 / 失败回退拦截 → 继续走全量
     }
 
     const result = await checkAppUpdate();

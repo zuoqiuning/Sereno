@@ -79,6 +79,28 @@ fn sign(sk: &minisign::SecretKey, content: &[u8]) -> String {
         .to_string()
 }
 
+/// 在独立大栈线程里跑 `update()`。
+///
+/// 引擎新版 update() 的 future 体量很大，debug 构建下会超出 libtest
+/// 线程的默认栈（STATUS_STACK_OVERFLOW）；生产 release 构建无此问题，
+/// 这里只为让测试能跑。
+fn big_stack_update(
+    updater: DeltaUpdater,
+) -> Result<UpdateOutcome, tauri_delta_updater::DeltaError> {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(updater.update())
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
 /// 用引擎同款 create_patch 生成补丁并计算哈希。
 async fn make_patch(old: &[u8], new: &[u8], dir: &std::path::Path) -> (Vec<u8>, String, String) {
     let old_path = dir.join("_old.bin");
@@ -197,10 +219,11 @@ async fn delta_flow_sereno_integration() {
                 .current_version("0.1.0")
                 .executable_path(&old_exe)
                 .work_dir(&work_dir),
-        );
+        )
+        .unwrap();
         assert!(
             matches!(
-                updater.update().await.unwrap(),
+                big_stack_update(updater).unwrap(),
                 UpdateOutcome::FallbackToFullDownload { .. }
             ),
             "无 patches 字段的旧清单应回退全量而不是报错"
@@ -226,15 +249,13 @@ async fn delta_flow_sereno_integration() {
                 .current_version("0.1.0")
                 .executable_path(&old_exe)
                 .work_dir(&work_dir),
-        );
-        match updater.update().await.unwrap() {
-            UpdateOutcome::Patched {
-                staged_exe,
-                manifest,
-            } => {
-                assert_eq!(manifest.version, "0.2.0");
+        )
+        .unwrap();
+        match big_stack_update(updater).unwrap() {
+            UpdateOutcome::Patched { staged } => {
+                assert_eq!(staged.manifest().version, "0.2.0");
                 assert_eq!(
-                    std::fs::read(&staged_exe).unwrap(),
+                    std::fs::read(staged.staged_exe()).unwrap(),
                     new_bytes,
                     "合并产物必须与新版本逐字节一致"
                 );
@@ -259,8 +280,12 @@ async fn delta_flow_sereno_integration() {
                 .current_version("0.1.0")
                 .executable_path(&old_exe)
                 .work_dir(&work_dir),
+        )
+        .unwrap();
+        assert!(
+            big_stack_update(updater).is_err(),
+            "坏补丁必须被哈希校验拒绝"
         );
-        assert!(updater.update().await.is_err(), "坏补丁必须被哈希校验拒绝");
         let failures = work_dir.join("update_failures.txt");
         assert!(failures.is_file(), "失败应被记录进 update_failures.txt");
         let count: u32 = std::fs::read_to_string(&failures)
@@ -289,8 +314,9 @@ async fn delta_flow_sereno_integration() {
                     .current_version("0.1.0")
                     .executable_path(&old_exe)
                     .work_dir(&work_dir),
-            );
-            let _ = updater.update().await;
+            )
+            .unwrap();
+            let _ = big_stack_update(updater);
         }
         // 此时失败计数 = 3：换成好补丁也必须被安全模式拦截
         let server = MockServer::start();
@@ -309,9 +335,10 @@ async fn delta_flow_sereno_integration() {
                 .current_version("0.1.0")
                 .executable_path(&old_exe)
                 .work_dir(&work_dir),
-        );
+        )
+        .unwrap();
         assert!(
-            matches!(updater.update().await.unwrap(), UpdateOutcome::SafeMode),
+            matches!(big_stack_update(updater).unwrap(), UpdateOutcome::SafeMode),
             "连续失败 3 次后应进入安全模式"
         );
     }
@@ -330,10 +357,11 @@ async fn delta_flow_sereno_integration() {
                 .current_version("0.1.0")
                 .executable_path(&fresh_exe)
                 .work_dir(fresh.path()),
-        );
+        )
+        .unwrap();
         assert!(
             matches!(
-                updater.update().await.unwrap(),
+                big_stack_update(updater).unwrap(),
                 UpdateOutcome::FallbackToFullDownload { .. }
             ),
             "同版本应视为无需增量，交回全量通道"

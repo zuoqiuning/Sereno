@@ -115,7 +115,8 @@ macro_rules! all_commands {
             crate::commands::update::relaunch_app,
             crate::commands::update::get_update_status,
             crate::commands::update::set_update_auto_check,
-            crate::commands::updater::check_and_apply_delta,
+            crate::commands::updater::check_delta_update,
+            crate::commands::updater::apply_delta_update,
             crate::commands::updater::confirm_update_success,
         ]
     };

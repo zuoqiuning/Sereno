@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use sereno_core::Result;
-use sereno_core::updater::try_apply_delta_update;
+use sereno_core::updater::{check_delta_update as check_delta, try_apply_delta_update};
 
 use crate::state::AppState;
 
@@ -25,6 +25,7 @@ const MANIFEST_BASE_URL: &str = "https://sereno-updates-1316381240.cos.ap-beijin
 /// 前端语义：`applied = true` 时应用即将重启（后端已拉起替换脚本）；
 /// 否则按 `has_update` 决定是否继续走全量更新流程。
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct DeltaOutcome {
     /// `true` = 没有可用增量（无补丁 / 安全模式 / 合并失败），走全量更新。
     pub has_update: bool,
@@ -43,9 +44,69 @@ fn delta_fallback(message: impl Into<String>) -> DeltaOutcome {
     }
 }
 
+/// 「增量检查」结果：只报告有没有补丁，**不执行任何更新动作**。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeltaCheckOutcome {
+    /// `true` = 有可用增量补丁（toVersion/notes 有效），应征求用户同意后再应用。
+    pub available: bool,
+    /// 补丁目标版本（available 时有效）。
+    pub to_version: String,
+    /// 清单里的更新说明（available 时有效）。
+    pub notes: String,
+}
+
+/// 只检查增量更新是否可用（不下载、不应用）。
 #[tauri::command]
 #[specta::specta]
-pub async fn check_and_apply_delta(
+pub async fn check_delta_update(
+    current_version: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<DeltaCheckOutcome> {
+    let settings = state.snapshot_settings()?;
+    let current_version = current_version
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| app.package_info().version.to_string());
+
+    let unavailable = DeltaCheckOutcome {
+        available: false,
+        to_version: String::new(),
+        notes: String::new(),
+    };
+
+    // 任何失败（网络 / 验签 / 解析）都降级为"没有可用增量"，
+    // 让调用方继续走全量检查通道，绝不阻塞用户。
+    let client = match sereno_core::utils::http::build_client(&settings) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!("构建更新用 HTTP 客户端失败: {e}");
+            return Ok(unavailable);
+        }
+    };
+    let manifest_url = format!("{MANIFEST_BASE_URL}/latest.json");
+    match check_delta(&client, &manifest_url, MANIFEST_PUBKEY, &current_version).await {
+        Ok(Some(check)) => Ok(DeltaCheckOutcome {
+            available: true,
+            to_version: check.to_version,
+            notes: check.notes,
+        }),
+        Ok(None) => Ok(unavailable),
+        Err(e) => {
+            tracing::warn!("增量检查失败，回退全量检查: {e}");
+            Ok(unavailable)
+        }
+    }
+}
+
+/// 应用增量更新：下载补丁 → 校验合并 → 拉起替换脚本 → 退出重启。
+///
+/// **必须先经用户确认**（关于页的「检查更新」先用 check_delta_update
+/// 探测并弹确认框），直接调用等于未经同意就把应用退掉——0.2.0 闪退事故的教训。
+#[tauri::command]
+#[specta::specta]
+pub async fn apply_delta_update(
     current_version: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -53,8 +114,6 @@ pub async fn check_and_apply_delta(
     let settings = state.snapshot_settings()?;
     let _ = &settings; // 读取即校验设置锁可用（安全检查项：更新命令不覆盖账户状态）
 
-    // 前端一般不传版本号，以应用自身的版本为准（防伪造/防漂移）；
-    // 参数保留 Option 形态是为了兼容启动脚本等特殊调用方。
     let current_version = current_version
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())

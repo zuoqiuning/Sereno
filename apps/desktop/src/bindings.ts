@@ -647,9 +647,20 @@ export const commands = {
    */
   setUpdateAutoCheck: (autoCheck: boolean) =>
     typedError<null, LauncherError>(__TAURI_INVOKE("set_update_auto_check", { autoCheck })),
-  checkAndApplyDelta: (currentVersion: string | null) =>
+  /**  只检查增量更新是否可用（不下载、不应用）。 */
+  checkDeltaUpdate: (currentVersion: string | null) =>
+    typedError<DeltaCheckOutcome, LauncherError>(
+      __TAURI_INVOKE("check_delta_update", { currentVersion }),
+    ),
+  /**
+   *  应用增量更新：下载补丁 → 校验合并 → 拉起替换脚本 → 退出重启。
+   *
+   *  **必须先经用户确认**（关于页的「检查更新」先用 check_delta_update
+   *  探测并弹确认框），直接调用等于未经同意就把应用退掉——0.2.0 闪退事故的教训。
+   */
+  applyDeltaUpdate: (currentVersion: string | null) =>
     typedError<DeltaOutcome, LauncherError>(
-      __TAURI_INVOKE("check_and_apply_delta", { currentVersion }),
+      __TAURI_INVOKE("apply_delta_update", { currentVersion }),
     ),
   confirmUpdateSuccess: () =>
     typedError<null, LauncherError>(__TAURI_INVOKE("confirm_update_success")),
@@ -1099,6 +1110,16 @@ export type CrashFinding_Serialize = {
   actionLabel: string | null;
 };
 
+/**  「增量检查」结果：只报告有没有补丁，**不执行任何更新动作**。 */
+export type DeltaCheckOutcome = {
+  /**  `true` = 有可用增量补丁（toVersion/notes 有效），应征求用户同意后再应用。 */
+  available: boolean;
+  /**  补丁目标版本（available 时有效）。 */
+  toVersion: string;
+  /**  清单里的更新说明（available 时有效）。 */
+  notes: string;
+};
+
 /**
  *  增量更新检查的结果。
  *
@@ -1107,7 +1128,7 @@ export type CrashFinding_Serialize = {
  */
 export type DeltaOutcome = {
   /**  `true` = 没有可用增量（无补丁 / 安全模式 / 合并失败），走全量更新。 */
-  has_update: boolean;
+  hasUpdate: boolean;
   /**  `true` = 增量已合并并拉起替换脚本，应用即将退出重启。 */
   applied: boolean;
   /**  面向用户的一句话说明。 */
