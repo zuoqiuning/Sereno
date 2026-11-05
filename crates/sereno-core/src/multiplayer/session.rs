@@ -423,7 +423,14 @@ impl SessionManager {
         let stderr_log = log_dir.join("host-stderr.log");
 
         // 兼容旧内核：--no-tun 不传给房主（房主要 TUN）
-        let script = host_wrapper_script(&kernel, &args, &stdout_log, &stderr_log, &self.stop_file);
+        let script = host_wrapper_script(
+            &kernel,
+            &args,
+            &stdout_log,
+            &stderr_log,
+            &self.stop_file,
+            mc_port,
+        );
         let encoded = encode_powershell_command(&script);
         let inner = encode_powershell_command(&format!(
             "try {{ $p = Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile','-EncodedCommand','{encoded}' -Verb RunAs -PassThru; $p.WaitForExit() }} catch {{ exit 1 }}"
@@ -666,7 +673,14 @@ impl SessionManager {
         })?;
         let stdout_log = log_dir.join("guest-stdout.log");
         let stderr_log = log_dir.join("guest-stderr.log");
-        let script = host_wrapper_script(&kernel, &args, &stdout_log, &stderr_log, &self.stop_file);
+        let script = host_wrapper_script(
+            &kernel,
+            &args,
+            &stdout_log,
+            &stderr_log,
+            &self.stop_file,
+            mc_port,
+        );
         let encoded = encode_powershell_command(&script);
         let inner = encode_powershell_command(&format!(
             "try {{ $p = Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile','-EncodedCommand','{encoded}' -Verb RunAs -PassThru; $p.WaitForExit() }} catch {{ exit 1 }}"
@@ -1003,6 +1017,7 @@ fn host_wrapper_script(
     stdout_log: &Path,
     stderr_log: &Path,
     stop_file: &Path,
+    mc_port: u16,
 ) -> String {
     // EncodedCommand 之外不能再有引号地狱：路径统一用单引号 + 双写转义
     let q = |s: &Path| format!("'{}'", s.display().to_string().replace('\'', "''"));
@@ -1012,11 +1027,27 @@ fn host_wrapper_script(
         .collect::<Vec<_>>()
         .join(",");
 
+    // 防火墙放行世界端口（入站 TCP/UDP）：TUN 虚拟网卡通常被 Windows 识别为
+    // 「公用网络」，java.exe 的入站连接默认被拦——房客转发过来的连接会
+    // 被 Connection reset。房主端本来就在提权上下文里，顺手加规则；
+    // 停止联机时再删掉，不留常驻开口。
+    let fw_allow = format!(
+        "netsh advfirewall firewall delete-rule name='Sereno MC {mc_port}' | Out-Null; \
+         netsh advfirewall firewall add-rule name='Sereno MC {mc_port}' dir=in action=allow protocol=TCP localport={mc_port} | Out-Null; \
+         netsh advfirewall firewall add-rule name='Sereno MC {mc_port} UDP' dir=in action=allow protocol=UDP localport={mc_port} | Out-Null;"
+    );
+    let fw_remove = format!(
+        "netsh advfirewall firewall delete-rule name='Sereno MC {mc_port}' | Out-Null; \
+         netsh advfirewall firewall delete-rule name='Sereno MC {mc_port} UDP' | Out-Null;"
+    );
+
     format!(
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
+         {fw_allow} \
          $p = Start-Process -FilePath {} -ArgumentList @({}) -PassThru -WindowStyle Hidden -RedirectStandardOutput {} -RedirectStandardError {}; \
          while (-not (Test-Path -LiteralPath {})) {{ Start-Sleep -Milliseconds 600; if ($p.HasExited) {{ break }} }}; \
-         if (-not $p.HasExited) {{ Stop-Process -Id $p.Id -Force }}",
+         if (-not $p.HasExited) {{ Stop-Process -Id $p.Id -Force }}; \
+         {fw_remove}",
         q(kernel),
         arg_list,
         q(stdout_log),
