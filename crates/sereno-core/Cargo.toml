@@ -98,3 +98,5 @@ dotenvy = "0.15.7"
 [dev-dependencies]
 tempfile = "3"
 insta = "1"
+# 集成测试里给模拟清单签名用（与引擎同款 minisign 实现）
+minisign = "0.7"

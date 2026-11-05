@@ -69,7 +69,9 @@ async fn generate_manifest(args: &[String]) {
     let mut manifest: UpdateManifest = match std::fs::read_to_string(existing_json) {
         Ok(content) => serde_json::from_str(&content)
             .unwrap_or_else(|e| die(&format!("解析现有 {existing_json} 失败: {e}"))),
-        Err(_) => die(&format!("现有清单 {existing_json} 不存在——先跑 gen-updater-manifest.mjs")),
+        Err(_) => die(&format!(
+            "现有清单 {existing_json} 不存在——先跑 gen-updater-manifest.mjs"
+        )),
     };
 
     let new_path = Path::new(new_exe);
@@ -132,22 +134,30 @@ async fn generate_manifest(args: &[String]) {
         });
     }
 
-    // 智能合并：同 from_version 的新补丁覆盖旧记录，保留其它历史补丁
-    manifest.patches.retain(|p| {
+    // 智能合并（分组格式，patches 按平台分组）：本平台内同 from_version
+    // 的新补丁覆盖旧记录，其它平台与历史补丁全部保留
+    let entry = manifest.patches.entry(platform.to_string()).or_default();
+    entry.retain(|p| {
         !new_patches
             .iter()
             .any(|new_p| p.from_version == new_p.from_version)
     });
-    manifest.patches.extend(new_patches);
+    entry.extend(new_patches);
 
     let json_bytes = serde_json::to_vec_pretty(&manifest).expect("序列化清单失败");
     std::fs::write("latest.json", &json_bytes).expect("写入 latest.json 失败");
+    let patch_count = manifest
+        .patches
+        .get(platform)
+        .map(Vec::len)
+        .unwrap_or_default();
     println!(
-        "[OK] latest.json 已生成：版本 {}，补丁总数 {}，平台 {platform}",
-        manifest.version,
-        manifest.patches.len()
+        "[OK] latest.json 已生成：版本 {}，平台 {platform}，补丁 {patch_count} 条",
+        manifest.version
     );
-    println!("[NEXT] 签名后上传：TAURI_SIGNING_PRIVATE_KEY=<私钥内容> pnpm tauri signer sign latest.json");
+    println!(
+        "[NEXT] 签名后上传：TAURI_SIGNING_PRIVATE_KEY=<私钥内容> pnpm tauri signer sign latest.json"
+    );
 }
 
 /// 发布前的闭环自检：用引擎同款 apply_patch 把补丁打回旧包，
