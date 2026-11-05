@@ -27,7 +27,7 @@ import {
 import { toMessage } from "@/utils/error";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
-import type { MultiplayerStatus, ServerStatus } from "@/bindings";
+import type { MultiplayerStatus, WorldCheck } from "@/bindings";
 
 /**
  * 联机页（顶层导航独立页面）。
@@ -58,7 +58,7 @@ const status = ref<MultiplayerStatus | null>(null);
 
 /** 世界自检状态。 */
 const checking = ref(false);
-const worldCheck = ref<ServerStatus | null>(null);
+const worldCheck = ref<WorldCheck | null>(null);
 const worldCheckError = ref("");
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -189,12 +189,23 @@ async function autoDetect(): Promise<void> {
  */
 async function checkWorld(): Promise<void> {
   if (checking.value) return;
-  const port = status.value?.phase === "connected" ? status.value.mcPort : mcPort.value;
+  // 房客查「转发链路」：用会话给出的本机转发端口（不是房主的世界端口），
+  // 且用严格判定（EasyTier 转发监听永远接受连接，链路断了也会秒关）；
+  // 房主查自己的世界：用输入框端口，TCP 连上即可达
+  const guest = status.value !== null && status.value.role === "guest";
+  const port = guest
+    ? Number((status.value?.localAddr ?? "").split(":").pop() ?? 0)
+    : mcPort.value;
+  if (!port) {
+    worldCheck.value = null;
+    worldCheckError.value = "还没有可检测的端口——先加入房间或填写端口";
+    return;
+  }
   checking.value = true;
   worldCheck.value = null;
   worldCheckError.value = "";
   try {
-    worldCheck.value = await checkWorldReachable(port);
+    worldCheck.value = await checkWorldReachable(port, guest);
   } catch (err) {
     worldCheckError.value = toMessage(err);
   } finally {
@@ -348,16 +359,20 @@ onBeforeUnmount(stopPolling);
           </div>
           <div
             v-if="worldCheck"
-            class="flex items-start gap-2 rounded-md bg-success/10 px-3 py-2 text-caption text-ink"
+            class="flex items-start gap-2 rounded-md px-3 py-2 text-caption text-ink"
+            :class="worldCheck.reachable ? 'bg-success/10' : 'bg-danger/10'"
           >
-            <CheckCircle2 :size="15" class="mt-0.5 shrink-0 text-success" />
+            <CheckCircle2
+              v-if="worldCheck.reachable"
+              :size="15"
+              class="mt-0.5 shrink-0 text-success"
+            />
+            <XCircle v-else :size="15" class="mt-0.5 shrink-0 text-danger" />
             <span>
-              世界在线：<span class="font-medium">{{ worldCheck.motd.trim() || "未命名世界" }}</span>
-              · {{ worldCheck.version }} · 玩家 {{ worldCheck.playersOnline }}/{{
-                worldCheck.playersMax
-              }}
-              <span class="block text-micro text-ink-muted">
-                {{ status.role === "host" ? "朋友现在可以通过房间码加入了" : "游戏内「直接连接」输入上方地址即可进入" }}
+              {{ worldCheck.detail }}
+              <span v-if="worldCheck.motd" class="block text-micro text-ink-muted">
+                世界：{{ worldCheck.motd
+                }}{{ worldCheck.version ? " · " + worldCheck.version : "" }}
               </span>
             </span>
           </div>
@@ -453,14 +468,21 @@ onBeforeUnmount(stopPolling);
           </div>
           <div
             v-if="worldCheck"
-            class="flex items-start gap-2 rounded-md bg-success/10 px-3 py-2 text-caption text-ink"
+            class="flex items-start gap-2 rounded-md px-3 py-2 text-caption text-ink"
+            :class="worldCheck.reachable ? 'bg-success/10' : 'bg-danger/10'"
           >
-            <CheckCircle2 :size="15" class="mt-0.5 shrink-0 text-success" />
+            <CheckCircle2
+              v-if="worldCheck.reachable"
+              :size="15"
+              class="mt-0.5 shrink-0 text-success"
+            />
+            <XCircle v-else :size="15" class="mt-0.5 shrink-0 text-danger" />
             <span>
-              世界在线：<span class="font-medium">{{ worldCheck.motd.trim() || "未命名世界" }}</span>
-              · {{ worldCheck.version }} · 玩家 {{ worldCheck.playersOnline }}/{{
-                worldCheck.playersMax
-              }}
+              {{ worldCheck.detail }}
+              <span v-if="worldCheck.motd" class="block text-micro text-ink-muted">
+                世界：{{ worldCheck.motd
+                }}{{ worldCheck.version ? " · " + worldCheck.version : "" }}
+              </span>
             </span>
           </div>
           <div

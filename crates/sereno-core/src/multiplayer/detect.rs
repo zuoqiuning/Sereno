@@ -13,10 +13,9 @@
 //! 只连 127.0.0.1，不产生任何外联流量。
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use crate::Result;
-
-use super::ping;
 
 /// 探测结果：端口 + 世界信息（给 UI 确认用）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -34,24 +33,101 @@ pub struct DetectedWorld {
 ///
 /// 返回 `None` 表示没有找到（游戏没开 / 还没「对局域网开放」），
 /// 调用方保持手动输入兜底。整个探测约 1–2 秒。
-pub async fn detect_world() -> Result<Option<DetectedWorld>> {
-    let candidates = candidate_ports()?;
-    if candidates.is_empty() {
-        return Ok(None);
+///
+/// ## 两级策略
+///
+/// 1. **游戏日志识别（首选，Sereno 启动的实例专属）**：
+///    扫描 `<instances_root>/inst-*/minecraft/logs/latest.log`，
+///    找最近修改的含「Started serving on <端口>」或
+///    「本地游戏已在端口[<端口>]上开启」的日志——端口直接来自游戏本体，
+///    **任何 modloader、任何协议行为都能识别**（NeoForge 会拒绝状态探测，
+///    但改不了它自己打的日志）；
+/// 2. **Java 进程 + MC 协议探测（兜底）**：覆盖非 Sereno 启动的
+///    专用服务端等场景。
+pub async fn detect_world(
+    instances_root: Option<&std::path::Path>,
+) -> Result<Option<DetectedWorld>> {
+    let mut candidates: Vec<u16> = Vec::new();
+
+    // ---- 一级：实例日志 ----
+    if let Some(port) = instances_root.and_then(latest_lan_port_from_logs) {
+        tracing::info!(port, "从实例游戏日志识别到局域网世界端口");
+        candidates.push(port);
+    }
+
+    // ---- 二级：Java 进程端口 ----
+    for port in candidate_ports()? {
+        if !candidates.contains(&port) {
+            candidates.push(port);
+        }
     }
 
     for port in candidates {
         let addr = format!("127.0.0.1:{port}");
-        // 单端口探测超时收得很短：候选通常只有一两个
-        if let Ok(status) = ping::ping(&addr, std::time::Duration::from_millis(900)).await {
+        // 端口有效性：只要 TCP 能连上就算数——**不做 MC 协议探测**，
+        // NeoForge 局域网世界对状态查询直接断开（实测），协议探测会把
+        // 好端端的端口误判成"没检测到"
+        if tcp_port_open(&addr, std::time::Duration::from_millis(1200)).await {
             return Ok(Some(DetectedWorld {
                 port,
-                motd: status.motd,
-                version: status.version,
+                motd: "游戏内局域网世界".into(),
+                version: String::new(),
             }));
         }
     }
     Ok(None)
+}
+
+/// 从实例日志里找最近一次「对局域网开放」的端口。
+///
+/// 只看 mtime 最新的那个实例的日志（当前正在玩的），且日志尾部
+/// 8KB 内命中即认定有效。没有实例根目录 / 没命中 → `None`。
+fn latest_lan_port_from_logs(instances_root: &std::path::Path) -> Option<u16> {
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    let Ok(entries) = std::fs::read_dir(instances_root) else {
+        return None;
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        let log = entry
+            .path()
+            .join("minecraft")
+            .join("logs")
+            .join("latest.log");
+        let Ok(meta) = std::fs::metadata(&log) else {
+            continue;
+        };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        if newest.as_ref().is_none_or(|(t, _)| modified > *t) {
+            newest = Some((modified, log));
+        }
+    }
+    let (_, log) = newest?;
+    let content = std::fs::read_to_string(&log).ok()?;
+    let tail = &content[content.len().saturating_sub(16 * 1024)..];
+
+    // 两种端口语录：vanilla 英文与简中聊天栏
+    for marker in ["Started serving on ", "本地游戏已在端口["] {
+        if let Some(pos) = tail.rfind(marker) {
+            let rest = &tail[pos + marker.len()..];
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(port) = digits.parse::<u16>()
+                && port > 0
+            {
+                return Some(port);
+            }
+        }
+    }
+    None
+}
+
+/// 纯 TCP 连通性检测（不做任何协议交互）。
+async fn tcp_port_open(addr: &str, timeout: std::time::Duration) -> bool {
+    matches!(
+        tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr)).await,
+        Ok(Ok(_))
+    )
 }
 
 /// 枚举 Java 进程监听的 TCP 端口。
@@ -204,7 +280,7 @@ mod tests {
         // 无游戏运行时应该优雅返回 None（而不是错误）
         let result = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(detect_world());
+            .block_on(detect_world(None));
         assert!(result.is_ok());
     }
 }

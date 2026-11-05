@@ -475,20 +475,27 @@ export const commands = {
   /**
    *  自动探测本机游戏世界端口。
    *
-   *  枚举 Java 进程的监听端口并逐个做 MC 状态探测；命中即返回端口与世界信息。
-   *  游戏未开 / 未「对局域网开放」时返回 `None`，前端保持手动输入兜底。
+   *  两级策略：先扫 Sereno 实例的**游戏日志**（`Started serving on N` /
+   *  「本地游戏已在端口[N]上开启」，任何 modloader 都能识别），再用
+   *  Java 进程 + TCP 连通性兜底。游戏 world **暂停时也能识别端口**
+   *  （不依赖 MC 协议——NeoForge 会拒绝状态查询，实测必失败）。
    */
   detectWorldPort: () =>
     typedError<DetectedWorld | null, LauncherError>(__TAURI_INVOKE("detect_world_port")),
   /**
-   *  世界自检：对指定端口做一次 Server List Ping。
+   *  世界自检：判断世界端口是否可达。
    *
-   *  给房主的「我自己也能测」按钮用：能 ping 通 = 游戏世界确实开放且可被
-   *  连接（端口、协议、世界三者就绪），联机出去只是把这个端口映射给朋友。
-   *  返回 MOTD / 版本 / 在线人数，前端直接展示。
+   *  TCP 连接层判定，**不依赖 MC 状态协议**（NeoForge 局域网世界会拒绝
+   *  状态查询——实测所有协议号都 EOF，但连接可达这一事实不受影响）。
+   *
+   *  `strict`：房客查转发链路时传 `true`（EasyTier 的转发监听永远接受
+   *  连接，链路断了也会秒关，必须经受住进一步判定）；房主查自己的
+   *  世界传 `false`（TCP 连上就算通）。
    */
-  checkWorldReachable: (port: number) =>
-    typedError<ServerStatus, LauncherError>(__TAURI_INVOKE("check_world_reachable", { port })),
+  checkWorldReachable: (port: number, strict: boolean) =>
+    typedError<WorldCheck, LauncherError>(
+      __TAURI_INVOKE("check_world_reachable", { port, strict }),
+    ),
   /**  当前登录态。 */
   getAccountState: () =>
     typedError<AccountState_Serialize, LauncherError>(__TAURI_INVOKE("get_account_state")),
@@ -2338,18 +2345,6 @@ export type SaveSummary_Serialize = {
   sizeBytes: string;
 };
 
-/**  探测结果。 */
-export type ServerStatus = {
-  /**  MOTD（描述文本，可能带 § 颜色码，前端按原样展示即可）。 */
-  motd: string;
-  /**  服务端版本字符串（如 `1.21.1`）。 */
-  version: string;
-  /**  当前在线玩家数。 */
-  playersOnline: number;
-  /**  最大玩家数。 */
-  playersMax: number;
-};
-
 /**  单个服务器的摘要。 */
 export type ServerSummary = ServerSummary_Serialize | ServerSummary_Deserialize;
 
@@ -2623,6 +2618,18 @@ export type WorldBackup = {
   size: number;
   /**  Unix 时间戳（秒）。 */
   createdAt: number;
+};
+
+/**  世界连通性检查结果。 */
+export type WorldCheck = {
+  /**  世界端口是否可达。 */
+  reachable: boolean;
+  /**  面向用户的一句话结论。 */
+  detail: string;
+  /**  MOTD（MC 状态查询成功时才有；NeoForge 拒绝查询时为空）。 */
+  motd: string;
+  /**  服务端版本（同上）。 */
+  version: string;
 };
 
 /* Tauri Specta runtime */

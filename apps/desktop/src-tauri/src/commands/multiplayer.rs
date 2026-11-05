@@ -94,27 +94,35 @@ pub async fn stop_multiplayer(state: tauri::State<'_, AppState>) -> Result<()> {
 
 /// 自动探测本机游戏世界端口。
 ///
-/// 枚举 Java 进程的监听端口并逐个做 MC 状态探测；命中即返回端口与世界信息。
-/// 游戏未开 / 未「对局域网开放」时返回 `None`，前端保持手动输入兜底。
+/// 两级策略：先扫 Sereno 实例的**游戏日志**（`Started serving on N` /
+/// 「本地游戏已在端口[N]上开启」，任何 modloader 都能识别），再用
+/// Java 进程 + TCP 连通性兜底。游戏 world **暂停时也能识别端口**
+/// （不依赖 MC 协议——NeoForge 会拒绝状态查询，实测必失败）。
 #[tauri::command]
 #[specta::specta]
-pub async fn detect_world_port() -> Result<Option<sereno_core::multiplayer::DetectedWorld>> {
-    sereno_core::multiplayer::detect::detect_world().await
+pub async fn detect_world_port(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<sereno_core::multiplayer::DetectedWorld>> {
+    let settings = state.snapshot_settings()?;
+    let instances_root = sereno_core::utils::paths::instances_root(&settings).ok();
+    sereno_core::multiplayer::detect::detect_world(instances_root.as_deref()).await
 }
 
-/// 世界自检：对指定端口做一次 Server List Ping。
+/// 世界自检：判断世界端口是否可达。
 ///
-/// 给房主的「我自己也能测」按钮用：能 ping 通 = 游戏世界确实开放且可被
-/// 连接（端口、协议、世界三者就绪），联机出去只是把这个端口映射给朋友。
-/// 返回 MOTD / 版本 / 在线人数，前端直接展示。
+/// TCP 连接层判定，**不依赖 MC 状态协议**（NeoForge 局域网世界会拒绝
+/// 状态查询——实测所有协议号都 EOF，但连接可达这一事实不受影响）。
+///
+/// `strict`：房客查转发链路时传 `true`（EasyTier 的转发监听永远接受
+/// 连接，链路断了也会秒关，必须经受住进一步判定）；房主查自己的
+/// 世界传 `false`（TCP 连上就算通）。
 #[tauri::command]
 #[specta::specta]
-pub async fn check_world_reachable(port: u16) -> Result<sereno_core::multiplayer::ServerStatus> {
-    sereno_core::multiplayer::ping::ping(
-        &format!("127.0.0.1:{port}"),
-        std::time::Duration::from_secs(3),
-    )
-    .await
+pub async fn check_world_reachable(
+    port: u16,
+    strict: bool,
+) -> Result<sereno_core::multiplayer::ping::WorldCheck> {
+    Ok(sereno_core::multiplayer::ping::check_world(&format!("127.0.0.1:{port}"), strict).await)
 }
 
 /// 查询联机状态（前端 1–2 秒轮询一次）。

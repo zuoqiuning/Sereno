@@ -268,3 +268,85 @@ mod tests {
         assert_eq!(description_text(&serde_json::json!(42)), None);
     }
 }
+
+/// 世界连通性检查结果。
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldCheck {
+    /// 世界端口是否可达。
+    pub reachable: bool,
+    /// 面向用户的一句话结论。
+    pub detail: String,
+    /// MOTD（MC 状态查询成功时才有；NeoForge 拒绝查询时为空）。
+    pub motd: String,
+    /// 服务端版本（同上）。
+    pub version: String,
+}
+
+/// 世界连通性检查——**TCP 连接层，不依赖 MC 状态协议**。
+///
+/// NeoForge 局域网世界对状态查询直接断开（实测所有协议号都 EOF），
+/// 但端口开放、连接可达这一事实在连接层就成立了。
+///
+/// - `strict=false`（房主查自己的世界）：TCP 连上即可达——状态查询
+///   被拒绝不影响"朋友能连进来"这个结论；
+/// - `strict=true`（房客查转发链路）：EasyTier 的转发监听**永远会
+///   接受连接**，链路断了也会秒关——必须经受住状态查询或存活判定
+///   才算真的通到了房主世界。
+pub async fn check_world(addr: &str, strict: bool) -> WorldCheck {
+    let port = addr.rsplit_once(':').map(|(_, p)| p).unwrap_or(addr);
+
+    // 1) TCP 连通性
+    match tokio::time::timeout(
+        Duration::from_millis(2500),
+        tokio::net::TcpStream::connect(addr),
+    )
+    .await
+    {
+        Err(_) => {
+            return WorldCheck {
+                reachable: false,
+                detail: format!("端口 {port} 连接超时：世界未运行、游戏停在暂停界面，或端口不对"),
+                motd: String::new(),
+                version: String::new(),
+            };
+        }
+        Ok(Err(e)) => {
+            return WorldCheck {
+                reachable: false,
+                detail: format!("端口 {port} 无法连接（{e}）：世界未开放或端口不对"),
+                motd: String::new(),
+                version: String::new(),
+            };
+        }
+        Ok(Ok(stream)) => drop(stream),
+    }
+
+    // 2) 端口开着：尝试 MC 状态查询拿详情（失败不影响结论）
+    match ping(addr, Duration::from_millis(1500)).await {
+        Ok(status) => WorldCheck {
+            reachable: true,
+            detail: if strict {
+                "隧道已通到房主的世界，游戏内可以直接进入".into()
+            } else {
+                "世界在线，朋友可以通过房间码加入了".into()
+            },
+            motd: status.motd,
+            version: status.version,
+        },
+        Err(e) if strict => WorldCheck {
+            reachable: false,
+            detail: format!(
+                "端口开放但转发链路未通到房主的世界（{e}）——请确认房主已对局域网开放且没有停在暂停界面"
+            ),
+            motd: String::new(),
+            version: String::new(),
+        },
+        Err(_) => WorldCheck {
+            reachable: true,
+            detail: "端口开放且连接可达（服务端不回应状态查询——NeoForge 属正常现象）".into(),
+            motd: String::new(),
+            version: String::new(),
+        },
+    }
+}
