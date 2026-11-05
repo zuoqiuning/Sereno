@@ -35,16 +35,33 @@ pub struct ServerStatus {
 ///
 /// 任何失败（拒绝连接、超时、协议不符）都返回 `Err`，
 /// 调用方把它当「世界还没就绪」处理即可，不需要区分原因。
+///
+/// ## 协议版本重试
+///
+/// 握手包默认带 `protocol=-1`（"未知版本"，vanilla 服务端对 status
+/// 阶段的协议号不敏感）。但 **NeoForge 等 modded 服务端**对未知协议
+/// 可能直接断开连接（表现为 "early eof"）——此时依次改用真实协议号
+/// 重试：767（1.21.x）、763（1.20.x），覆盖绝大多数在服版本。
 pub async fn ping(addr: &str, timeout: Duration) -> Result<ServerStatus> {
-    match tokio::time::timeout(timeout, ping_inner(addr)).await {
-        Ok(inner) => inner,
-        Err(_) => Err(LauncherError::Internal {
-            message: format!("探测超时: {addr}"),
-        }),
+    let mut last_err: Option<LauncherError> = None;
+    // -1 覆盖 vanilla 全系；767/763 覆盖 1.21.x / 1.20.x（NeoForge/Fabric）
+    for protocol in [-1i32, 767, 763] {
+        match tokio::time::timeout(timeout, ping_inner(addr, protocol)).await {
+            Ok(Ok(status)) => return Ok(status),
+            Ok(Err(e)) => last_err = Some(e),
+            Err(_) => {
+                last_err = Some(LauncherError::Internal {
+                    message: format!("探测超时: {addr}"),
+                });
+            }
+        }
     }
+    Err(last_err.unwrap_or(LauncherError::Internal {
+        message: format!("探测失败: {addr}"),
+    }))
 }
 
-async fn ping_inner(addr: &str) -> Result<ServerStatus> {
+async fn ping_inner(addr: &str, protocol_version: i32) -> Result<ServerStatus> {
     let mut stream = TcpStream::connect(addr)
         .await
         .map_err(|e| LauncherError::Internal {
@@ -55,7 +72,7 @@ async fn ping_inner(addr: &str) -> Result<ServerStatus> {
 
     // ---- 握手包：protocol_version=-1（状态查询），next_state=1 ----
     let mut handshake = Vec::with_capacity(32);
-    write_varint(&mut handshake, -1i32 as u32); // protocol version: unknown
+    write_varint(&mut handshake, protocol_version as u32);
     write_varint(&mut handshake, host.len() as u32);
     handshake.extend_from_slice(host.as_bytes());
     handshake.extend_from_slice(&port.to_be_bytes());

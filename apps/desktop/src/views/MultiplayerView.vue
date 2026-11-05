@@ -100,11 +100,34 @@ const linkBadge = computed(() => {
   }
 });
 
-/** 房间码输入纠偏 + 分组显示。 */
-const formattedInput = computed(() => {
-  const upper = roomCodeInput.value.toUpperCase().replace(/I/g, "1").replace(/O/g, "0");
-  const body = upper.replace(/[^0-9A-Z]/g, "").replace(/^U\//, "");
-  return (body.match(/.{1,4}/g) ?? []).join("-");
+/**
+ * 房间码规范化（与后端 `room_code::normalize` 同一规则）：
+ * 大写、`I→1`、`O→0`、丢弃分隔符、`U/` 前缀可选（16 位正文两种解释取其一）。
+ */
+function normalizeCode(raw: string): string {
+  const upper = raw.toUpperCase().replace(/I/g, "1").replace(/O/g, "0");
+  const kept = upper
+    .split("")
+    .filter((c) => /[A-Z0-9/]/.test(c))
+    .join("");
+  const bodyLen = 16;
+  if (kept.startsWith("U/")) {
+    const rest = kept.slice(2);
+    if (rest.length === bodyLen) return rest;
+  }
+  if (kept.length === bodyLen) return kept;
+  return kept.startsWith("U/") ? kept.slice(2) : kept;
+}
+
+/** 规范化后的 16 位正文（传给后端的值）。 */
+const normalizedCode = computed(() => normalizeCode(roomCodeInput.value));
+
+/** 实时预览：让用户清楚「系统到底把我的输入识别成了什么」。 */
+const codePreview = computed(() => {
+  const body = normalizedCode.value;
+  const grouped = (body.match(/.{1,4}/g) ?? []).join("-");
+  if (body.length === 16) return `将识别为：U/${grouped}`;
+  return `已识别 ${body.length}/16 位：${grouped || "（空）"}`;
 });
 
 async function copyText(text: string | null | undefined, label: string): Promise<void> {
@@ -201,7 +224,7 @@ async function startJoin(): Promise<void> {
   working.value = true;
   error.value = "";
   try {
-    status.value = await joinMultiplayer(formattedInput.value, mcPort.value, tunMode.value);
+    status.value = await joinMultiplayer(normalizedCode.value, mcPort.value, tunMode.value);
   } catch (err) {
     error.value = `加入失败：${toMessage(err)}`;
     void log.error(error.value, { component: "MultiplayerView", action: "join" });
@@ -483,15 +506,19 @@ onBeforeUnmount(stopPolling);
         <label class="flex flex-col gap-1.5">
           <span class="text-caption text-ink-soft">房间码</span>
           <input
-            :value="formattedInput"
+            v-model="roomCodeInput"
             type="text"
             placeholder="U/XXXX-XXXX-XXXX-XXXX"
             autocomplete="off"
             spellcheck="false"
             class="h-9 rounded-md border border-line/80 bg-surface px-3 font-mono text-body tracking-wide text-ink outline-none placeholder:text-ink-muted/50 focus:border-brand-500"
-            @input="roomCodeInput = ($event.target as HTMLInputElement).value"
           />
-          <span class="text-micro text-ink-muted">自动纠错：小写、I/1、O/0、缺分隔符都能识别</span>
+          <span
+            class="text-micro"
+            :class="normalizedCode.length === 16 ? 'text-success' : 'text-ink-muted'"
+          >
+            {{ codePreview }}（小写、I/1、O/0、分隔符都会自动纠偏）
+          </span>
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -524,7 +551,7 @@ onBeforeUnmount(stopPolling);
         <AppButton
           variant="primary"
           :loading="working"
-          :disabled="formattedInput.length < 19"
+          :disabled="normalizedCode.length !== 16"
           @click="startJoin"
         >
           <LogIn :size="14" /> 加入房间
