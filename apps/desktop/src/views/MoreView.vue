@@ -9,16 +9,15 @@ import PageShell from "@/components/layout/PageShell.vue";
 import SideNav from "@/components/layout/SideNav.vue";
 import type { SideNavItem } from "@/components/layout/SideNav.vue";
 import { APP_AUTHOR, APP_NAME, APP_VERSION } from "@/constants/app";
-import { log } from "@/api/settings";
+import { log, getAppInfo } from "@/api/settings";
 import {
   openProjectIssues,
   openProjectRepo,
   openSupporterPage,
   type SupporterTarget,
 } from "@/api/supporters";
-import { checkAppUpdate, checkDeltaUpdate, applyDeltaUpdate } from "@/api/update";
+import { checkAppUpdate, checkDeltaUpdate } from "@/api/update";
 import { toMessage } from "@/utils/error";
-import { askConfirm } from "@/composables/useConfirm";
 import { useToastStore } from "@/stores/toast";
 import { useUpdateStore } from "@/stores/update";
 
@@ -43,40 +42,27 @@ const updateStore = useUpdateStore();
 /**
  * 检查更新。
  *
- * 没有独立的更新页——发现新版本就**叫醒全局更新卡片**，
- * 与启动时的自动检查是同一个入口。
+ * **只检查、只提示，绝不代替用户做更新的决定**——
+ * 发现新版本就叫醒全局更新卡片（与启动时的自动检查是同一个入口），
+ * 更不更新、什么时候更新由用户点卡片上的「立即更新」决定。
  *
- * 增量通道**只检查不应用**：发现补丁先弹确认框征求用户同意，
- * 用户点「立即更新」才真正下载合并并重启。
- * 0.2.0 的闪退事故就是「检查」直接把应用退掉导致的，这里的
- * askConfirm 是防回归的关键一环，不要删。
+ * 增量通道在这里也只做探测：有补丁的版本卡片上会优先走增量。
  */
 async function checkUpdate(): Promise<void> {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
-    // 增量优先：有补丁先问用户（带宽省 50–95%）；
-    // 没有补丁 / 用户拒绝 / 检查失败 → 无缝走原有全量更新
+    // 增量探测：有补丁 → 卡片标记走增量；没有 / 检查失败 → 走全量
     const delta = await checkDeltaUpdate();
+    const current = await getAppInfo();
+
     if (delta.available) {
-      checkingUpdate.value = false;
-      const ok = await askConfirm({
-        title: `发现新版本 v${delta.toVersion}`,
-        message:
-          "可使用增量更新，无需重新下载完整安装包。\n" +
-          "更新会自动完成，结束后应用将自动重启。\n\n" +
-          (delta.notes ? `更新说明：${delta.notes}` : ""),
-        confirmText: "立即更新",
+      updateStore.show({
+        latestVersion: delta.toVersion,
+        currentVersion: current.version,
+        notes: delta.notes,
       });
-      if (!ok) return;
-      checkingUpdate.value = true;
-      const applied = await applyDeltaUpdate();
-      if (applied.applied) {
-        toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
-        checkingUpdate.value = false;
-        return;
-      }
-      // 增量被安全模式 / 失败回退拦截 → 继续走全量
+      return;
     }
 
     const result = await checkAppUpdate();

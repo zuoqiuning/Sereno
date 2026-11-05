@@ -3,7 +3,7 @@ import { computed } from "vue";
 import { ArrowDownToLine, RefreshCw, X } from "@lucide/vue";
 
 import AppButton from "@/components/common/AppButton.vue";
-import { installAppUpdate, onUpdateProgress } from "@/api/update";
+import { applyDeltaUpdate, installAppUpdate, onUpdateProgress } from "@/api/update";
 import { toMessage } from "@/utils/error";
 import { log } from "@/api/settings";
 import { useToastStore } from "@/stores/toast";
@@ -30,11 +30,32 @@ const update = useUpdateStore();
 
 const visible = computed(() => update.visible);
 
-/** 立即更新：下载 → 验签 → 启动安装器。 */
+/**
+ * 立即更新：增量优先 → 全量兜底。
+ *
+ * 增量：下载 1–2MB 补丁 → 校验合并 → 自动重启（快、省带宽）。
+ * 全量：下载完整安装器 → 验签 → 启动被动安装。
+ * 用户点下这个按钮，才代表同意更新——检查入口绝不代替用户做这个决定。
+ */
 async function install(): Promise<void> {
   if (update.installing) return;
   update.installing = true;
   update.resetProgress();
+
+  try {
+    // 增量优先：有补丁就合并并自动重启。引擎内部已记失败计数，
+    // 连续失败会进入安全模式，届时 applyDeltaUpdate 返回 hasUpdate
+    // 自动落到下面的全量流程。
+    const delta = await applyDeltaUpdate();
+    if (delta.applied) {
+      toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
+      // 不复位 installing：进程马上退出，卡片保持「安装中」防止误操作
+      return;
+    }
+    // 没有可用增量（安全模式 / 回退）→ 落到全量安装器
+  } catch {
+    // 增量通道异常（网络 / 验签）→ 静默回退全量，不打断用户
+  }
 
   const stop = onUpdateProgress((progress) => {
     update.downloaded = progress.downloaded;
