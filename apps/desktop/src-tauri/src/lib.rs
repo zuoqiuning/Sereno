@@ -62,6 +62,18 @@ pub fn run() {
     }
 
     let app = tauri::Builder::default()
+        // 单实例保护必须是**第一个**注册的插件：重复启动时第二个实例
+        // 会立即退出并把参数转交给已有实例。没有它，替换脚本重拉 +
+        // 用户手动重开会叠出多个进程，互相锁住 exe 导致增量替换失败
+        //（D:\Sereno 撞出 4 个僵尸进程即此症状）。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 已有实例还在跑：把它带到前台，而不是开新窗口
+            use tauri::Manager as _;
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.show();
+                let _ = main.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         // 更新通道：updater 负责拉清单、验 minisign 签名、下载并安装。
         // 安装完成后重启应用用的是 Tauri 核心的 `AppHandle::request_restart()`，
