@@ -102,6 +102,21 @@ pub async fn detect_world_port() -> Result<Option<sereno_core::multiplayer::Dete
     sereno_core::multiplayer::detect::detect_world().await
 }
 
+/// 世界自检：对指定端口做一次 Server List Ping。
+///
+/// 给房主的「我自己也能测」按钮用：能 ping 通 = 游戏世界确实开放且可被
+/// 连接（端口、协议、世界三者就绪），联机出去只是把这个端口映射给朋友。
+/// 返回 MOTD / 版本 / 在线人数，前端直接展示。
+#[tauri::command]
+#[specta::specta]
+pub async fn check_world_reachable(port: u16) -> Result<sereno_core::multiplayer::ServerStatus> {
+    sereno_core::multiplayer::ping::ping(
+        &format!("127.0.0.1:{port}"),
+        std::time::Duration::from_secs(3),
+    )
+    .await
+}
+
 /// 查询联机状态（前端 1–2 秒轮询一次）。
 #[tauri::command]
 #[specta::specta]

@@ -9,7 +9,6 @@ import {
   Globe,
   Server,
   HeartPulse,
-  Users,
   Import,
   Package,
   Play,
@@ -40,7 +39,6 @@ import InstanceResourceModal from "@/components/downloads/InstanceResourceModal.
 import WorldBackupModal from "@/components/instances/WorldBackupModal.vue";
 import SavesModal from "@/components/instances/SavesModal.vue";
 import ServersModal from "@/components/instances/ServersModal.vue";
-import LanModal from "@/components/instances/LanModal.vue";
 import LogViewerModal from "@/components/instances/LogViewerModal.vue";
 import HealthModal from "@/components/instances/HealthModal.vue";
 import InstanceSettingsModal from "@/components/instances/InstanceSettingsModal.vue";
@@ -83,7 +81,6 @@ const resourceModal = useModalState<InstanceMetadata>();
 const backupModal = useModalState<InstanceMetadata>();
 const logModal = useModalState<InstanceMetadata>();
 const healthModal = useModalState<InstanceMetadata>();
-const lanModal = useModalState<InstanceMetadata>();
 const savesModal = useModalState<InstanceMetadata>();
 const serversModal = useModalState<InstanceMetadata>();
 const settingsModal = useModalState<InstanceMetadata>();
@@ -661,7 +658,6 @@ function actionsFor(inst: InstanceMetadata): MenuItem[] {
       disabled: destructiveBlocked,
     },
     { id: "health", label: "健康检查", icon: HeartPulse },
-    { id: "lan", label: "联机", icon: Users },
     {
       id: "resources",
       label: "管理 Mod / 资源包",
@@ -739,9 +735,6 @@ function runAction(id: string, inst: InstanceMetadata): void {
       break;
     case "servers":
       serversModal.open(inst);
-      break;
-    case "lan":
-      lanModal.open(inst);
       break;
     case "resources":
       resourceModal.open(inst);
@@ -1178,13 +1171,6 @@ function formatPlaytime(secs: number): string {
       :open="healthModal.visible"
       @close="healthModal.close"
       @action="handleHealthAction"
-    />
-
-    <LanModal
-      v-if="lanModal.item"
-      :instance="lanModal.item"
-      :open="lanModal.visible"
-      @close="lanModal.close"
     />
 
     <LogViewerModal

@@ -65,7 +65,9 @@ async fn generate_manifest(args: &[String]) {
     // 清单 platforms 里的全量签名必须与这份安装包匹配。
     let [old_dir, new_exe, new_version, base_url, existing_json] = match args {
         [a, b, c, d, e, ..] => [a, b, c, d, e],
-        _ => die("gen 模式参数应为：<旧包目录> <新包应用exe> <新版本> <base_url> <现有 latest.json> [安装包exe]"),
+        _ => die(
+            "gen 模式参数应为：<旧包目录> <新包应用exe> <新版本> <base_url> <现有 latest.json> [安装包exe]",
+        ),
     };
 
     let mut manifest: UpdateManifest = match std::fs::read_to_string(existing_json) {
@@ -113,8 +115,7 @@ async fn generate_manifest(args: &[String]) {
             die(&format!("安装包不存在: {installer}"));
         }
         if let Err(e) = sereno_core::updater::verify_manifest_signature(
-            &std::fs::read(installer_path)
-                .unwrap_or_else(|e| die(&format!("读取安装包失败: {e}"))),
+            &std::fs::read(installer_path).unwrap_or_else(|e| die(&format!("读取安装包失败: {e}"))),
             platform_info.signature.trim(),
             &std::env::var("SERENO_UPDATER_PUBKEY").unwrap_or_else(|_| {
                 die("缺少环境变量 SERENO_UPDATER_PUBKEY（与 tauri.conf.json 的 pubkey 一致）")

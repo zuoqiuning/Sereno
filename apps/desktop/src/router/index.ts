@@ -4,7 +4,7 @@ import { updateNavDirection } from "@/composables/useNavDirection";
 import HomeView from "@/views/HomeView.vue";
 
 /*
- * 路由表：`/`、`/instances`、`/downloads`、`/tasks`、`/settings`、`/more`。
+ * 路由表：`/`、`/instances`、`/multiplayer`、`/downloads`、`/tasks`、`/settings`、`/more`。
  *
  * 用 `createWebHashHistory`：打包后没有服务端 rewrite，hash 路由刷新不会 404。
  *
@@ -20,6 +20,12 @@ export const router = createRouter({
       name: "instances",
       component: () => import("@/views/InstancesView.vue"),
       meta: { title: "实例" },
+    },
+    {
+      path: "/multiplayer",
+      name: "multiplayer",
+      component: () => import("@/views/MultiplayerView.vue"),
+      meta: { title: "联机" },
     },
     {
       path: "/downloads",

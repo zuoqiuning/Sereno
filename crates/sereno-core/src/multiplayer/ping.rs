@@ -26,9 +26,9 @@ pub struct ServerStatus {
     /// 服务端版本字符串（如 `1.21.1`）。
     pub version: String,
     /// 当前在线玩家数。
-    pub players_online: i64,
+    pub players_online: u32,
     /// 最大玩家数。
-    pub players_max: i64,
+    pub players_max: u32,
 }
 
 /// 对 `addr` 做一次状态探测，`timeout` 内无响应视为失败。
@@ -92,11 +92,13 @@ async fn ping_inner(addr: &str) -> Result<ServerStatus> {
             .to_string(),
         players_online: json
             .pointer("/players/online")
-            .and_then(|v| v.as_i64())
+            .and_then(|v| v.as_u64())
+            .map(|v| v.min(u32::MAX as u64) as u32)
             .unwrap_or(0),
         players_max: json
             .pointer("/players/max")
-            .and_then(|v| v.as_i64())
+            .and_then(|v| v.as_u64())
+            .map(|v| v.min(u32::MAX as u64) as u32)
             .unwrap_or(0),
     })
 }

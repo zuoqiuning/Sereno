@@ -88,6 +88,7 @@ macro_rules! all_commands {
             crate::commands::multiplayer::stop_multiplayer,
             crate::commands::multiplayer::get_multiplayer_status,
             crate::commands::multiplayer::detect_world_port,
+            crate::commands::multiplayer::check_world_reachable,
             crate::commands::account::get_account_state,
             crate::commands::account::start_microsoft_login,
             crate::commands::account::complete_microsoft_login,

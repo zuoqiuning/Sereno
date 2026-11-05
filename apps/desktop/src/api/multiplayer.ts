@@ -1,5 +1,5 @@
 import { commands } from "@/bindings";
-import type { DetectedWorld, MultiplayerStatus } from "@/types";
+import type { DetectedWorld, MultiplayerStatus, ServerStatus } from "@/types";
 
 import { callCommand } from "./invoke";
 
@@ -32,6 +32,16 @@ export async function stopMultiplayer(): Promise<void> {
 /** 自动探测本机游戏世界端口（Java 进程监听端口 + MC 状态探测）。 */
 export function detectWorldPort(): Promise<DetectedWorld | null> {
   return callCommand(() => commands.detectWorldPort());
+}
+
+/**
+ * 世界自检：对本机端口做一次 Server List Ping。
+ *
+ * 能 ping 通 = 端口 + 隧道 + 世界三者就绪。房主测自己的世界开放状态，
+ * 房客测隧道是否已经通到房主的世界。
+ */
+export function checkWorldReachable(port: number): Promise<ServerStatus> {
+  return callCommand(() => commands.checkWorldReachable(port));
 }
 
 /** 查询联机状态（轮询用）。后端命令直接返回值、不返回 Result。 */
