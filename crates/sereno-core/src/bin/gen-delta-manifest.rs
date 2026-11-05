@@ -60,10 +60,12 @@ fn die(message: &str) -> ! {
 }
 
 async fn generate_manifest(args: &[String]) {
-    // gen <old_dir> <new_exe> <new_version> <base_url> <existing_json>
+    // gen <old_dir> <new_exe> <new_version> <base_url> <existing_json> [安装包exe]
+    // 第 6 个参数是可选的安装包路径：提供时执行「防混合代际守卫」——
+    // 清单 platforms 里的全量签名必须与这份安装包匹配。
     let [old_dir, new_exe, new_version, base_url, existing_json] = match args {
-        [a, b, c, d, e] => [a, b, c, d, e],
-        _ => die("gen 模式参数应为：<旧包目录> <新包> <新版本> <base_url> <现有 latest.json>"),
+        [a, b, c, d, e, ..] => [a, b, c, d, e],
+        _ => die("gen 模式参数应为：<旧包目录> <新包应用exe> <新版本> <base_url> <现有 latest.json> [安装包exe]"),
     };
 
     let mut manifest: UpdateManifest = match std::fs::read_to_string(existing_json) {
@@ -97,6 +99,34 @@ async fn generate_manifest(args: &[String]) {
 
     let platform = detect_platform(&new_file_name);
     let new_hash = calculate_hash(new_path).await.expect("计算新版哈希失败");
+
+    // 防混合代际守卫：清单 platforms 里的全量签名必须与**这份**安装包匹配。
+    // 曾经发生过：gen-updater-manifest 写错目录，旧签名 + 新 exe 混进同一份
+    // 清单，插件验签必然失败（用户看到 "The signature verification failed"）。
+    // 提供安装包路径时在这里拦住，绝不让不一致的清单流出去。
+    let Some(platform_info) = manifest.platforms.get(platform) else {
+        die(&format!("清单 platforms 里没有 {platform} 条目"));
+    };
+    if let Some(installer) = args.get(5) {
+        let installer_path = Path::new(installer);
+        if !installer_path.is_file() {
+            die(&format!("安装包不存在: {installer}"));
+        }
+        if let Err(e) = sereno_core::updater::verify_manifest_signature(
+            &std::fs::read(installer_path)
+                .unwrap_or_else(|e| die(&format!("读取安装包失败: {e}"))),
+            platform_info.signature.trim(),
+            &std::env::var("SERENO_UPDATER_PUBKEY").unwrap_or_else(|_| {
+                die("缺少环境变量 SERENO_UPDATER_PUBKEY（与 tauri.conf.json 的 pubkey 一致）")
+            }),
+        ) {
+            die(&format!(
+                "清单的全量签名与安装包不匹配——清单可能是旧构建生成的！\
+                 重新执行 scripts/gen-updater-manifest.mjs 后再试。详情: {e}"
+            ));
+        }
+        println!("[OK] 全量签名与安装包匹配（防混合代际守卫通过）");
+    }
 
     // 遍历旧包目录（一层即可），为每个旧版本生成补丁（同版本跳过）
     let mut new_patches: Vec<PatchInfo> = Vec::new();
