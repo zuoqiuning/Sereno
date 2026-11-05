@@ -1101,9 +1101,12 @@ mod tests {
             Path::new("C:\\state\\out.log"),
             Path::new("C:\\state\\err.log"),
             Path::new("C:\\state\\stop.flag"),
+            25565,
         );
         assert!(script.contains("easytier-core.exe"));
         assert!(script.contains("--network-name"));
+        // 世界端口防火墙规则：创建时放行
+        assert!(script.contains("25565"));
         assert!(script.contains("stop.flag"));
         assert!(script.contains("Stop-Process"));
         assert!(script.contains("Test-Path"));
