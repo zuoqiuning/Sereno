@@ -638,25 +638,10 @@ export const commands = {
    */
   setUpdateAutoCheck: (autoCheck: boolean) =>
     typedError<null, LauncherError>(__TAURI_INVOKE("set_update_auto_check", { autoCheck })),
-  /**
-   *  检查并尝试应用增量更新。
-   *
-   *  返回给前端的语义：
-   *  - `applied = true`：增量已合并、替换脚本已拉起，**应用马上退出**；
-   *  - `has_update = true`：没有可用增量（含安全模式与失败回退），
-   *    前端继续走 Tauri 官方全量更新；
-   *  - 两者皆 false：当前已是最新版本。
-   */
   checkAndApplyDelta: (currentVersion: string | null) =>
     typedError<DeltaOutcome, LauncherError>(
       __TAURI_INVOKE("check_and_apply_delta", { currentVersion }),
     ),
-  /**
-   *  启动成功确认：清理失败计数与旧版备份，解除安全模式。
-   *
-   *  前端在 `app.mount` 之后立刻调用——它告诉替换脚本
-   *  「新版本界面已渲染成功」，脚本才会安心删除备份。
-   */
   confirmUpdateSuccess: () =>
     typedError<null, LauncherError>(__TAURI_INVOKE("confirm_update_success")),
 };
@@ -1105,7 +1090,12 @@ export type CrashFinding_Serialize = {
   actionLabel: string | null;
 };
 
-/**  增量检查结果（前端据此决定走增量提示还是全量卡片）。 */
+/**
+ *  增量更新检查的结果。
+ *
+ *  前端语义：`applied = true` 时应用即将重启（后端已拉起替换脚本）；
+ *  否则按 `has_update` 决定是否继续走全量更新流程。
+ */
 export type DeltaOutcome = {
   /**  `true` = 没有可用增量（无补丁 / 安全模式 / 合并失败），走全量更新。 */
   has_update: boolean;

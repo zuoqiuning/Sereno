@@ -21,12 +21,6 @@ serde_json = "1"
 
 # 增量更新引擎（qbsdiff 补丁 + 替换脚本 + 安全模式），作者自己的仓库。
 # 若 GitHub 网络不可达导致 cargo 拉取失败，可临时切换为 vendored 路径依赖。
-tauri-delta-updater = { git = "https://github.com/zuoqiuning/tauri-delta-updater" }
-# 增量引擎的下载器基于 reqwest 0.11（其自身依赖），用别名共存避免升级冲突
-reqwest-delta = { package = "reqwest", version = "0.11", default-features = false, features = [
-  "rustls-tls",
-  "stream",
-] }
 reqwest = { version = "0.13.5", default-features = false, features = [
   "rustls",
   "json",

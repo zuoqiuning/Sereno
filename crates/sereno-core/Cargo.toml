@@ -49,6 +49,10 @@ reqwest = { version = "0.13.5", default-features = false, features = [
   "socks",
 ] }
 
+# 增量更新引擎（作者自有仓库）。path 依赖便于联调；推送到 GitHub 后
+# 切换回 git 依赖即可。
+tauri-delta-updater = { path = "D:/Desktop/tauri-delta-updater" }
+
 # ---- 校验 ----
 sha1 = "0.10.7"
 sha2 = "0.10.9"

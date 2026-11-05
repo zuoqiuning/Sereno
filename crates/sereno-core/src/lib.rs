@@ -28,6 +28,7 @@ pub mod modpack;
 pub mod multiplayer;
 pub mod resource;
 pub mod storage;
+pub mod updater;
 pub mod utils;
 pub mod version;
 
