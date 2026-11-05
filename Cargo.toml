@@ -5,7 +5,7 @@ members = ["apps/desktop/src-tauri", "crates/sereno-core"]
 [workspace.package]
 edition = "2024"
 rust-version = "1.99"
-version = "0.1.0"
+version = "0.2.0"
 # 开源许可证：PolyForm Noncommercial 1.0.0，全文见仓库根的 LICENSE。
 license = "PolyForm-Noncommercial-1.0.0"
 

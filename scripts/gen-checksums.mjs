@@ -26,7 +26,13 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const BUNDLE_DIR = join(ROOT, "apps/desktop/src-tauri/target/release/bundle");
+// workspace 根的 target 在前（Tauri 2 workspace 布局的默认产物位置），
+// 成员自己的 target 在后（历史布局兼容）。
+const BUNDLE_CANDIDATES = [
+  join(ROOT, "target/release/bundle"),
+  join(ROOT, "apps/desktop/src-tauri/target/release/bundle"),
+];
+const BUNDLE_DIR = BUNDLE_CANDIDATES.find((dir) => existsSync(join(dir, "nsis"))) ?? BUNDLE_CANDIDATES[0];
 const MANIFEST = join(BUNDLE_DIR, "SHA256SUMS.txt");
 
 /** 需要纳入清单的发布物类型。 */

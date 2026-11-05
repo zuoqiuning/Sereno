@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use tauri_delta_updater::{
-    PlatformUpdater, UpdateLock, apply_patch, calculate_hash, cleanup_previous_updates,
+    PlatformUpdater, UpdateLock, apply_patch, cleanup_previous_updates,
     download_patch_with_progress, get_failed_attempts, record_failed_attempt,
 };
 
@@ -23,8 +23,11 @@ use crate::Result;
 
 // 宿主薄壳只需要依赖 sereno-core：清单模型与验签函数从这里 re-export，
 // 避免桌面壳直接依赖引擎 crate（保持依赖单向：core → 引擎，壳 → core）。
+// create_patch / calculate_hash 供发布工具 bin（gen-delta-manifest）使用。
 #[allow(unused_imports)]
-pub use tauri_delta_updater::{PatchInfo, UpdateManifest, verify_manifest_signature};
+pub use tauri_delta_updater::{
+    PatchInfo, UpdateManifest, calculate_hash, create_patch, verify_manifest_signature,
+};
 
 /// 连续失败多少次进入安全模式（与引擎默认一致）。
 const SAFE_MODE_ATTEMPTS: u32 = 3;

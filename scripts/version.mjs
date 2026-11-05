@@ -129,8 +129,10 @@ export function setVersion(next) {
     throw new Error("Cargo.toml 中找不到 [workspace.package] 段");
   }
   const [, rest] = parts;
+  // 注意：不能用 `\s*`——它会连上一行行尾的 CRLF 一起吞掉，
+  // 把 rust-version 和 version 拼成一行，直接写坏 Cargo.toml。
   const replaced = rest.replace(
-    /^\s*version\s*=\s*"[^"]*"/m,
+    /^[ \t]*version[ \t]*=[ \t]*"[^"]*"/m,
     `version = "${next}"`,
   );
   writeFileSync(PATHS.cargo, parts[0] + "[workspace.package]" + replaced, "utf8");
