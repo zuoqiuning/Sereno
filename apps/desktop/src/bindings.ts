@@ -1831,10 +1831,8 @@ export type Logging_Serialize = {
 
 /**  微软登录配置（客户端 ID 是否就绪）。 */
 export type MicrosoftConfig = {
-  /**  是否已配置真实客户端 ID。 */
+  /**  是否已配置可用的客户端 ID（全零占位视为未配置）。 */
   configured: boolean;
-  /**  预留的占位值，便于界面上提示「待替换」。 */
-  placeholder: string;
 };
 
 /**

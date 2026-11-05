@@ -107,10 +107,8 @@ pub struct AccountState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MicrosoftConfig {
-    /// 是否已配置真实客户端 ID。
+    /// 是否已配置可用的客户端 ID（全零占位视为未配置）。
     pub configured: bool,
-    /// 预留的占位值，便于界面上提示「待替换」。
-    pub placeholder: String,
 }
 
 /// 设备码登录的第一步返回。

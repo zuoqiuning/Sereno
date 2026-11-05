@@ -20,9 +20,9 @@
 //! ## 客户端 ID
 //!
 //! 微软要求每个启动器使用自己的 Azure 应用（客户端 ID）。
-//! 这里**预留**了常量与环境变量两种来源：正式发布时把真实 ID 写进
-//! [`CLIENT_ID_PLACEHOLDER`]，开发时也可以用 `SERENO_MS_CLIENT_ID` 覆盖。
-//! 未配置时登录入口会明确提示，而不是发一个注定失败的请求。
+//! Sereno 的 AppID 已通过 Mojang 官方审核（2026-11-04 批次，已列入
+//! API allow list），正式客户端 ID 内置在下方常量里；开发时仍可用
+//! `SERENO_MS_CLIENT_ID` 环境变量临时覆盖（例如测试错误配置的降级表现）。
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,6 +45,8 @@ const MC_LOGIN: &str = "https://api.minecraftservices.com/authentication/login_w
 const MC_PROFILE: &str = "https://api.minecraftservices.com/minecraft/profile";
 
 /// 应用还没通过 Mojang 审核时，Minecraft API 会拒绝签发游戏令牌。
+/// Sereno 的 AppID 已过审（2026-11-04），这条检测保留为运行时兜底——
+/// 万一微软侧策略变化仍能给出可读提示，而不是抛一串英文原始错误。
 const MC_API_PENDING: &str = "Minecraft API 权限正在审批中，请耐心等待，或暂时使用离线模式。";
 
 /// 微软返回的「应用未注册 / 未批准」错误；不同端点文案略有差异。
@@ -55,25 +57,30 @@ fn is_pending_registration(text: &str) -> bool {
         || lower.contains("app registration is not approved")
 }
 
-/// **预留的客户端 ID**。
-///
-/// 发布前替换成在 Azure 门户注册的「移动和桌面应用程序」客户端 ID，
-/// 并确保该应用配置了 `XboxLive.signin` 与 `offline_access` 权限。
-pub const CLIENT_ID_PLACEHOLDER: &str = "00000000-0000-0000-0000-000000000000";
+/// Sereno 的正式客户端 ID（Azure「移动和桌面应用程序」应用，已配置
+/// `XboxLive.signin` 与 `offline_access` 权限；AppID 已过 Mojang 审核）。
+pub const CLIENT_ID: &str = "3deda5a4-7104-47f3-b04f-2c0fe53cf97e";
 
-/// 微软登录用的客户端 ID：环境变量优先，其次使用预留常量。
+/// 全零 GUID：仅用于识别被环境变量错误覆盖成的无效配置。
+const ZERO_GUID: &str = "00000000-0000-0000-0000-000000000000";
+
+/// 微软登录用的客户端 ID：环境变量优先（开发期覆盖），其次使用正式常量。
 pub fn client_id() -> String {
     std::env::var("SERENO_MS_CLIENT_ID")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| CLIENT_ID_PLACEHOLDER.to_string())
+        .unwrap_or_else(|| CLIENT_ID.to_string())
 }
 
-/// 客户端 ID 是否已配置（占位符视为未配置）。
+/// 客户端 ID 是否可用（全零占位视为未配置）。
 pub fn is_configured() -> bool {
-    let id = client_id();
-    id != CLIENT_ID_PLACEHOLDER && !id.is_empty()
+    is_configured_id(&client_id())
+}
+
+/// [`is_configured`] 的纯函数形态，便于测试而不碰环境变量。
+fn is_configured_id(id: &str) -> bool {
+    id != ZERO_GUID && !id.is_empty()
 }
 
 /// 一次登录得到的会话（Minecraft 侧）。
@@ -646,7 +653,7 @@ fn require_client_id() -> CoreResult<String> {
     if !is_configured() {
         return Err(LauncherError::InvalidConfig {
             key: "microsoft.clientId".into(),
-            message: "微软正版登录正在申请权限，暂未开放".into(),
+            message: "微软正版登录的客户端 ID 未正确配置，请检查环境变量后重试".into(),
         });
     }
     Ok(client_id())
@@ -876,9 +883,12 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_means_not_configured() {
-        // 占位符必须被视为「未配置」，否则界面会放出注定失败的登录按钮
-        assert!(!is_configured());
+    fn zero_guid_means_not_configured() {
+        // 全零占位必须被视为「未配置」，否则界面会放出注定失败的登录按钮
+        assert!(!super::is_configured_id(super::ZERO_GUID));
+        assert!(!super::is_configured_id(""));
+        // 正式客户端 ID（已过审）必须视为可用
+        assert!(super::is_configured_id(super::CLIENT_ID));
     }
 
     #[test]

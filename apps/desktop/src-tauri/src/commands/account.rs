@@ -194,7 +194,6 @@ pub async fn activate_microsoft_account(state: tauri::State<'_, AppState>) -> Re
 pub fn get_microsoft_config() -> Result<MicrosoftConfig> {
     Ok(MicrosoftConfig {
         configured: microsoft::is_configured(),
-        placeholder: microsoft::CLIENT_ID_PLACEHOLDER.to_string(),
     })
 }
 

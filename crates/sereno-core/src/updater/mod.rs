@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use tauri_delta_updater::{
     PlatformUpdater, UpdateLock, apply_patch, calculate_hash, cleanup_previous_updates,
-    download_patch_with_progress, find_patch, get_failed_attempts, record_failed_attempt,
+    download_patch_with_progress, get_failed_attempts, record_failed_attempt,
 };
 
 use crate::Result;
@@ -78,7 +78,7 @@ pub async fn prepare_delta_update(
     if manifest.version == current_version {
         return Ok(None);
     }
-    let Some(patch) = find_patch(manifest, current_version) else {
+    let Some(patch) = manifest.find_patch(current_version) else {
         return Ok(None);
     };
 
