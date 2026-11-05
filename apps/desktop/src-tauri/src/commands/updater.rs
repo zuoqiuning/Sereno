@@ -7,7 +7,11 @@
 
 use serde::{Deserialize, Serialize};
 use sereno_core::Result;
-use sereno_core::updater::{check_delta_update as check_delta, try_apply_delta_update};
+use sereno_core::updater::{
+    check_delta_update as check_delta, try_apply_delta_update_with_progress,
+};
+
+use tauri::Emitter as _;
 
 use crate::state::AppState;
 
@@ -120,7 +124,33 @@ pub async fn apply_delta_update(
         .unwrap_or_else(|| app.package_info().version.to_string());
 
     let manifest_url = format!("{MANIFEST_BASE_URL}/latest.json");
-    match try_apply_delta_update(&manifest_url, MANIFEST_PUBKEY, &current_version).await {
+
+    // 补丁下载进度 → update-progress 事件（与全量通道共用同一条管道，
+    // 卡片进度条直接复用）。增量补丁只有 1–2MB，进度条不会再显示 20+MB。
+    let sink = app.clone();
+    let result = try_apply_delta_update_with_progress(
+        &manifest_url,
+        MANIFEST_PUBKEY,
+        &current_version,
+        move |downloaded, total| {
+            let percent = if total > 0 {
+                ((downloaded.min(total) as f64 / total as f64) * 100.0).round() as u8
+            } else {
+                0
+            };
+            let _ = sink.emit(
+                "update-progress",
+                crate::ipc::events::UpdateProgress {
+                    downloaded,
+                    total,
+                    percent,
+                },
+            );
+        },
+    )
+    .await;
+
+    match result {
         Ok(true) => {
             // 给前端留出渲染「增量更新完成」toast 的时间再退出——
             // 替换脚本在等本进程退出，退出是更新能够继续的前提。

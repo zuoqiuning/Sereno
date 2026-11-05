@@ -42,12 +42,21 @@ async function install(): Promise<void> {
   update.installing = true;
   update.resetProgress();
 
+  // 进度订阅提前：增量补丁的下载进度（约 1–2MB）与全量安装包共用
+  // 同一条 update-progress 事件管道，进度条显示的就是真实下载量
+  const stop = onUpdateProgress((progress) => {
+    update.downloaded = progress.downloaded;
+    update.total = progress.total;
+    update.percent = progress.percent;
+  });
+
   try {
     // 增量优先：有补丁就合并并自动重启。引擎内部已记失败计数，
     // 连续失败会进入安全模式，届时 applyDeltaUpdate 返回 hasUpdate
     // 自动落到下面的全量流程。
     const delta = await applyDeltaUpdate();
     if (delta.applied) {
+      stop();
       toast.info("增量更新完成", "应用即将重启，请稍候…", 60000);
       // 不复位 installing：进程马上退出，卡片保持「安装中」防止误操作
       return;
@@ -56,12 +65,6 @@ async function install(): Promise<void> {
   } catch {
     // 增量通道异常（网络 / 验签）→ 静默回退全量，不打断用户
   }
-
-  const stop = onUpdateProgress((progress) => {
-    update.downloaded = progress.downloaded;
-    update.total = progress.total;
-    update.percent = progress.percent;
-  });
 
   try {
     await installAppUpdate();

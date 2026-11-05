@@ -111,7 +111,7 @@ pub async fn check_delta_update(
     }))
 }
 
-/// 尝试执行一次完整的增量更新。
+/// 尝试执行一次完整的增量更新（无进度回调的简化入口）。
 ///
 /// - `Ok(true)`：已合并并拉起替换脚本，宿主应尽快退出主进程（交给脚本替换重启）；
 /// - `Ok(false)`：没有可用增量（无补丁 / 跨版本 / 安全模式），走全量更新；
@@ -121,6 +121,25 @@ pub async fn try_apply_delta_update(
     public_key: &str,
     current_version: &str,
 ) -> Result<bool> {
+    try_apply_delta_update_with_progress(manifest_url, public_key, current_version, |_, _| {}).await
+}
+
+/// 尝试执行一次完整的增量更新，**下载进度实时回调**。
+///
+/// `on_progress(downloaded, total)` 在补丁下载期间被反复调用
+///（total 来自补丁的 patch_size，UI 用它画进度条——增量只有 1–2MB，
+/// 与全量的 20+MB 形成直观对比）。
+///
+/// 返回语义与 [`try_apply_delta_update`] 相同。
+pub async fn try_apply_delta_update_with_progress<F>(
+    manifest_url: &str,
+    public_key: &str,
+    current_version: &str,
+    on_progress: F,
+) -> Result<bool>
+where
+    F: Fn(u64, u64) + Send + 'static,
+{
     // 引擎 update() 的 future 持有非 Send 的内部进度回调，无法直接放进
     // tauri 的多线程运行时；且 debug 构建下该 future 体量会超出默认线程栈。
     // 解法：spawn_blocking 让出 tokio 工作线程 → 在大栈独立线程里起
@@ -140,6 +159,8 @@ pub async fn try_apply_delta_update(
                 ))
             })?;
 
+            // 进度回调跨线程共享：Mutex<F>（F: Fn）转成引擎要求的 FnMut
+            let progress = std::sync::Mutex::new(on_progress);
             std::thread::Builder::new()
                 .stack_size(64 * 1024 * 1024)
                 .spawn(move || {
@@ -147,7 +168,9 @@ pub async fn try_apply_delta_update(
                         .enable_all()
                         .build()
                         .expect("创建更新运行时失败")
-                        .block_on(updater.update())
+                        .block_on(updater.update_with_progress(move |downloaded, total| {
+                            (progress.lock().expect("进度回调锁中毒"))(downloaded, total);
+                        }))
                 })
                 .expect("创建更新线程失败")
                 .join()
